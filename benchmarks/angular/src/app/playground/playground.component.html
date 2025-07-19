@@ -1,0 +1,56 @@
+<div class="bg-gray-900 text-gray-100 p-6 font-sans min-h-screen">
+  <div class="top-bar flex justify-between items-center mb-4 flex-wrap gap-4">
+    <div class="flex items-center gap-2">
+      <label for="sizeInput" class="sr-only">Grid size</label>
+      <input
+        id="sizeInput"
+        type="number"
+        min="1"
+        [(ngModel)]="newSize"
+        class="bg-gray-800 text-white px-2 py-1 rounded border border-gray-700"
+      />
+      <button
+        (click)="outerSize = newSize"
+        class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded"
+      >
+        Update size
+      </button>
+    </div>
+
+    <div>
+      <button
+        (click)="startStop()"
+        class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded"
+      >
+        {{ running ? "Stop" : "Start" }}
+      </button>
+    </div>
+
+    <div>
+      <button
+        (click)="cycle()"
+        class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded"
+      >
+        Cycle once
+      </button>
+    </div>
+
+    <div class="text-sm text-gray-400">{{ Math.floor(1000 / time) }} FPS</div>
+  </div>
+
+  <div
+    class="grid-container grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6"
+  >
+    @for(square of dots; track square) {
+    <div class="square bg-gray-800 p-2 rounded">
+      <div class="flex flex-wrap gap-1">
+        @for(dot of square; track dot) {
+        <div
+          class="dot w-2 h-2 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500"
+        ></div>
+        }
+      </div>
+    </div>
+    }
+  </div>
+</div>
