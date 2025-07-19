@@ -1,0 +1,37 @@
+{
+  "name": "velin",
+  "version": "1.0.0",
+  "main": "dist/build/velin-all.min.js",
+  "types": "dist/types/velin-all.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/build/velin-all.min.js",
+      "types": "./dist/types/velin-all.d.ts"
+    }
+  },
+  "files": [
+    "dist/"
+  ],
+  "scripts": {
+    "build:angular": "cd benchmarks/angular && npm run build",
+    "build:react": "cd benchmarks/react && npm run build",
+    "prepare": "node scripts/prepare.js",
+    "prepare:benchmarks": "npm run prepare && npm run build:react && npm run build:angular",
+    "serve": "npm run build && npm run prepare && node scripts/serve.js",
+    "serve:benchmarks": "npm run prepare:benchmarks && npm run serve",
+    "build": "node scripts/build.js && tsc -p tsconfig.json",
+    "test": "npx vitest run"
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.4.21",
+    "esbuild": "^0.25.4",
+    "express": "^5.1.0",
+    "http-server": "^14.1.1",
+    "jsdom": "^26.1.0",
+    "postcss": "^8.5.4",
+    "react": "^19.1.0",
+    "tailwindcss": "^4.1.8",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.3"
+  }
+}

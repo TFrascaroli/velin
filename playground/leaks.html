@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+
+<head>
+  <title>First Velin Playground</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- Velin (All) -->
+  <script src="velin.js"></script>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+</head>
+
+<body class="bg-gray-900 text-gray-100 p-6 font-sans">
+  <div class="top-bar flex justify-between items-center mb-4">
+    <div class="flex items-center gap-2">
+      <label for="sizeInput" class="sr-only">Grid size</label>
+      <input
+        id="sizeInput"
+        type="number"
+        min="1"
+        vln-input="vln.newSize"
+        class="bg-gray-800 text-white px-2 py-1 rounded border border-gray-700"
+        aria-label="Set new grid size"
+      />
+      <button
+        vln-on:click="vln.outerSize = vln.newSize"
+        class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded"
+        aria-label="Update grid size"
+      >
+        Update size
+      </button>
+    </div>
+    <div>
+      <button vln-on:click="vln.interact()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded">Do that</button>
+    </div>
+    <div vln-text="Math.floor(1000 / vln.time) + ' FPS'" class="text-sm text-gray-400"></div>
+  </div>
+
+  <div class="grid-container grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
+    <div class="square bg-gray-800 p-2 rounded" vln-for:dot_square="vln.dots">
+      <div class="flex flex-wrap gap-1">
+        <div
+          class="dot w-2 h-2 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500"
+          vln-for:dot="vln.dot_square"
+        ></div>
+      </div>
+    </div>
+  </div>
+
+  <script type="application/javascript">
+    function generateMatrix(n, m) {
+      const matrix = [];
+      for (let i = 0; i < n; i++) {
+        const innerLen = 50;//Math.floor(Math.random() * (m * 0.1) + (m * 0.9));
+        const inner = Array.from({ length: innerLen }, () => Math.random());
+        matrix.push(inner);
+      }
+      return matrix;
+    }
+
+    const bound = Velin.bind(document.body, {
+      newSize: 100,
+      outerSize: 100,
+      dots: [],
+      time: 1000,
+      interact: () => {
+        bound.dots = generateMatrix(bound.outerSize, 100);
+
+        setTimeout(() => {
+          bound.dots = [];
+        }, 500);
+      }
+    });
+  </script>
+</body>
+
+</html>

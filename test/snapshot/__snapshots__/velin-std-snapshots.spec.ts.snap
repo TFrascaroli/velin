@@ -1,0 +1,17 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`bind > renders bound text 1`] = `
+<div
+  reflect-vln-text="vln.message"
+>
+  hello world
+</div>
+`;
+
+exports[`bind > renders loop 1`] = `
+<div
+  reflect-vln-text="vln.message"
+>
+  hello world
+</div>
+`;

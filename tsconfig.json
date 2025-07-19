@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "outDir": "dist/types",
+    "declarationMap": true,
+    "lib": ["ES2022", "dom"],
+    "target": "ES2022"
+  },
+  "include": ["src/**/*.js", "global.d.ts"],
+  "exclude": ["dist"]
+}
