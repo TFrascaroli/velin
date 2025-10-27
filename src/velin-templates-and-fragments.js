@@ -6,101 +6,176 @@
  */
 function setupTemplatesAndFragments(vln) {
   /**
-   * @param {string[]} a
-   * @param {string[]} b
+   * Renders a template fragment with scoped reactive state.
+   *
+   * Usage:
+   *   <template id="userCard" vln-var="user" vln-var="onSave">
+   *     <div class="card">
+   *       <h3 vln-text="vln.user.name"></h3>
+   *       <button vln-on:click="vln.onSave(vln.user)">Save</button>
+   *     </div>
+   *   </template>
+   *
+   *   <div vln-fragment="'userCard'"
+   *        vln-var:user="vln.currentUser"
+   *        vln-var:onSave="vln.handleSave"></div>
+   *
+   * Dynamic templates:
+   *   <div vln-fragment="vln.user.role + 'Card'" ...></div>
+   *
+   * Lifecycle hooks (optional special vars):
+   *   vln-var:onMount="vln.setupComponent()"
+   *   vln-var:onUnmount="vln.cleanupComponent()"
    */
-  function diffArrays(a, b) {
-    const setB = new Set(b || []);
-    return (a || []).filter((item) => !setB.has(item));
-  }
-
-  // TEMPLATES and FRAGMENT
-
-  // vln-template="template-name" vln-var="varName1" vln-var="varName2"...
-  vln.plugins.registerPlugin({
-    name: "template",
-    priority: vln.plugins.priorities.STOPPER,
-    track: ({ reactiveState }) =>
-      vln.getSetter(reactiveState, "vln.ø__templates"),
-    render: ({ node, expr, tracked, reactiveState }) => {
-      const key = expr;
-      if (!key) return { halt: true };
-
-      const templates = reactiveState.state["ø__templates"] || {};
-
-      const params = Array.from(node.attributes)
-        .filter((a) => a.name === "vln-var")
-        .map((a) => a.value);
-
-      templates[key] = {
-        html: node.innerHTML,
-        params,
-      };
-      if (!reactiveState.state["ø__templates"]) tracked(templates);
-      const parent = node.parentNode;
-      if (parent) parent.removeChild(node);
-
-      return { halt: true };
-    },
-  });
-
-  // vln-fragment="template-name" vln-var:varName1="vln.value1" vln-var:varName2="vln.value2"...
   vln.plugins.registerPlugin({
     name: "fragment",
     priority: vln.plugins.priorities.LATE,
+
     track: ({ reactiveState, expr }) => {
-      return {
-        templates: vln.evaluate(reactiveState, "vln.ø__templates"),
-        key: vln.evaluate(reactiveState, expr),
-      };
+      return vln.evaluate(reactiveState, expr);
     },
-    render: ({ node, tracked, reactiveState, pluginState = {} }) => {
-      const key = tracked.key;
-      if (!key)
-        throw new Error("[VLN008] Expected template name as expression");
-      const templates = tracked.templates || {};
-      const template = templates[key];
-      if (!template) return { halt: true };
-      if (pluginState?.reactiveInnerState) {
-        vln.cleanupState(reactiveState, pluginState.reactiveInnerState);
+
+    destroy: ({ pluginState, reactiveState }) => {
+      // Trigger onUnmount if it exists
+      if (pluginState?.lifecycle?.onUnmount) {
+        try {
+          vln.evaluate(pluginState.innerState, pluginState.lifecycle.onUnmount);
+        } catch (err) {
+          console.error('[Velin Templates] Error in onUnmount hook:', err);
+        }
       }
-      node.innerHTML = "";
 
-      const templateFragment = document
-        .createRange()
-        .createContextualFragment(template.html);
-      const clone = /** @type HTMLElement */ (templateFragment.cloneNode(true));
-      const interpolations = new Map(
-        Array.from(node.attributes)
-          .filter((a) => a.name.startsWith("vln-var"))
-          .map((a) => [a.name.split(":")[1], a.value])
-      );
+      // Cleanup inner state
+      if (pluginState?.innerState) {
+        vln.cleanupState(reactiveState, pluginState.innerState);
+      }
+    },
 
-      const paramsDiff = diffArrays(
-        template.params,
-        Array.from(interpolations.keys())
-      );
-      if (paramsDiff.length) {
+    render: ({ node, tracked, reactiveState, pluginState = {} }) => {
+      const templateId = tracked;
+
+      if (!templateId) {
         console.error(
-          `[VLN009] Template '${key}' requires the following parameters: [${paramsDiff.join(
-            ", "
-          )}]`
+          '[Velin Templates] vln-fragment requires a template ID. ' +
+          'Usage: vln-fragment="\'templateId\'" or vln-fragment="vln.dynamicId"'
         );
         return { halt: true };
       }
-      const reactiveInnerState = vln.composeState(
-        reactiveState,
-        interpolations
+
+      // Fetch template from DOM
+      const template = document.getElementById(templateId);
+
+      if (!template) {
+        console.error(
+          `[Velin Templates] Template #${templateId} not found. ` +
+          `Make sure you have <template id="${templateId}"> in your HTML.`
+        );
+        return { halt: true };
+      }
+
+      if (!(template instanceof HTMLTemplateElement)) {
+        console.error(
+          `[Velin Templates] Element #${templateId} is not a <template>. ` +
+          `Found: <${template.tagName.toLowerCase()}>`
+        );
+        return { halt: true };
+      }
+
+      // Cleanup previous render
+      if (pluginState?.innerState) {
+        vln.cleanupState(reactiveState, pluginState.innerState);
+      }
+
+      // Clear node content
+      node.innerHTML = "";
+
+      // Extract required vars from template
+      const templateVars = Array.from(template.attributes)
+        .filter(a => a.name === "vln-var")
+        .map(a => a.value);
+
+      // Extract provided vars from fragment node
+      const interpolations = new Map(
+        Array.from(node.attributes)
+          .filter(a => a.name.startsWith("vln-var:"))
+          .map(a => [a.name.slice(8), a.value]) // "vln-var:".length === 8
       );
 
-      // Insert children directly into the host node
-      Array.from(clone.childNodes).forEach((child) => {
+      // Validate required vars are provided (excluding lifecycle hooks)
+      const missingVars = templateVars.filter(v =>
+        v !== 'onMount' &&
+        v !== 'onUnmount' &&
+        !interpolations.has(v)
+      );
+
+      if (missingVars.length) {
+        console.error(
+          `[Velin Templates] Template #${templateId} requires missing variables: ` +
+          `[${missingVars.join(", ")}]. ` +
+          `Add them as: vln-var:${missingVars[0]}="vln.yourValue"`
+        );
+        return { halt: true };
+      }
+
+      // Clone template content
+      const clone = template.content.cloneNode(true);
+
+      // Create scoped state
+      const innerState = vln.composeState(reactiveState, interpolations);
+
+      // Handle lifecycle hooks
+      const lifecycle = {
+        onMount: interpolations.get('onMount'),
+        onUnmount: interpolations.get('onUnmount')
+      };
+
+      // Append and process child nodes
+      Array.from(clone.childNodes).forEach(child => {
         node.appendChild(child);
-        vln.processNode(child, reactiveInnerState);
+        vln.processNode(child, innerState);
       });
 
-      return { halt: true, state: { reactiveInnerState } };
+      // Trigger onMount after processing
+      if (lifecycle.onMount) {
+        try {
+          vln.evaluate(innerState, lifecycle.onMount);
+        } catch (err) {
+          console.error('[Velin Templates] Error in onMount hook:', err);
+        }
+      }
+
+      return {
+        halt: true,
+        state: {
+          innerState,
+          lifecycle
+        }
+      };
     },
+  });
+
+  /**
+   * Alternative name for fragment (some devs prefer "use")
+   * Usage: <div vln-use="'templateId'"></div>
+   */
+  vln.plugins.registerPlugin({
+    name: "use",
+    priority: vln.plugins.priorities.LATE,
+    track: ({ reactiveState, expr }) => {
+      return vln.evaluate(reactiveState, expr);
+    },
+    destroy: ({ node, pluginState, reactiveState, subkey }) => {
+      // Delegate to fragment plugin
+      const fragmentPlugin = vln.plugins.get('fragment');
+      if (fragmentPlugin?.destroy) {
+        fragmentPlugin.destroy({ node, pluginState, reactiveState, subkey });
+      }
+    },
+    render: (args) => {
+      // Delegate to fragment plugin
+      const fragmentPlugin = vln.plugins.get('fragment');
+      return fragmentPlugin.render(args);
+    }
   });
 }
 

@@ -89,7 +89,7 @@
     </div>
 
     <div vln-diff="Templates" class="space-y-6">
-      <template vln-template="friendCard" vln-var="friend">
+      <template id="friendCard" vln-var="friend">
         <div class="p-4 mb-4 rounded-xl shadow-md bg-white border border-gray-200 hover:shadow-lg transition">
           <div class="text-lg font-semibold mb-2 text-indigo-700">
             This is my friend, their name is <span vln-text="vln.friend.name"></span>
@@ -162,7 +162,20 @@
         pluginState.unsub = undefined;
       }
 
-      Velin.plugins.processPlugin(Velin.plugins.get('template'), reactiveState, key, node);
+      // Create a template element dynamically
+      const template = document.createElement('template');
+      template.id = key;
+      template.innerHTML = node.innerHTML;
+
+      // Copy vln-var attributes from node to template
+      Array.from(node.attributes)
+        .filter(a => a.name === 'vln-var')
+        .forEach(a => template.setAttribute(a.name, a.value));
+
+      // Add to DOM if not already there
+      if (!document.getElementById(key)) {
+        document.body.appendChild(template);
+      }
 
       if (!reactiveState.state.diffs)
         reactiveState.state.diffs = [];
