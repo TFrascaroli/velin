@@ -149,7 +149,19 @@
       .replace(/-([a-z0-9])/g, (_, char) => char.toUpperCase());
   }
 
-  let hook;
+  /**
+   * Advanced Plugin Example: vln-diff
+   *
+   * This plugin demonstrates:
+   * 1. Dynamic template creation from markup
+   * 2. Using Velin's event system to capture live output
+   * 3. Complex plugin interactions (fragments, templates, events)
+   *
+   * Use case: Create a 3-column comparison view showing:
+   * - Original markup
+   * - Interpolated markup (with Velin expressions visible)
+   * - Live rendered output (fully reactive)
+   */
   Velin.plugins.registerPlugin({
     name: 'diff',
     priority: Velin.plugins.priorities.STOPPER,
@@ -157,37 +169,44 @@
       const id = slugify(expr);
       const key = slugToCamel(id);
       if (!id || !key) return { halt: true };
+
+      // Cleanup previous event listener if re-rendering
       if (pluginState.unsub) {
         pluginState.unsub();
         pluginState.unsub = undefined;
       }
 
-      // Create a template element dynamically
+      // ADVANCED: Dynamically create a <template> element from this node's content
+      // This demonstrates that templates don't have to be static - you can
+      // create them programmatically and use them with vln-fragment
       const template = document.createElement('template');
       template.id = key;
       template.innerHTML = node.innerHTML;
 
-      // Copy vln-var attributes from node to template
+      // Preserve any vln-var declarations from the source node
       Array.from(node.attributes)
         .filter(a => a.name === 'vln-var')
         .forEach(a => template.setAttribute(a.name, a.value));
 
-      // Add to DOM if not already there
+      // Add to DOM if not already registered
+      // (templates can be added/removed dynamically - they're just DOM nodes!)
       if (!document.getElementById(key)) {
         document.body.appendChild(template);
       }
 
+      // Store metadata for rendering the comparison view
       if (!reactiveState.state.diffs)
         reactiveState.state.diffs = [];
 
       reactiveState.state.diffs.push({
-        initialHtml: node.outerHTML,
-        interpolatedHtml: null,
+        initialHtml: node.outerHTML,  // Original source
+        interpolatedHtml: null,        // Will be captured from live render
         title: expr,
-        key,
-        id,
+        key,  // Template name for vln-fragment
+        id,   // DOM id for the output container
       });
 
+      // Listen for when the live fragment renders and capture its HTML
       const parentSelector = `#${id}.diff-output`;
       const unsub = Velin.on('afterProcessNode', ({node}) => {
         const _diff = reactiveState.state.diffs.find(d => d.id === id);
