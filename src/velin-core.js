@@ -98,15 +98,15 @@ const DefaultPluginPriorities = {
  * @property {ComposeState} composeState
  * @property {CleanupState} cleanupState
  * @property {ProcessNode} processNode
- * @property {SubFn} on - Listener subscription function.
+ * @property {Subscribe} on - Listener subscription function.
  * @property {Trackers} trackers
  * @property {VelinInternal} ø__internal
  */
 
 /** @typedef {{selector?: string, plugin?: string, parentSelector?: string}} EvtOpts */
 /** @typedef {{plugin: string, node: HTMLElement, reactiveState: ReactiveState, originalNode: HTMLElement}} EvtArgs */
-/** @typedef {(event: string, args: EvtArgs) => void} EmitFn */
-/** @typedef {(event: string, fn: (args: EvtArgs) => void, opts: EvtOpts?) => () => void} SubFn */
+/** @typedef {(event: string, args: EvtArgs) => void} Emit */
+/** @typedef {(event: string, fn: (args: EvtArgs) => void, opts: EvtOpts?) => () => void} Subscribe */
 
 /** @type {Map<string, VelinPlugin>} */
 const plugins = new Map();
@@ -129,7 +129,7 @@ function peek(arr) {
 
 /**
  * Subscribes a function to an event.
- * @type {SubFn}
+ * @type {Subscribe}
  */
 function on(event, fn, opts = {}) {
   if (!listeners.has(event)) listeners.set(event, new Set());
@@ -143,7 +143,8 @@ function on(event, fn, opts = {}) {
 
 /**
  * Emits an event with optional arguments.
- * @type {EmitFn}
+ * @internal
+ * @type {Emit}
  */
 function emit(event, args) {
   Array.from(listeners.get(event) || [])
