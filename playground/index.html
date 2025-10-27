@@ -75,7 +75,7 @@
 
     <div vln-diff="Loops" class="mb-6">
       <ul class="list-disc list-inside space-y-1 text-gray-700">
-        <li vln-for:friend="vln.friends" vln-text="vln.friend.name" class="hover:text-indigo-600 cursor-default">
+        <li vln-loop:friend="vln.friends" vln-text="vln.friend.name" class="hover:text-indigo-600 cursor-default">
         </li>
       </ul>
     </div>
@@ -104,14 +104,14 @@
             <div vln-if="vln.friend.pets.length">
               <strong>Pets:</strong>
               <ul class="list-disc list-inside ml-4">
-                <li vln-for:pet="vln.friend.pets" vln-text="vln.pet"></li>
+                <li vln-loop:pet="vln.friend.pets" vln-text="vln.pet"></li>
               </ul>
             </div>
           </div>
         </div>
       </template>
       <div class="friends grid grid-cols-1 gap-4">
-        <div class="friend" vln-for:friend_obj="vln.friends" vln-fragment="'friendCard'" vln-var:friend="vln.friend_obj">
+        <div class="friend" vln-loop:friend_obj="vln.friends" vln-fragment="'friendCard'" vln-var:friend="vln.friend_obj">
         </div>
       </div>
     </div>
@@ -119,7 +119,7 @@
 
 
   <div class="flex flex-col space-y-6 mt-8">
-    <div class="flex flex-col" vln-for:diff="vln.diffs">
+    <div class="flex flex-col" vln-loop:diff="vln.diffs">
       <h2 vln-text="vln.diff.title" class="text-xl font-bold mb-2"></h2>
       <div class="flex flex-row gap-4 w-full">
         <div class="w-[30%] grow-0 p-4 bg-white rounded shadow text-sm" vln-html="vln.diff.initialHtml"></div>
