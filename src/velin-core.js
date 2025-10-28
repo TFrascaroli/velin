@@ -296,8 +296,11 @@ function evaluate(reactiveState, expr) {
     const inter = reactiveState.interpolations;
     const contextualizedProxy = new Proxy(reactiveState.state, {
       get(target, prop, receiver) {
-        if (inter && inter.has(prop.toString()))
-          return evaluate(reactiveState, inter.get(prop.toString()));
+        const propStr = String(prop);
+        if (inter && inter.has(propStr)) {
+          const interp = inter.get(propStr);
+          return evaluate(reactiveState, interp);
+        }
         return Reflect.get(target, prop, receiver);
       },
       set(target, prop, value, receiver) {
@@ -595,6 +598,7 @@ function consumeAttribute(node, attr, expr) {
  */
 function processNode(node, reactiveState) {
   if (!(node instanceof HTMLElement)) return;
+  if (node instanceof HTMLTemplateElement) return;
   if (__DEV__) console.log("Processing node", node);
 
   // List all applicable plugins
@@ -610,15 +614,35 @@ function processNode(node, reactiveState) {
       [pluginKey, subcommand] = key.split(":");
     }
 
-    if (!plugins.has(pluginKey)) continue;
-
-    applicable.push({
-      pluginKey,
-      name,
-      value,
-      subcommand,
-      plugin: plugins.get(pluginKey),
-    });
+    if (plugins.has(pluginKey)) {
+      applicable.push({
+        pluginKey,
+        name,
+        value,
+        subcommand,
+        plugin: plugins.get(pluginKey),
+      });
+    } else {
+      // Unknown plugin - add error handler with lowest priority
+      // If another plugin halts before this, error won't be thrown
+      applicable.push({
+        pluginKey: null,
+        name,
+        value,
+        subcommand,
+        plugin: {
+          name: '__error__',
+          priority: -Infinity,
+          render: () => {
+            const availablePlugins = Array.from(plugins.keys()).join(', ');
+            throw new Error(
+              `[Velin] Plugin '${pluginKey}' is not registered. ` +
+              `Available plugins: ${availablePlugins}`
+            );
+          }
+        }
+      });
+    }
   }
 
   // Sort by priorities (highest = first)

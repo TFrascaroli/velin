@@ -17,7 +17,7 @@ describe("Templates and Fragments", () => {
 
   it("should render a basic template with fragment", () => {
     container.innerHTML = `
-      <template id="testCard" vln-var="name">
+      <template id="testCard" vln-vars="name">
         <div class="card">
           <span vln-text="vln.name"></span>
         </div>
@@ -40,10 +40,10 @@ describe("Templates and Fragments", () => {
 
   it("should support dynamic template selection", () => {
     container.innerHTML = `
-      <template id="adminCard" vln-var="user">
+      <template id="adminCard" vln-vars="user">
         <div class="admin">Admin: <span vln-text="vln.user"></span></div>
       </template>
-      <template id="guestCard" vln-var="user">
+      <template id="guestCard" vln-vars="user">
         <div class="guest">Guest: <span vln-text="vln.user"></span></div>
       </template>
       <div vln-fragment="vln.role + 'Card'" vln-var:user="vln.userName"></div>
@@ -60,7 +60,7 @@ describe("Templates and Fragments", () => {
 
   it("should work with vln-use alias", () => {
     container.innerHTML = `
-      <template id="testCard" vln-var="name">
+      <template id="testCard" vln-vars="name">
         <div class="card">
           <span vln-text="vln.name"></span>
         </div>
@@ -80,7 +80,7 @@ describe("Templates and Fragments", () => {
   // TODO: Fix onMount lifecycle hook test - needs investigation
   it.skip("should support onMount lifecycle hook", () => {
     container.innerHTML = `
-      <template id="testCard" vln-var="name">
+      <template id="testCard" vln-vars="name">
         <div class="card">
           <span vln-text="vln.name"></span>
         </div>
@@ -101,7 +101,7 @@ describe("Templates and Fragments", () => {
   // TODO: Fix validation test - error is being logged but render still happens
   it.skip("should handle missing template variables gracefully", () => {
     container.innerHTML = `
-      <template id="testCard" vln-var="name" vln-var="email">
+      <template id="testCard" vln-vars="name, email">
         <div class="card">
           <span vln-text="vln.name"></span>
         </div>
@@ -130,12 +130,12 @@ describe("Templates and Fragments", () => {
   // In real usage, fragments should be used inside the loop template content
   it.skip("should work in loops", () => {
     container.innerHTML = `
-      <template id="userCard" vln-var="user">
+      <template id="userCard" vln-vars="user">
         <div class="user-card">
           <span vln-text="vln.user.name"></span>
         </div>
       </template>
-      <div vln-for:user="vln.users"
+      <div vln-loop:user="vln.users"
            vln-fragment="'userCard'"
            vln-var:user="vln.user"></div>
     `;

@@ -9,7 +9,7 @@ function setupTemplatesAndFragments(vln) {
    * Renders a template fragment with scoped reactive state.
    *
    * Usage:
-   *   <template id="userCard" vln-var="user" vln-var="onSave">
+   *   <template id="userCard" vln-vars="user, onSave">
    *     <div class="card">
    *       <h3 vln-text="vln.user.name"></h3>
    *       <button vln-on:click="vln.onSave(vln.user)">Save</button>
@@ -31,8 +31,24 @@ function setupTemplatesAndFragments(vln) {
     name: "fragment",
     priority: vln.plugins.priorities.LATE,
 
-    track: ({ reactiveState, expr }) => {
-      return vln.evaluate(reactiveState, expr);
+    track: ({ reactiveState, expr, node }) => {
+      // Track the template ID
+      const templateId = vln.evaluate(reactiveState, expr);
+
+      // Also track all vln-var:* expressions and their current values
+      const varValues = {};
+      if (node instanceof HTMLElement) {
+        const varAttrs = Array.from(node.attributes)
+          .filter(a => a.name.startsWith("vln-var:") && !['onMount', 'onUnmount'].includes(a.name.slice(8)));
+
+        for (const attr of varAttrs) {
+          const varName = attr.name.slice(8); // Remove "vln-var:" prefix
+          varValues[varName] = vln.evaluate(reactiveState, attr.value);
+        }
+      }
+
+      // Return both template ID and var values so changes trigger re-render
+      return { templateId, varValues };
     },
 
     destroy: ({ pluginState, reactiveState }) => {
@@ -52,7 +68,7 @@ function setupTemplatesAndFragments(vln) {
     },
 
     render: ({ node, tracked, reactiveState, pluginState = {} }) => {
-      const templateId = tracked;
+      const templateId = tracked?.templateId || tracked;
 
       if (!templateId) {
         console.error(
@@ -61,6 +77,9 @@ function setupTemplatesAndFragments(vln) {
         );
         return { halt: true };
       }
+
+      // Check if template changed - if not, just update the inner state's interpolations
+      const templateChanged = !pluginState?.templateId || pluginState.templateId !== templateId;
 
       // Fetch template from DOM
       const template = document.getElementById(templateId);
@@ -81,18 +100,25 @@ function setupTemplatesAndFragments(vln) {
         return { halt: true };
       }
 
-      // Cleanup previous render
+      // If template didn't change, inner nodes' effects will handle updates - nothing to do
+      if (!templateChanged && pluginState?.innerState) {
+        return {
+          halt: true,
+          state: pluginState
+        };
+      }
+
+      // Template changed - cleanup and rebuild
       if (pluginState?.innerState) {
         vln.cleanupState(reactiveState, pluginState.innerState);
       }
-
-      // Clear node content
       node.innerHTML = "";
 
-      // Extract required vars from template
-      const templateVars = Array.from(template.attributes)
-        .filter(a => a.name === "vln-var")
-        .map(a => a.value);
+      // Extract required vars from template (supports vln-vars="x, y" format)
+      const varsAttr = template.getAttribute("vln-vars");
+      const templateVars = varsAttr
+        ? varsAttr.split(',').map(v => v.trim()).filter(v => v)
+        : [];
 
       // Extract provided vars from fragment node
       const interpolations = new Map(
@@ -147,6 +173,7 @@ function setupTemplatesAndFragments(vln) {
       return {
         halt: true,
         state: {
+          templateId,
           innerState,
           lifecycle
         }
