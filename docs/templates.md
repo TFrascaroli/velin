@@ -15,7 +15,7 @@ Templates allow you to define reusable HTML chunks and instantiate them with dif
 Use the standard HTML `<template>` tag with an `id` and declare required variables:
 
 ```html
-<template id="userCard" vln-var="user">
+<template id="userCard" vln-vars="user">
   <div class="card">
     <h3 vln-text="vln.user.name"></h3>
     <p vln-text="vln.user.email"></p>
@@ -37,10 +37,10 @@ Use `vln-fragment` to instantiate the template:
 
 ### Declaring Variables
 
-Use `vln-var="variableName"` on the `<template>` tag to declare required variables:
+Use `vln-vars="var1, var2"` on the `<template>` tag to declare required variables (comma-separated):
 
 ```html
-<template id="productCard" vln-var="product" vln-var="onAddToCart">
+<template id="productCard" vln-vars="product, onAddToCart">
   <div class="product">
     <h3 vln-text="vln.product.name"></h3>
     <p vln-text="'$' + vln.product.price"></p>
@@ -81,14 +81,14 @@ Add them as: vln-var:onAddToCart="vln.yourValue"
 Since `vln-fragment` values are JavaScript expressions, you can dynamically select templates:
 
 ```html
-<template id="adminCard" vln-var="user">
+<template id="adminCard" vln-vars="user">
   <div class="admin-card">
     <strong vln-text="vln.user.name"></strong>
     <button>Delete User</button>
   </div>
 </template>
 
-<template id="guestCard" vln-var="user">
+<template id="guestCard" vln-vars="user">
   <div class="guest-card">
     <span vln-text="vln.user.name"></span>
   </div>
@@ -106,7 +106,7 @@ Since `vln-fragment` values are JavaScript expressions, you can dynamically sele
 Common pattern: using templates to render list items:
 
 ```html
-<template id="todoItem" vln-var="todo" vln-var="actions">
+<template id="todoItem" vln-vars="todo, actions">
   <li class="todo">
     <input type="checkbox" vln-input="vln.todo.done" />
     <span vln-text="vln.todo.text"></span>
@@ -145,7 +145,7 @@ const vln = Velin.bind(root, {
 You can use templates with factory functions to create a component-like pattern:
 
 ```html
-<template id="counter" vln-var="state">
+<template id="counter" vln-vars="state">
   <div class="counter">
     <button vln-on:click="vln.state.decrement()">−</button>
     <span vln-text="vln.state.count"></span>
@@ -183,7 +183,7 @@ Templates support optional lifecycle hooks via special variables:
 Executed after the template is rendered and processed:
 
 ```html
-<template id="modal" vln-var="content">
+<template id="modal" vln-vars="content">
   <div class="modal">
     <div vln-text="vln.content"></div>
   </div>
@@ -237,7 +237,7 @@ const vln = Velin.bind(root, {
 </script>
 ```
 
-**Note:** Lifecycle hooks are optional variables and don't need to be declared with `vln-var` on the template.
+**Note:** Lifecycle hooks are optional variables and don't need to be declared in `vln-vars` on the template.
 
 ## Alternative: `vln-use`
 
@@ -271,7 +271,7 @@ Here's a complete example of a user management interface using templates:
 </head>
 <body>
   <!-- Template Definition -->
-  <template id="userCard" vln-var="user" vln-var="actions">
+  <template id="userCard" vln-vars="user, actions">
     <div class="user-card">
       <h3 vln-text="vln.user.name"></h3>
       <p vln-text="vln.user.email"></p>
@@ -327,7 +327,7 @@ Here's a complete example of a user management interface using templates:
 ✅ **Repeated complex structures**
 ```html
 <!-- Product cards with lots of markup -->
-<template id="productCard" vln-var="product">
+<template id="productCard" vln-vars="product">
   <!-- 20 lines of HTML -->
 </template>
 ```
@@ -379,14 +379,14 @@ Here's a complete example of a user management interface using templates:
 
 **Good:**
 ```html
-<template id="userAvatar" vln-var="user">
+<template id="userAvatar" vln-vars="user">
   <img vln-attr:src="vln.user.avatar" vln-attr:alt="vln.user.name" />
 </template>
 ```
 
 **Avoid:**
 ```html
-<template id="entirePage" vln-var="pageData">
+<template id="entirePage" vln-vars="pageData">
   <!-- 200 lines of HTML -->
 </template>
 ```
@@ -395,19 +395,19 @@ Here's a complete example of a user management interface using templates:
 
 **Good:**
 ```html
-<template id="productCard" vln-var="product" vln-var="onAddToCart">
+<template id="productCard" vln-vars="product, onAddToCart">
 ```
 
 **Avoid:**
 ```html
-<template id="productCard" vln-var="p" vln-var="fn">
+<template id="productCard" vln-vars="p, fn">
 ```
 
 ### 3. Pass functions for actions
 
 **Good:**
 ```html
-<template id="card" vln-var="item" vln-var="actions">
+<template id="card" vln-vars="item, actions">
   <button vln-on:click="vln.actions.delete()">Delete</button>
 </template>
 
