@@ -288,10 +288,32 @@ function processPlugin(plugin, reactiveState, expr, node, attributeName, subkey 
 
 /**
  * Evaluates an expression against the reactive state with optional context proxying
+ *
+ * SECURITY NOTE: This function uses `new Function()` to evaluate expressions, which has
+ * important security implications:
+ *
+ * 1. TRUSTED EXPRESSIONS ONLY: Expressions MUST come from trusted sources (your own code,
+ *    templates you control). Never pass user-generated or untrusted content.
+ *
+ * 2. NO EFFECTIVE SANDBOXING: Attempts to shadow globals (window, document, etc.) do not
+ *    work because Function constructor has access to the real global scope. Any sandboxing
+ *    would be security theater providing false confidence.
+ *
+ * 3. CSP INCOMPATIBILITY: Strict Content Security Policies that disallow 'unsafe-eval'
+ *    will block this function entirely. Velin is not compatible with CSP-strict environments.
+ *
+ * 4. DESIGN DECISION: We chose `new Function()` over alternatives because:
+ *    - eval() is worse (same issues, fewer benefits)
+ *    - Full tokenizer/parser/evaluator would be slow, large, and complex
+ *    - Most use cases involve trusted templates in controlled environments
+ *
+ * If you need to use Velin with untrusted content or in CSP-strict environments,
+ * this is a fundamental architectural limitation.
+ *
  * @type {Evaluate}
  */
 function evaluate(reactiveState, expr) {
-  // reactiveState.ø__control.evaluating = true;
+  reactiveState.ø__control.evaluating = true;
   try {
     const inter = reactiveState.interpolations;
     const contextualizedProxy = new Proxy(reactiveState.state, {
@@ -569,7 +591,7 @@ function cleanupState(parentState, innerState) {
   innerState.ø__innerStates.forEach((inner) => cleanupState(innerState, inner));
   // Delete from chain
   if (!parentState.ø__innerStates.delete(innerState)) {
-    debugger;
+    throw new Error("[VLN011] Failed to delete inner state from parent. This indicates a state management corruption.");
   }
   // De-ref
   innerState.bindings = null;
