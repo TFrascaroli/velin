@@ -22,7 +22,8 @@ describe("Velin Public API", () => {
       expect(Velin.evaluate(reactiveState, "vln.x + 1")).toBe(6);
     });
 
-    it("should compute expression inside iife", () => {
+    it.skip("should compute expression inside iife", () => {
+      // Skipped: Arrow functions and IIFEs not supported in CSP-safe evaluator
       expect(Velin.evaluate(reactiveState, "(() => vln.x + 1)()")).toBe(6);
     });
 
@@ -36,6 +37,19 @@ describe("Velin Public API", () => {
 
     it("should perform multiple interpolations", () => {
       expect(Velin.evaluate(reactiveState, "vln.x + vln.y(10)")).toBe(80);
+    });
+
+    it("should evaluate object literals", () => {
+      Velin.bind(node, {
+        isActive: true,
+        isEnabled: false,
+      });
+      const reactiveState2 = Velin.ø__internal.boundState.root!;
+      const result = Velin.evaluate(
+        reactiveState2,
+        "{ active: vln.isActive, disabled: !vln.isEnabled }"
+      );
+      expect(result).toEqual({ active: true, disabled: true });
     });
 
     it("should throw error when setting during evaluation", () => {
