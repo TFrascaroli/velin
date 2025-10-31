@@ -64,7 +64,7 @@
         <header class="px-4 py-2 bg-gray-750 border-b border-gray-700 flex-shrink-0">
           <h2 class="text-sm font-semibold text-gray-300">State</h2>
         </header>
-        <div class="flex-1 overflow-auto p-4 text-xs" vln-state="{ username, isLoggedIn, tooltipText, isActive, isEnabled, friends, someClass, classObject, currentTab }"></div>
+        <div class="flex-1 overflow-auto p-4 text-xs" vln-state></div>
       </section>
 
       <!-- Bottom-Right: Live Render -->
@@ -249,9 +249,28 @@
   // Register vln-state plugin for state dump with syntax highlighting
   Velin.plugins.registerPlugin({
     name: 'state',
-    track: Velin.trackers.expressionTracker,
-    render: ({ node, tracked }) => {
-      const json = JSON.stringify(tracked, null, 2);
+    track: ({ reactiveState }) => {
+      // Track all non-function, non-internal properties
+      const trackedKeys = [];
+      for (const key in reactiveState.state) {
+        if (typeof reactiveState.state[key] === 'function') continue;
+        if (key === 'examples' || key === 'tabs') continue;
+        trackedKeys.push(key);
+      }
+      // Access each property to register it for tracking
+      trackedKeys.forEach(key => reactiveState.state[key]);
+      return trackedKeys;
+    },
+    render: ({ reactiveState, node }) => {
+      // Extract all non-function, non-internal properties from state
+      const cleanState = {};
+      for (const key in reactiveState.state) {
+        if (typeof reactiveState.state[key] === 'function') continue;
+        if (key === 'examples' || key === 'tabs') continue;
+        cleanState[key] = reactiveState.state[key];
+      }
+
+      const json = JSON.stringify(cleanState, null, 2);
       const escaped = json
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
