@@ -755,12 +755,22 @@ function evaluate(reactiveState, expr) {
     const tokens = tokenize(expr);
     const ast = parse(tokens);
 
-    // Create sandboxed wrapper for Math to prevent constructor access
+    // Create sandboxed wrappers for minimal globals
     const sandboxedGlobals = {
       Math: new Proxy(Math, {
         get(target, prop) {
           if (prop === 'constructor') return undefined;
           return Reflect.get(target, prop);
+        }
+      }),
+      Object: new Proxy(Object, {
+        get(target, prop) {
+          if (prop === 'constructor') return undefined;
+          // Only allow safe iteration helpers
+          if (typeof prop === 'string' && ['keys', 'values', 'entries'].includes(prop)) {
+            return Reflect.get(target, prop);
+          }
+          return undefined;
         }
       }),
     };
