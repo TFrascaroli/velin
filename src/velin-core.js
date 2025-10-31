@@ -630,87 +630,6 @@ function parse(tokens) {
 }
 
 /**
- * Evaluates AST with given context
- */
-function evalAst(ast, context) {
-  switch (ast.type) {
-    case 'Literal':
-      return ast.value;
-
-    case 'Identifier':
-      return context[ast.name];
-
-    case 'Member':
-      const obj = evalAst(ast.object, context);
-      if (obj == null) return undefined;
-      if (ast.computed) {
-        const prop = evalAst(ast.property, context);
-        return obj[prop];
-      } else {
-        return obj[ast.property];
-      }
-
-    case 'Call':
-      const callee = evalAst(ast.callee, context);
-      if (typeof callee !== 'function') {
-        throw new Error('Cannot call non-function');
-      }
-      const args = ast.arguments.map(arg => evalAst(arg, context));
-      // Get the object for 'this' binding
-      let thisArg = undefined;
-      if (ast.callee.type === 'Member') {
-        thisArg = evalAst(ast.callee.object, context);
-      }
-      return callee.apply(thisArg, args);
-
-    case 'Binary':
-      const left = evalAst(ast.left, context);
-      const right = evalAst(ast.right, context);
-      switch (ast.operator) {
-        case '+': return left + right;
-        case '-': return left - right;
-        case '*': return left * right;
-        case '/': return left / right;
-        case '%': return left % right;
-        case '>': return left > right;
-        case '<': return left < right;
-        case '>=': return left >= right;
-        case '<=': return left <= right;
-        case '===': return left === right;
-        case '!==': return left !== right;
-        case '==': return left == right;
-        case '!=': return left != right;
-        case '&&': return left && right;
-        case '||': return left || right;
-        default: throw new Error(`Unknown operator: ${ast.operator}`);
-      }
-
-    case 'Unary':
-      const arg = evalAst(ast.argument, context);
-      switch (ast.operator) {
-        case '!': return !arg;
-        case '-': return -arg;
-        case '+': return +arg;
-        default: throw new Error(`Unknown unary operator: ${ast.operator}`);
-      }
-
-    case 'Ternary':
-      const test = evalAst(ast.test, context);
-      return test ? evalAst(ast.consequent, context) : evalAst(ast.alternate, context);
-
-    case 'ObjectLiteral':
-      const result = {};
-      for (const prop of ast.properties) {
-        result[prop.key] = evalAst(prop.value, context);
-      }
-      return result;
-
-    default:
-      throw new Error(`Unknown AST node type: ${ast.type}`);
-  }
-}
-
-/**
  * Evaluates an expression against the reactive state with optional context proxying
  * CSP-safe implementation using tokenizer + parser + AST walker
  *
@@ -718,6 +637,100 @@ function evalAst(ast, context) {
  */
 function evaluate(reactiveState, expr) {
   reactiveState.ø__control.evaluating = true;
+
+  /**
+   * Evaluates AST with given context
+   * Nested function to access reactiveState
+   */
+  function evalAst(ast, context) {
+    switch (ast.type) {
+      case 'Literal':
+        return ast.value;
+
+      case 'Identifier':
+        return context[ast.name];
+
+      case 'Member':
+        const obj = evalAst(ast.object, context);
+        if (obj == null) return undefined;
+        if (ast.computed) {
+          const prop = evalAst(ast.property, context);
+          return obj[prop];
+        } else {
+          return obj[ast.property];
+        }
+
+      case 'Call':
+        const callee = evalAst(ast.callee, context);
+        if (typeof callee !== 'function') {
+          throw new Error('Cannot call non-function');
+        }
+        const args = ast.arguments.map(arg => evalAst(arg, context));
+        // Get the object for 'this' binding
+        let thisArg = undefined;
+        if (ast.callee.type === 'Member') {
+          thisArg = evalAst(ast.callee.object, context);
+        }
+
+        // Temporarily disable evaluating flag for user function calls
+        // This allows event handlers and user functions to modify state
+        const wasEvaluating = reactiveState.ø__control.evaluating;
+        reactiveState.ø__control.evaluating = false;
+        try {
+          return callee.apply(thisArg, args);
+        } finally {
+          reactiveState.ø__control.evaluating = wasEvaluating;
+        }
+
+      case 'Binary':
+        const left = evalAst(ast.left, context);
+        const right = evalAst(ast.right, context);
+        switch (ast.operator) {
+          case '+': return left + right;
+          case '-': return left - right;
+          case '*': return left * right;
+          case '/': return left / right;
+          case '%': return left % right;
+          case '>': return left > right;
+          case '<': return left < right;
+          case '>=': return left >= right;
+          case '<=': return left <= right;
+          case '===': return left === right;
+          case '!==': return left !== right;
+          case '==': return left == right;
+          case '!=': return left != right;
+          case '&&': return left && right;
+          case '||': return left || right;
+          default:
+            throw new Error(`Unknown operator: ${ast.operator}`);
+        }
+
+      case 'Unary':
+        const argument = evalAst(ast.argument, context);
+        switch (ast.operator) {
+          case '!': return !argument;
+          case '-': return -argument;
+          case '+': return +argument;
+          default:
+            throw new Error(`Unknown unary operator: ${ast.operator}`);
+        }
+
+      case 'Ternary':
+        const test = evalAst(ast.test, context);
+        return evalAst(test ? ast.consequent : ast.alternate, context);
+
+      case 'ObjectLiteral':
+        const result = {};
+        for (const prop of ast.properties) {
+          result[prop.key] = evalAst(prop.value, context);
+        }
+        return result;
+
+      default:
+        throw new Error(`Unknown AST node type: ${ast.type}`);
+    }
+  }
+
   try {
     const inter = reactiveState.interpolations;
     const contextualizedProxy = new Proxy(reactiveState.state, {
