@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>Velin Sandbox Escape Test</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="velin.js"></script>
+  <style>
+    body {
+      font-family: monospace;
+      padding: 20px;
+      background: #1a1a1a;
+      color: #00ff00;
+    }
+    .test {
+      margin: 10px 0;
+      padding: 10px;
+      border: 1px solid #333;
+      background: #0a0a0a;
+    }
+    .pass { color: #00ff00; }
+    .fail { color: #ff0000; }
+    .warn { color: #ffaa00; }
+    h1 { color: #ff0000; }
+    h2 { color: #ff6600; margin-top: 20px; }
+    pre {
+      background: #000;
+      padding: 10px;
+      overflow-x: auto;
+      border-left: 3px solid #ff0000;
+    }
+  </style>
+</head>
+<body>
+  <h1>⚠️ VELIN SANDBOX ESCAPE ATTEMPTS ⚠️</h1>
+  <p>Attempting to break out of the CSP-safe evaluator sandbox...</p>
+
+  <div id="results"></div>
+
+  <script>
+    const results = document.getElementById('results');
+
+    function log(category, name, passed, details = '') {
+      const div = document.createElement('div');
+      div.className = 'test';
+      const status = passed ?
+        '<span class="pass">✓ BLOCKED</span>' :
+        '<span class="fail">✗ ESCAPED!</span>';
+      div.innerHTML = `
+        <strong>${category}</strong>: ${name} ${status}
+        ${details ? `<pre>${details}</pre>` : ''}
+      `;
+      results.appendChild(div);
+      return passed;
+    }
+
+    function addHeader(text) {
+      const h2 = document.createElement('h2');
+      h2.textContent = text;
+      results.appendChild(h2);
+    }
+
+    // Setup test state
+    const maliciousPayload = 'SANDBOX_BREACH';
+    let breachAttempts = 0;
+    let blockedAttempts = 0;
+
+    const state = Velin.bind(document.body, {
+      // Innocent-looking data
+      username: 'attacker',
+      data: { nested: { value: 42 } },
+    });
+
+    const reactiveState = Velin.ø__internal.boundState.root;
+
+    // ============================================================
+    // ATTACK VECTOR 1: Constructor Chain Attacks
+    // ============================================================
+    addHeader('1. Constructor Chain Attacks');
+
+    try {
+      const result = Velin.evaluate(reactiveState, 'Math.constructor');
+      if (result === Number) {
+        log('Constructor', 'Math.constructor access', false,
+          `Got Number constructor: ${result.name}`);
+        breachAttempts++;
+      }
+    } catch (e) {
+      log('Constructor', 'Math.constructor access', true, e.message);
+      blockedAttempts++;
+    }
+
+    try {
+      const result = Velin.evaluate(reactiveState, 'Math.constructor.constructor');
+      if (result === Function) {
+        log('Constructor', 'Math.constructor.constructor', false,
+          `Got Function constructor! Can execute: ${result('return 1')()}`);
+        breachAttempts++;
+      }
+    } catch (e) {
+      log('Constructor', 'Math.constructor.constructor', true, e.message);
+      blockedAttempts++;
+    }
+
+    try {
+      const result = Velin.evaluate(reactiveState, 'Array.constructor');
+      if (result === Function) {
+        log('Constructor', 'Array.constructor', false,
+          `Got Function constructor!`);
+        breachAttempts++;
+      }
+    } catch (e) {
+      log('Constructor', 'Array.constructor', true, e.message);
+      blockedAttempts++;
+    }
+
+    try {
+      const result = Velin.evaluate(reactiveState, 'String.constructor');
+      if (result === Function) {
+        log('Constructor', 'String.constructor', false,
+          `Got Function constructor!`);
+        breachAttempts++;
+      }
+    } catch (e) {
+      log('Constructor', 'String.constructor', true, e.message);
+      blockedAttempts++;
+    }
+
+    // ============================================================
+    // ATTACK VECTOR 2: Object Introspection Attacks
+    // ============================================================
+    addHeader('2. Object Introspection Attacks');
+
+    try {
+      const result = Velin.evaluate(reactiveState, 'Object.getPrototypeOf(Math)');
+      if (result && result.constructor === Object) {
+        log('Introspection', 'Object.getPrototypeOf(Math)', false,
+          `Got prototype: ${Object.keys(result)}`);
+        breachAttempts++;
+      }
+    } catch (e) {
+      log('Introspection', 'Object.getPrototypeOf(Math)', true, e.message);
+      blockedAttempts++;
+    }
+
+    try {
+      const result = Velin.evaluate(reactiveState,
+        'Object.getOwnPropertyDescriptor(Math, "PI")');
+      if (result) {
+        log('Introspection', 'Object.getOwnPropertyDescriptor', false,
+          `Got descriptor: ${JSON.stringify(result)}`);
+        breachAttempts++;
+      }
+    } catch (e) {
+      log('Introspection', 'Object.getOwnPropertyDescriptor', true, e.message);
+      blockedAttempts++;
+    }
+
+    // ============================================================
+    // ATTACK VECTOR 3: Prototype Pollution Attempts
+    // ============================================================
+    addHeader('3. Prototype Pollution Attempts');
+
+    try {
+      Velin.evaluate(reactiveState, 'Object.prototype.polluted = "' + maliciousPayload + '"');
+      if (Object.prototype.polluted === maliciousPayload) {
+        log('Pollution', 'Object.prototype pollution', false,
+          `Polluted Object.prototype with: ${maliciousPayload}`);
+        breachAttempts++;
+        delete Object.prototype.polluted; // cleanup
+      }
+    } catch (e) {
+      log('Pollution', 'Object.prototype pollution', true, e.message);
+      blockedAttempts++;
+    }
+
+    try {
+      Velin.evaluate(reactiveState, 'Array.prototype.evil = () => "' + maliciousPayload + '"');
+      if (Array.prototype.evil) {
+        log('Pollution', 'Array.prototype pollution', false,
+          `Polluted Array.prototype`);
+        breachAttempts++;
+        delete Array.prototype.evil;
+      }
+    } catch (e) {
+      log('Pollution', 'Array.prototype pollution', true, e.message);
+      blockedAttempts++;
+    }
+
+    // ============================================================
+    // ATTACK VECTOR 4: Global Object Access
+    // ============================================================
+    addHeader('4. Global Object Access Attempts');
+
+    try {
+      const result = Velin.evaluate(reactiveState, 'window');
+      if (result === window) {
+        log('Globals', 'Direct window access', false,
+          `Accessed window object!`);
+        breachAttempts++;
+      }
+    } catch (e) {
+      log('Globals', 'Direct window access', true, e.message);
+      blockedAttempts++;
+    }
+
+    try {
+      const result = Velin.evaluate(reactiveState, 'globalThis');
+      if (result === globalThis) {
+        log('Globals', 'globalThis access', false,
+          `Accessed globalThis!`);
+        breachAttempts++;
+      }
+    } catch (e) {
+      log('Globals', 'globalThis access', true, e.message);
+      blockedAttempts++;
+    }
+
+    try {
+      const result = Velin.evaluate(reactiveState, 'document');
+      if (result === document) {
+        log('Globals', 'Direct document access', false,
+          `Accessed document object!`);
+        breachAttempts++;
+      }
+    } catch (e) {
+      log('Globals', 'Direct document access', true, e.message);
+      blockedAttempts++;
+    }
+
+    try {
+      const result = Velin.evaluate(reactiveState, 'this');
+      if (result === window || result === globalThis) {
+        log('Globals', 'this binding', false,
+          `Got global through this!`);
+        breachAttempts++;
+      }
+    } catch (e) {
+      log('Globals', 'this binding', true, e.message);
+      blockedAttempts++;
+    }
+
+    // ============================================================
+    // ATTACK VECTOR 5: Function Constructor Attacks
+    // ============================================================
+    addHeader('5. Function Constructor Attacks');
+
+    try {
+      const result = Velin.evaluate(reactiveState,
+        '(function(){}).constructor("return window")()');
+      if (result === window) {
+        log('Function', 'IIFE constructor', false,
+          `Created function that returned window!`);
+        breachAttempts++;
+      }
+    } catch (e) {
+      log('Function', 'IIFE constructor', true, e.message);
+      blockedAttempts++;
+    }
+
+    try {
+      const result = Velin.evaluate(reactiveState,
+        'Function("return this")()');
+      if (result === window || result === globalThis) {
+        log('Function', 'Direct Function call', false,
+          `Called Function constructor!`);
+        breachAttempts++;
+      }
+    } catch (e) {
+      log('Function', 'Direct Function call', true, e.message);
+      blockedAttempts++;
+    }
+
+    // ============================================================
+    // ATTACK VECTOR 6: eval and Code Execution
+    // ============================================================
+    addHeader('6. Code Execution Attempts');
+
+    try {
+      const result = Velin.evaluate(reactiveState, 'eval("1+1")');
+      log('Exec', 'Direct eval', false,
+        `eval() is accessible! Result: ${result}`);
+      breachAttempts++;
+    } catch (e) {
+      log('Exec', 'Direct eval', true, e.message);
+      blockedAttempts++;
+    }
+
+    try {
+      const result = Velin.evaluate(reactiveState,
+        'setTimeout(() => "' + maliciousPayload + '", 0)');
+      if (typeof result === 'number') {
+        log('Exec', 'setTimeout access', false,
+          `setTimeout is accessible! Timer ID: ${result}`);
+        clearTimeout(result);
+        breachAttempts++;
+      }
+    } catch (e) {
+      log('Exec', 'setTimeout access', true, e.message);
+      blockedAttempts++;
+    }
+
+    // ============================================================
+    // ATTACK VECTOR 7: Import and Require
+    // ============================================================
+    addHeader('7. Module System Attacks');
+
+    try {
+      const result = Velin.evaluate(reactiveState, 'import("./malicious.js")');
+      if (result instanceof Promise) {
+        log('Modules', 'Dynamic import', false,
+          `import() is accessible!`);
+        breachAttempts++;
+      }
+    } catch (e) {
+      log('Modules', 'Dynamic import', true, e.message);
+      blockedAttempts++;
+    }
+
+    try {
+      const result = Velin.evaluate(reactiveState, 'require("fs")');
+      log('Modules', 'CommonJS require', false,
+        `require() is accessible!`);
+      breachAttempts++;
+    } catch (e) {
+      log('Modules', 'CommonJS require', true, e.message);
+      blockedAttempts++;
+    }
+
+    // ============================================================
+    // ATTACK VECTOR 8: Proxy and Reflect Manipulation
+    // ============================================================
+    addHeader('8. Proxy/Reflect Attacks');
+
+    try {
+      const result = Velin.evaluate(reactiveState,
+        'new Proxy({}, {get: () => window})');
+      if (result) {
+        log('Proxy', 'Proxy constructor', false,
+          `Created malicious Proxy!`);
+        breachAttempts++;
+      }
+    } catch (e) {
+      log('Proxy', 'Proxy constructor', true, e.message);
+      blockedAttempts++;
+    }
+
+    try {
+      const result = Velin.evaluate(reactiveState,
+        'Reflect.get(Math, "constructor")');
+      if (result === Number) {
+        log('Proxy', 'Reflect.get for constructor', false,
+          `Used Reflect to access constructor!`);
+        breachAttempts++;
+      }
+    } catch (e) {
+      log('Proxy', 'Reflect.get for constructor', true, e.message);
+      blockedAttempts++;
+    }
+
+    // ============================================================
+    // ATTACK VECTOR 9: Symbol Attacks
+    // ============================================================
+    addHeader('9. Symbol-based Attacks');
+
+    try {
+      const result = Velin.evaluate(reactiveState, 'Symbol.for("__ESCAPE__")');
+      log('Symbols', 'Symbol.for access', false,
+        `Symbol.for is accessible!`);
+      breachAttempts++;
+    } catch (e) {
+      log('Symbols', 'Symbol.for access', true, e.message);
+      blockedAttempts++;
+    }
+
+    // ============================================================
+    // ATTACK VECTOR 10: WebAssembly
+    // ============================================================
+    addHeader('10. WebAssembly Attacks');
+
+    try {
+      const result = Velin.evaluate(reactiveState, 'WebAssembly');
+      if (result === WebAssembly) {
+        log('WASM', 'WebAssembly access', false,
+          `WebAssembly is accessible!`);
+        breachAttempts++;
+      }
+    } catch (e) {
+      log('WASM', 'WebAssembly access', true, e.message);
+      blockedAttempts++;
+    }
+
+    // ============================================================
+    // RESULTS SUMMARY
+    // ============================================================
+    addHeader('FINAL REPORT');
+
+    const summary = document.createElement('div');
+    summary.className = 'test';
+    summary.style.fontSize = '18px';
+    summary.style.fontWeight = 'bold';
+
+    if (breachAttempts === 0) {
+      summary.innerHTML = `
+        <span class="pass">✓✓✓ SANDBOX IS SECURE ✓✓✓</span><br>
+        <span class="pass">${blockedAttempts} attacks blocked</span><br>
+        <span class="pass">0 breaches detected</span>
+      `;
+    } else {
+      summary.innerHTML = `
+        <span class="fail">⚠️⚠️⚠️ SANDBOX BREACHED ⚠️⚠️⚠️</span><br>
+        <span class="warn">${blockedAttempts} attacks blocked</span><br>
+        <span class="fail">${breachAttempts} SUCCESSFUL BREACHES!</span>
+      `;
+    }
+
+    results.appendChild(summary);
+  </script>
+</body>
+</html>
