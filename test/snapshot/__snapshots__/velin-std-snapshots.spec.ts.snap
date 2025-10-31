@@ -2,7 +2,7 @@
 
 exports[`attribute binding > binds attribute value 1`] = `
 <input
-  reflect-vln-attr:value="vln.text"
+  reflect-vln-attr:value="text"
   value="hello"
 />
 `;
@@ -11,9 +11,9 @@ exports[`attribute binding > binds multiple attributes 1`] = `
 <input
   disabled="true"
   placeholder="Enter text"
-  reflect-vln-attr:disabled="vln.isDisabled"
-  reflect-vln-attr:placeholder="vln.hint"
-  reflect-vln-attr:value="vln.text"
+  reflect-vln-attr:disabled="isDisabled"
+  reflect-vln-attr:placeholder="hint"
+  reflect-vln-attr:value="text"
   value="value"
 />
 `;
@@ -21,27 +21,27 @@ exports[`attribute binding > binds multiple attributes 1`] = `
 exports[`class binding > binds class object 1`] = `
 <div
   class="active disabled"
-  reflect-vln-class="{ active: vln.isActive, disabled: !vln.isEnabled }"
+  reflect-vln-class="{ active: isActive, disabled: !isEnabled }"
 />
 `;
 
 exports[`class binding > binds multiple classes with expressions 1`] = `
 <div
   class="selected highlight"
-  reflect-vln-class="{ selected: vln.index === vln.current, highlight: vln.priority > 5 }"
+  reflect-vln-class="{ selected: index === current, highlight: priority > 5 }"
 />
 `;
 
 exports[`class binding > binds single class 1`] = `
 <div
   class="active"
-  reflect-vln-class="vln.className"
+  reflect-vln-class="className"
 />
 `;
 
 exports[`complex expressions > accesses nested properties 1`] = `
 <div
-  reflect-vln-text="vln.user.profile.name"
+  reflect-vln-text="user.profile.name"
 >
   John Doe
 </div>
@@ -49,7 +49,7 @@ exports[`complex expressions > accesses nested properties 1`] = `
 
 exports[`complex expressions > calls methods with arguments 1`] = `
 <div
-  reflect-vln-text="vln.format(vln.value, 2)"
+  reflect-vln-text="format(value, 2)"
 >
   3.14
 </div>
@@ -57,7 +57,7 @@ exports[`complex expressions > calls methods with arguments 1`] = `
 
 exports[`complex expressions > evaluates arithmetic 1`] = `
 <div
-  reflect-vln-text="(vln.a + vln.b) * vln.c"
+  reflect-vln-text="(a + b) * c"
 >
   20
 </div>
@@ -65,7 +65,7 @@ exports[`complex expressions > evaluates arithmetic 1`] = `
 
 exports[`complex expressions > evaluates logical expressions 1`] = `
 <div
-  reflect-vln-text="vln.isActive && vln.isEnabled ? "Yes" : "No""
+  reflect-vln-text="isActive && isEnabled ? "Yes" : "No""
 >
   No
 </div>
@@ -73,7 +73,7 @@ exports[`complex expressions > evaluates logical expressions 1`] = `
 
 exports[`complex expressions > uses array indexing 1`] = `
 <div
-  reflect-vln-text="vln.items[1]"
+  reflect-vln-text="items[1]"
 >
   second
 </div>
@@ -82,8 +82,8 @@ exports[`complex expressions > uses array indexing 1`] = `
 exports[`conditionals > hides when condition is false 1`] = `
 <div>
   <span
-    reflect-vln-if="vln.show"
-    reflect-vln-text="vln.message"
+    reflect-vln-if="show"
+    reflect-vln-text="message"
     style="display: none;"
   >
     hidden
@@ -94,8 +94,8 @@ exports[`conditionals > hides when condition is false 1`] = `
 exports[`conditionals > renders complex condition 1`] = `
 <div>
   <span
-    reflect-vln-if="vln.count > 5 && vln.enabled"
-    reflect-vln-text="vln.message"
+    reflect-vln-if="count > 5 && enabled"
+    reflect-vln-text="message"
   >
     shown
   </span>
@@ -105,8 +105,8 @@ exports[`conditionals > renders complex condition 1`] = `
 exports[`conditionals > renders when condition is true 1`] = `
 <div>
   <span
-    reflect-vln-if="vln.show"
-    reflect-vln-text="vln.message"
+    reflect-vln-if="show"
+    reflect-vln-text="message"
   >
     visible
   </span>
@@ -115,7 +115,7 @@ exports[`conditionals > renders when condition is true 1`] = `
 
 exports[`event handling > binds click event 1`] = `
 <button
-  reflect-vln-on:click="vln.handleClick"
+  reflect-vln-on:click="handleClick"
 >
   Click me
 </button>
@@ -145,7 +145,7 @@ exports[`loops > renders simple loop 1`] = `
 
 exports[`text binding > renders bound text 1`] = `
 <div
-  reflect-vln-text="vln.message"
+  reflect-vln-text="message"
 >
   hello world
 </div>
@@ -153,7 +153,7 @@ exports[`text binding > renders bound text 1`] = `
 
 exports[`text binding > renders text with expression 1`] = `
 <div
-  reflect-vln-text="vln.count + 1"
+  reflect-vln-text="count + 1"
 >
   6
 </div>
@@ -161,7 +161,7 @@ exports[`text binding > renders text with expression 1`] = `
 
 exports[`text binding > renders text with ternary 1`] = `
 <div
-  reflect-vln-text="vln.isActive ? "Active" : "Inactive""
+  reflect-vln-text="isActive ? "Active" : "Inactive""
 >
   Active
 </div>
@@ -206,7 +206,7 @@ exports[`vln-less expressions > renders text without vln prefix 1`] = `
 
 exports[`vln-less expressions > supports mixed vln and no-vln in same expression 1`] = `
 <div
-  reflect-vln-text="vln.count + count"
+  reflect-vln-text="count + count"
 >
   10
 </div>

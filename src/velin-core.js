@@ -742,17 +742,8 @@ function evaluate(reactiveState, expr) {
     const tokens = tokenize(expr);
     const ast = parse(tokens);
 
-    // Create context that supports both direct access and vln. prefix for backward compatibility
-    const context = new Proxy(contextualizedProxy, {
-      get(target, prop) {
-        // If accessing 'vln', return the proxy itself for backward compatibility
-        if (prop === 'vln') return target;
-        // Otherwise, pass through to the state
-        return target[prop];
-      }
-    });
-
-    return evalAst(ast, context);
+    // Directly use the contextualized proxy as the evaluation context
+    return evalAst(ast, contextualizedProxy);
   } catch (err) {
     console.error(
       `Velin evaluate() error in expression "${expr}".`
@@ -769,7 +760,7 @@ function evaluate(reactiveState, expr) {
  */
 function getSetter(reactiveState, expr) {
   const inter = reactiveState.interpolations;
-  const property = inter?.has(expr.slice(4)) ? inter.get(expr.slice(4)) : expr; // .slice to remove 'vln.'
+  const property = inter?.has(expr) ? inter.get(expr) : expr;
   const lastDotIndex = property.lastIndexOf(".");
   const parent = evaluate(reactiveState, property.slice(0, lastDotIndex));
   const key = property.slice(lastDotIndex + 1);
