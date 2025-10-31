@@ -755,18 +755,72 @@ function evaluate(reactiveState, expr) {
     const tokens = tokenize(expr);
     const ast = parse(tokens);
 
-    // Create evaluation context with state and common globals
+    // Create sandboxed wrappers for global objects to prevent constructor access
+    const sandboxedGlobals = {
+      Math: new Proxy(Math, {
+        get(target, prop) {
+          if (prop === 'constructor') return undefined;
+          return Reflect.get(target, prop);
+        }
+      }),
+      Date: new Proxy(Date, {
+        get(target, prop) {
+          if (prop === 'constructor') return undefined;
+          return Reflect.get(target, prop);
+        }
+      }),
+      JSON: new Proxy(JSON, {
+        get(target, prop) {
+          if (prop === 'constructor') return undefined;
+          return Reflect.get(target, prop);
+        }
+      }),
+      Object: new Proxy(Object, {
+        get(target, prop) {
+          if (prop === 'constructor') return undefined;
+          // Block dangerous introspection methods
+          if (prop === 'getPrototypeOf') return undefined;
+          if (prop === 'getOwnPropertyDescriptor') return undefined;
+          if (prop === 'getOwnPropertyDescriptors') return undefined;
+          if (prop === 'setPrototypeOf') return undefined;
+          if (prop === 'defineProperty') return undefined;
+          if (prop === 'defineProperties') return undefined;
+          return Reflect.get(target, prop);
+        }
+      }),
+      Array: new Proxy(Array, {
+        get(target, prop) {
+          if (prop === 'constructor') return undefined;
+          return Reflect.get(target, prop);
+        }
+      }),
+      String: new Proxy(String, {
+        get(target, prop) {
+          if (prop === 'constructor') return undefined;
+          return Reflect.get(target, prop);
+        }
+      }),
+      Number: new Proxy(Number, {
+        get(target, prop) {
+          if (prop === 'constructor') return undefined;
+          return Reflect.get(target, prop);
+        }
+      }),
+      Boolean: new Proxy(Boolean, {
+        get(target, prop) {
+          if (prop === 'constructor') return undefined;
+          return Reflect.get(target, prop);
+        }
+      }),
+    };
+
+    // Create evaluation context with state and sandboxed globals
     const context = new Proxy(contextualizedProxy, {
       get(target, prop, receiver) {
-        // Allow access to common globals
-        if (prop === 'Math') return Math;
-        if (prop === 'Date') return Date;
-        if (prop === 'JSON') return JSON;
-        if (prop === 'Object') return Object;
-        if (prop === 'Array') return Array;
-        if (prop === 'String') return String;
-        if (prop === 'Number') return Number;
-        if (prop === 'Boolean') return Boolean;
+        // Return sandboxed globals
+        if (prop in sandboxedGlobals) {
+          return sandboxedGlobals[prop];
+        }
         return Reflect.get(target, prop, receiver);
       }
     });
