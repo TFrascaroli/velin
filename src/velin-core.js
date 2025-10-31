@@ -742,8 +742,23 @@ function evaluate(reactiveState, expr) {
     const tokens = tokenize(expr);
     const ast = parse(tokens);
 
-    // Directly use the contextualized proxy as the evaluation context
-    return evalAst(ast, contextualizedProxy);
+    // Create evaluation context with state and common globals
+    const context = new Proxy(contextualizedProxy, {
+      get(target, prop, receiver) {
+        // Allow access to common globals
+        if (prop === 'Math') return Math;
+        if (prop === 'Date') return Date;
+        if (prop === 'JSON') return JSON;
+        if (prop === 'Object') return Object;
+        if (prop === 'Array') return Array;
+        if (prop === 'String') return String;
+        if (prop === 'Number') return Number;
+        if (prop === 'Boolean') return Boolean;
+        return Reflect.get(target, prop, receiver);
+      }
+    });
+
+    return evalAst(ast, context);
   } catch (err) {
     console.error(
       `Velin evaluate() error in expression "${expr}".`
