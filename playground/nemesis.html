@@ -69,6 +69,12 @@
       // Innocent-looking data
       username: 'attacker',
       data: { nested: { value: 42 } },
+      // Dangerous data types that users would naturally include
+      items: [1, 2, 3],
+      count: 42,
+      active: true,
+      regex: /test/,
+      getArray: () => [1, 2, 3],
     });
 
     const reactiveState = Velin.ø__internal.boundState.root;
@@ -549,6 +555,131 @@
       }
     } catch (e) {
       log('Closure', 'Global via function this', true, e.message);
+      blockedAttempts++;
+    }
+
+    // ============================================================
+    // ATTACK VECTOR 16: Constructors via State Data (CRITICAL!)
+    // ============================================================
+    addHeader('16. Constructors via State Data - THE BIG ONE');
+
+    try {
+      const result = Velin.evaluate(reactiveState, 'items.constructor');
+      if (result === Array) {
+        log('StateData', 'Array constructor via state array', false,
+          `⚠️ CRITICAL: Got Array constructor from state data!`);
+        breachAttempts++;
+      }
+    } catch (e) {
+      log('StateData', 'Array constructor via state array', true, e.message);
+      blockedAttempts++;
+    }
+
+    try {
+      const result = Velin.evaluate(reactiveState, 'items.constructor.constructor');
+      if (result === Function) {
+        log('StateData', 'Function via state array chain', false,
+          `⚠️⚠️ CRITICAL BREACH: Got Function via items.constructor.constructor!`);
+        breachAttempts++;
+      }
+    } catch (e) {
+      log('StateData', 'Function via state array chain', true, e.message);
+      blockedAttempts++;
+    }
+
+    try {
+      const result = Velin.evaluate(reactiveState, 'count.constructor');
+      if (result === Number) {
+        log('StateData', 'Number constructor via state number', false,
+          `Got Number constructor from state!`);
+        breachAttempts++;
+      }
+    } catch (e) {
+      log('StateData', 'Number constructor via state number', true, e.message);
+      blockedAttempts++;
+    }
+
+    try {
+      const result = Velin.evaluate(reactiveState, 'count.constructor.constructor');
+      if (result === Function) {
+        log('StateData', 'Function via Number chain', false,
+          `⚠️⚠️ BREACH: count.constructor.constructor === Function!`);
+        breachAttempts++;
+      }
+    } catch (e) {
+      log('StateData', 'Function via Number chain', true, e.message);
+      blockedAttempts++;
+    }
+
+    try {
+      const result = Velin.evaluate(reactiveState, 'active.constructor');
+      if (result === Boolean) {
+        log('StateData', 'Boolean constructor via state', false,
+          `Got Boolean constructor!`);
+        breachAttempts++;
+      }
+    } catch (e) {
+      log('StateData', 'Boolean constructor via state', true, e.message);
+      blockedAttempts++;
+    }
+
+    try {
+      const result = Velin.evaluate(reactiveState, 'regex.constructor');
+      if (result === RegExp) {
+        log('StateData', 'RegExp constructor via state', false,
+          `Got RegExp constructor!`);
+        breachAttempts++;
+      }
+    } catch (e) {
+      log('StateData', 'RegExp constructor via state', true, e.message);
+      blockedAttempts++;
+    }
+
+    try {
+      const result = Velin.evaluate(reactiveState, 'getArray().constructor');
+      if (result === Array) {
+        log('StateData', 'Array via function return', false,
+          `Got Array constructor from function return value!`);
+        breachAttempts++;
+      }
+    } catch (e) {
+      log('StateData', 'Array via function return', true, e.message);
+      blockedAttempts++;
+    }
+
+    try {
+      const result = Velin.evaluate(reactiveState, 'getArray().constructor.constructor');
+      if (result === Function) {
+        log('StateData', 'Function via return value chain', false,
+          `⚠️⚠️ CRITICAL: getArray().constructor.constructor === Function!`);
+        breachAttempts++;
+      }
+    } catch (e) {
+      log('StateData', 'Function via return value chain', true, e.message);
+      blockedAttempts++;
+    }
+
+    try {
+      const result = Velin.evaluate(reactiveState, '(1).constructor');
+      if (result === Number) {
+        log('StateData', 'Number from literal', false,
+          `Got Number from literal (1).constructor!`);
+        breachAttempts++;
+      }
+    } catch (e) {
+      log('StateData', 'Number from literal', true, e.message);
+      blockedAttempts++;
+    }
+
+    try {
+      const result = Velin.evaluate(reactiveState, 'items.map.constructor');
+      if (result === Function) {
+        log('StateData', 'Function via Array.prototype.map', false,
+          `⚠️⚠️ CRITICAL: items.map.constructor === Function!`);
+        breachAttempts++;
+      }
+    } catch (e) {
+      log('StateData', 'Function via Array.prototype.map', true, e.message);
       blockedAttempts++;
     }
 
