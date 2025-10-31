@@ -630,94 +630,121 @@ function parse(tokens) {
 }
 
 /**
- * Evaluates AST with given context
- */
-function evalAst(ast, context) {
-  switch (ast.type) {
-    case 'Literal':
-      return ast.value;
-
-    case 'Identifier':
-      return context[ast.name];
-
-    case 'Member':
-      const obj = evalAst(ast.object, context);
-      if (obj == null) return undefined;
-      if (ast.computed) {
-        const prop = evalAst(ast.property, context);
-        return obj[prop];
-      } else {
-        return obj[ast.property];
-      }
-
-    case 'Call':
-      const callee = evalAst(ast.callee, context);
-      if (typeof callee !== 'function') {
-        throw new Error('Cannot call non-function');
-      }
-      const args = ast.arguments.map(arg => evalAst(arg, context));
-      // Get the object for 'this' binding
-      let thisArg = undefined;
-      if (ast.callee.type === 'Member') {
-        thisArg = evalAst(ast.callee.object, context);
-      }
-      return callee.apply(thisArg, args);
-
-    case 'Binary':
-      const left = evalAst(ast.left, context);
-      const right = evalAst(ast.right, context);
-      switch (ast.operator) {
-        case '+': return left + right;
-        case '-': return left - right;
-        case '*': return left * right;
-        case '/': return left / right;
-        case '%': return left % right;
-        case '>': return left > right;
-        case '<': return left < right;
-        case '>=': return left >= right;
-        case '<=': return left <= right;
-        case '===': return left === right;
-        case '!==': return left !== right;
-        case '==': return left == right;
-        case '!=': return left != right;
-        case '&&': return left && right;
-        case '||': return left || right;
-        default: throw new Error(`Unknown operator: ${ast.operator}`);
-      }
-
-    case 'Unary':
-      const arg = evalAst(ast.argument, context);
-      switch (ast.operator) {
-        case '!': return !arg;
-        case '-': return -arg;
-        case '+': return +arg;
-        default: throw new Error(`Unknown unary operator: ${ast.operator}`);
-      }
-
-    case 'Ternary':
-      const test = evalAst(ast.test, context);
-      return test ? evalAst(ast.consequent, context) : evalAst(ast.alternate, context);
-
-    case 'ObjectLiteral':
-      const result = {};
-      for (const prop of ast.properties) {
-        result[prop.key] = evalAst(prop.value, context);
-      }
-      return result;
-
-    default:
-      throw new Error(`Unknown AST node type: ${ast.type}`);
-  }
-}
-
-/**
  * Evaluates an expression against the reactive state with optional context proxying
  * CSP-safe implementation using tokenizer + parser + AST walker
+ *
+ * SECURITY MODEL:
+ * - Templates are executable code and should be treated as such
+ * - NEVER create templates by concatenating or using user input
+ * - Use Content Security Policy (script-src) to block eval/Function calls
+ * - Constructor access is blocked to prevent introspection chains
+ * - Available globals: Math, Object (keys/values/entries), Array (isArray/from/concat)
+ *
+ * Like Angular, Vue, and other frameworks: templates are developer code, not user data.
+ * If you need to display user content, bind it as DATA, not as template expressions.
  *
  * @type {Evaluate}
  */
 function evaluate(reactiveState, expr) {
   reactiveState.ø__control.evaluating = true;
+
+  /**
+   * Evaluates AST with given context
+   * Nested function to access reactiveState
+   */
+  function evalAst(ast, context) {
+    switch (ast.type) {
+      case 'Literal':
+        return ast.value;
+
+      case 'Identifier':
+        return context[ast.name];
+
+      case 'Member':
+        const obj = evalAst(ast.object, context);
+        if (obj == null) return undefined;
+        if (ast.computed) {
+          const prop = evalAst(ast.property, context);
+          // Block constructor access to prevent introspection/escape chains
+          if (prop === 'constructor') return undefined;
+          return obj[prop];
+        } else {
+          // Block constructor access to prevent introspection/escape chains
+          if (ast.property === 'constructor') return undefined;
+          return obj[ast.property];
+        }
+
+      case 'Call':
+        const callee = evalAst(ast.callee, context);
+        if (typeof callee !== 'function') {
+          throw new Error('Cannot call non-function');
+        }
+        const args = ast.arguments.map(arg => evalAst(arg, context));
+        // Get the object for 'this' binding
+        let thisArg = undefined;
+        if (ast.callee.type === 'Member') {
+          thisArg = evalAst(ast.callee.object, context);
+        }
+
+        // Temporarily disable evaluating flag for user function calls
+        // This allows event handlers and user functions to modify state
+        const wasEvaluating = reactiveState.ø__control.evaluating;
+        reactiveState.ø__control.evaluating = false;
+        try {
+          return callee.apply(thisArg, args);
+        } finally {
+          reactiveState.ø__control.evaluating = wasEvaluating;
+        }
+
+      case 'Binary':
+        const left = evalAst(ast.left, context);
+        const right = evalAst(ast.right, context);
+        switch (ast.operator) {
+          case '+': return left + right;
+          case '-': return left - right;
+          case '*': return left * right;
+          case '/': return left / right;
+          case '%': return left % right;
+          case '>': return left > right;
+          case '<': return left < right;
+          case '>=': return left >= right;
+          case '<=': return left <= right;
+          case '===': return left === right;
+          case '!==': return left !== right;
+          case '==': return left == right;
+          case '!=': return left != right;
+          case '&&': return left && right;
+          case '||': return left || right;
+          default:
+            throw new Error(`Unknown operator: ${ast.operator}`);
+        }
+
+      case 'Unary':
+        const argument = evalAst(ast.argument, context);
+        switch (ast.operator) {
+          case '!': return !argument;
+          case '-': return -argument;
+          case '+': return +argument;
+          default:
+            throw new Error(`Unknown unary operator: ${ast.operator}`);
+        }
+
+      case 'Ternary':
+        const test = evalAst(ast.test, context);
+        return evalAst(test ? ast.consequent : ast.alternate, context);
+
+      case 'ObjectLiteral':
+        const result = {};
+        for (const prop of ast.properties) {
+          result[prop.key] = evalAst(prop.value, context);
+        }
+        return result;
+
+      default:
+        throw new Error(`Unknown AST node type: ${ast.type}`);
+    }
+  }
+
   try {
     const inter = reactiveState.interpolations;
     const contextualizedProxy = new Proxy(reactiveState.state, {
@@ -742,8 +769,49 @@ function evaluate(reactiveState, expr) {
     const tokens = tokenize(expr);
     const ast = parse(tokens);
 
-    // Directly use the contextualized proxy as the evaluation context
-    return evalAst(ast, contextualizedProxy);
+    // Create sandboxed wrappers for minimal globals
+    // These are for utility/display logic, not security (use CSP for that)
+    const sandboxedGlobals = {
+      Math: new Proxy(Math, {
+        get(target, prop) {
+          if (prop === 'constructor') return undefined;
+          return Reflect.get(target, prop);
+        }
+      }),
+      Object: new Proxy(Object, {
+        get(target, prop) {
+          if (prop === 'constructor') return undefined;
+          // Only allow safe iteration helpers
+          if (typeof prop === 'string' && ['keys', 'values', 'entries'].includes(prop)) {
+            return Reflect.get(target, prop);
+          }
+          return undefined;
+        }
+      }),
+      Array: new Proxy(Array, {
+        get(target, prop) {
+          if (prop === 'constructor') return undefined;
+          // Only allow safe utility methods
+          if (typeof prop === 'string' && ['isArray', 'from', 'concat'].includes(prop)) {
+            return Reflect.get(target, prop);
+          }
+          return undefined;
+        }
+      }),
+    };
+
+    // Create evaluation context with state and sandboxed globals
+    const context = new Proxy(contextualizedProxy, {
+      get(target, prop, receiver) {
+        // Return sandboxed globals
+        if (prop in sandboxedGlobals) {
+          return sandboxedGlobals[prop];
+        }
+        return Reflect.get(target, prop, receiver);
+      }
+    });
+
+    return evalAst(ast, context);
   } catch (err) {
     console.error(
       `Velin evaluate() error in expression "${expr}".`
