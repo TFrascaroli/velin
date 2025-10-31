@@ -19,24 +19,24 @@ describe("Velin Public API", () => {
     });
 
     it("should compute expression in reactive context", () => {
-      expect(Velin.evaluate(reactiveState, "vln.x + 1")).toBe(6);
+      expect(Velin.evaluate(reactiveState, "x + 1")).toBe(6);
     });
 
     it.skip("should compute expression inside iife", () => {
       // Skipped: Arrow functions and IIFEs not supported in CSP-safe evaluator
-      expect(Velin.evaluate(reactiveState, "(() => vln.x + 1)()")).toBe(6);
+      expect(Velin.evaluate(reactiveState, "(() => x + 1)()")).toBe(6);
     });
 
     it("should interpolate functions", () => {
-      expect(Velin.evaluate(reactiveState, "vln.y(10)")).toBe(75);
+      expect(Velin.evaluate(reactiveState, "y(10)")).toBe(75);
     });
 
     it("should interpolate object chains", () => {
-      expect(Velin.evaluate(reactiveState, "vln.abc.a.b.c")).toBe("hi");
+      expect(Velin.evaluate(reactiveState, "abc.a.b.c")).toBe("hi");
     });
 
     it("should perform multiple interpolations", () => {
-      expect(Velin.evaluate(reactiveState, "vln.x + vln.y(10)")).toBe(80);
+      expect(Velin.evaluate(reactiveState, "x + y(10)")).toBe(80);
     });
 
     it("should evaluate object literals", () => {
@@ -47,14 +47,14 @@ describe("Velin Public API", () => {
       const reactiveState2 = Velin.ø__internal.boundState.root!;
       const result = Velin.evaluate(
         reactiveState2,
-        "{ active: vln.isActive, disabled: !vln.isEnabled }"
+        "{ active: isActive, disabled: !isEnabled }"
       );
       expect(result).toEqual({ active: true, disabled: true });
     });
 
     it("should throw error when setting during evaluation", () => {
       expect(() => {
-        Velin.evaluate(reactiveState, "vln.x = 5");
+        Velin.evaluate(reactiveState, "x = 5");
       }).toThrowError(
         "[VLN010] Setting values during evaluation is forbidden. Use Velin.getSetter"
       );
@@ -73,35 +73,35 @@ describe("Velin Public API", () => {
     });
 
     it("should set a value with a simple chained expression", () => {
-      Velin.getSetter(reactiveState, "vln.abc.a.b.c")("hello!");
+      Velin.getSetter(reactiveState, "abc.a.b.c")("hello!");
       expect(state.abc.a.b.c).toBe("hello!");
     });
 
     it("should set a value through object access", () => {
       state.abc.a.b.c = "hello!";
-      expect(Velin.evaluate(reactiveState, "vln.abc.a.b.c")).toBe("hello!");
+      expect(Velin.evaluate(reactiveState, "abc.a.b.c")).toBe("hello!");
     });
 
     it("should set through interpolated properties on an inner state", () => {
       const innerState = Velin.composeState(
         reactiveState,
-        new Map([["propB", "vln.abc.a.b"]])
+        new Map([["propB", "abc.a.b"]])
       );
-      Velin.getSetter(innerState, "vln.propB")({ c: "hello!" });
-      expect(Velin.evaluate(reactiveState, "vln.abc.a.b.c")).toBe("hello!");
+      Velin.getSetter(innerState, "propB")({ c: "hello!" });
+      expect(Velin.evaluate(reactiveState, "abc.a.b.c")).toBe("hello!");
     });
 
     it("should be able to retrieve through interpolated properties after set", () => {
       const innerState = Velin.composeState(
         reactiveState,
-        new Map([["propB", "vln.abc.a.b"]])
+        new Map([["propB", "abc.a.b"]])
       );
-      Velin.getSetter(reactiveState, "vln.abc.a.b")({ c: "hello!" });
-      expect(Velin.evaluate(innerState, "vln.propB.c")).toBe("hello!");
+      Velin.getSetter(reactiveState, "abc.a.b")({ c: "hello!" });
+      expect(Velin.evaluate(innerState, "propB.c")).toBe("hello!");
     });
 
     it("should set array object's inner properties", () => {
-      Velin.getSetter(reactiveState, "vln.arr[1].name")("changedName");
+      Velin.getSetter(reactiveState, "arr[1].name")("changedName");
       expect(state.arr[1].name).toBe("changedName");
     });
 
@@ -112,7 +112,7 @@ describe("Velin Public API", () => {
       const effectOnArray = vitest.fn();
       reactiveState.bindings.set("root.arr[1]", new Set([effectOnIndex]));
       reactiveState.bindings.set("root.arr", new Set([effectOnArray]));
-      Velin.evaluate(reactiveState, "vln.arr")[1] = { name: "changedName" };
+      Velin.evaluate(reactiveState, "arr")[1] = { name: "changedName" };
       expect(state.arr[1].name).toBe("changedName");
       expect(effectOnArray).toHaveBeenCalled();
       expect(effectOnIndex).not.toHaveBeenCalled();
@@ -129,21 +129,21 @@ describe("Velin Public API", () => {
       });
       innerState = Velin.composeState(
         Velin.ø__internal.boundState.root!,
-        new Map([["score", "vln.friend.score"]])
+        new Map([["score", "friend.score"]])
       );
     });
 
     it("should interpolate and resolve expressions from context", () => {
-      const score = Velin.evaluate(innerState, "vln.score");
+      const score = Velin.evaluate(innerState, "score");
       expect(score).toBe(state.friend.score);
     });
 
     it("should get triggered for changes in parent scope", () => {
       const effect = vitest.fn();
       innerState.bindings.set("root.friend.score", new Set([effect]));
-      Velin.getSetter(innerState, "vln.friend.score")({ low: 12, high: 36 });
+      Velin.getSetter(innerState, "friend.score")({ low: 12, high: 36 });
       expect(effect).toHaveBeenCalled();
-      const lowScore = Velin.evaluate(innerState, "vln.score.low");
+      const lowScore = Velin.evaluate(innerState, "score.low");
       expect(lowScore).toBe(12);
     });
   });

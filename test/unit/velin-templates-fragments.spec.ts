@@ -19,10 +19,10 @@ describe("Templates and Fragments", () => {
     container.innerHTML = `
       <template id="testCard" vln-vars="name">
         <div class="card">
-          <span vln-text="vln.name"></span>
+          <span vln-text="name"></span>
         </div>
       </template>
-      <div vln-fragment="'testCard'" vln-var:name="vln.userName"></div>
+      <div vln-fragment="'testCard'" vln-var:name="userName"></div>
     `;
 
     const state = Velin.bind(container, {
@@ -41,12 +41,12 @@ describe("Templates and Fragments", () => {
   it("should support dynamic template selection", () => {
     container.innerHTML = `
       <template id="adminCard" vln-vars="user">
-        <div class="admin">Admin: <span vln-text="vln.user"></span></div>
+        <div class="admin">Admin: <span vln-text="user"></span></div>
       </template>
       <template id="guestCard" vln-vars="user">
-        <div class="guest">Guest: <span vln-text="vln.user"></span></div>
+        <div class="guest">Guest: <span vln-text="user"></span></div>
       </template>
-      <div vln-fragment="vln.role + 'Card'" vln-var:user="vln.userName"></div>
+      <div vln-fragment="role + 'Card'" vln-var:user="userName"></div>
     `;
 
     const state = Velin.bind(container, {
@@ -62,10 +62,10 @@ describe("Templates and Fragments", () => {
     container.innerHTML = `
       <template id="testCard" vln-vars="name">
         <div class="card">
-          <span vln-text="vln.name"></span>
+          <span vln-text="name"></span>
         </div>
       </template>
-      <div vln-use="'testCard'" vln-var:name="vln.userName"></div>
+      <div vln-use="'testCard'" vln-var:name="userName"></div>
     `;
 
     const state = Velin.bind(container, {
@@ -82,12 +82,12 @@ describe("Templates and Fragments", () => {
     container.innerHTML = `
       <template id="testCard" vln-vars="name">
         <div class="card">
-          <span vln-text="vln.name"></span>
+          <span vln-text="name"></span>
         </div>
       </template>
       <div vln-fragment="'testCard'"
-           vln-var:name="vln.userName"
-           vln-var:onMount="vln.mounted = true"></div>
+           vln-var:name="userName"
+           vln-var:onMount="mounted = true"></div>
     `;
 
     const state = Velin.bind(container, {
@@ -103,10 +103,10 @@ describe("Templates and Fragments", () => {
     container.innerHTML = `
       <template id="testCard" vln-vars="name, email">
         <div class="card">
-          <span vln-text="vln.name"></span>
+          <span vln-text="name"></span>
         </div>
       </template>
-      <div id="fragment-host" vln-fragment="'testCard'" vln-var:name="vln.userName"></div>
+      <div id="fragment-host" vln-fragment="'testCard'" vln-var:name="userName"></div>
     `;
 
     // Suppress error logs for this test
@@ -132,12 +132,12 @@ describe("Templates and Fragments", () => {
     container.innerHTML = `
       <template id="userCard" vln-vars="user">
         <div class="user-card">
-          <span vln-text="vln.user.name"></span>
+          <span vln-text="user.name"></span>
         </div>
       </template>
-      <div vln-loop:user="vln.users"
+      <div vln-loop:user="users"
            vln-fragment="'userCard'"
-           vln-var:user="vln.user"></div>
+           vln-var:user="user"></div>
     `;
 
     const state = Velin.bind(container, {

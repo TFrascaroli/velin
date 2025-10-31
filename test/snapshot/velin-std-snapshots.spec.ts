@@ -7,7 +7,7 @@ setupVelinStd(Velin);
 describe('text binding', () => {
   it('renders bound text', () => {
     const div = document.createElement('div')
-    div.setAttribute('vln-text', 'vln.message')
+    div.setAttribute('vln-text', 'message')
 
     Velin.bind(div, { message: 'hello world' })
 
@@ -16,7 +16,7 @@ describe('text binding', () => {
 
   it('renders text with expression', () => {
     const div = document.createElement('div')
-    div.setAttribute('vln-text', 'vln.count + 1')
+    div.setAttribute('vln-text', 'count + 1')
 
     Velin.bind(div, { count: 5 })
 
@@ -25,7 +25,7 @@ describe('text binding', () => {
 
   it('renders text with ternary', () => {
     const div = document.createElement('div')
-    div.setAttribute('vln-text', 'vln.isActive ? "Active" : "Inactive"')
+    div.setAttribute('vln-text', 'isActive ? "Active" : "Inactive"')
 
     Velin.bind(div, { isActive: true })
 
@@ -36,7 +36,7 @@ describe('text binding', () => {
 describe('loops', () => {
   it('renders simple loop', () => {
     const div = document.createElement('div')
-    div.innerHTML = '<span vln-loop="item in vln.items" vln-text="vln.item"></span>'
+    div.innerHTML = '<span vln-loop="item in items" vln-text="item"></span>'
 
     Velin.bind(div, { items: ['a', 'b', 'c'] })
 
@@ -45,7 +45,7 @@ describe('loops', () => {
 
   it('renders loop with index', () => {
     const div = document.createElement('div')
-    div.innerHTML = '<span vln-loop="item, idx in vln.items" vln-text="vln.idx + \": \" + vln.item"></span>'
+    div.innerHTML = '<span vln-loop="item, idx in items" vln-text="idx + \": \" + item"></span>'
 
     Velin.bind(div, { items: ['first', 'second', 'third'] })
 
@@ -55,8 +55,8 @@ describe('loops', () => {
   it('renders nested loops', () => {
     const div = document.createElement('div')
     div.innerHTML = `
-      <div vln-loop="group in vln.groups">
-        <span vln-loop="item in vln.group.items" vln-text="vln.item"></span>
+      <div vln-loop="group in groups">
+        <span vln-loop="item in group.items" vln-text="item"></span>
       </div>
     `
 
@@ -74,7 +74,7 @@ describe('loops', () => {
 describe('conditionals', () => {
   it('renders when condition is true', () => {
     const div = document.createElement('div')
-    div.innerHTML = '<span vln-if="vln.show" vln-text="vln.message"></span>'
+    div.innerHTML = '<span vln-if="show" vln-text="message"></span>'
 
     Velin.bind(div, { show: true, message: 'visible' })
 
@@ -83,7 +83,7 @@ describe('conditionals', () => {
 
   it('hides when condition is false', () => {
     const div = document.createElement('div')
-    div.innerHTML = '<span vln-if="vln.show" vln-text="vln.message"></span>'
+    div.innerHTML = '<span vln-if="show" vln-text="message"></span>'
 
     Velin.bind(div, { show: false, message: 'hidden' })
 
@@ -92,7 +92,7 @@ describe('conditionals', () => {
 
   it('renders complex condition', () => {
     const div = document.createElement('div')
-    div.innerHTML = '<span vln-if="vln.count > 5 && vln.enabled" vln-text="vln.message"></span>'
+    div.innerHTML = '<span vln-if="count > 5 && enabled" vln-text="message"></span>'
 
     Velin.bind(div, { count: 10, enabled: true, message: 'shown' })
 
@@ -103,7 +103,7 @@ describe('conditionals', () => {
 describe('class binding', () => {
   it('binds single class', () => {
     const div = document.createElement('div')
-    div.setAttribute('vln-class', 'vln.className')
+    div.setAttribute('vln-class', 'className')
 
     Velin.bind(div, { className: 'active' })
 
@@ -112,7 +112,7 @@ describe('class binding', () => {
 
   it('binds class object', () => {
     const div = document.createElement('div')
-    div.setAttribute('vln-class', '{ active: vln.isActive, disabled: !vln.isEnabled }')
+    div.setAttribute('vln-class', '{ active: isActive, disabled: !isEnabled }')
 
     Velin.bind(div, { isActive: true, isEnabled: false })
 
@@ -121,7 +121,7 @@ describe('class binding', () => {
 
   it('binds multiple classes with expressions', () => {
     const div = document.createElement('div')
-    div.setAttribute('vln-class', '{ selected: vln.index === vln.current, highlight: vln.priority > 5 }')
+    div.setAttribute('vln-class', '{ selected: index === current, highlight: priority > 5 }')
 
     Velin.bind(div, { index: 2, current: 2, priority: 8 })
 
@@ -132,7 +132,7 @@ describe('class binding', () => {
 describe('attribute binding', () => {
   it('binds attribute value', () => {
     const input = document.createElement('input')
-    input.setAttribute('vln-attr:value', 'vln.text')
+    input.setAttribute('vln-attr:value', 'text')
 
     Velin.bind(input, { text: 'hello' })
 
@@ -141,9 +141,9 @@ describe('attribute binding', () => {
 
   it('binds multiple attributes', () => {
     const input = document.createElement('input')
-    input.setAttribute('vln-attr:value', 'vln.text')
-    input.setAttribute('vln-attr:placeholder', 'vln.hint')
-    input.setAttribute('vln-attr:disabled', 'vln.isDisabled')
+    input.setAttribute('vln-attr:value', 'text')
+    input.setAttribute('vln-attr:placeholder', 'hint')
+    input.setAttribute('vln-attr:disabled', 'isDisabled')
 
     Velin.bind(input, { text: 'value', hint: 'Enter text', isDisabled: true })
 
@@ -154,7 +154,7 @@ describe('attribute binding', () => {
 describe('event handling', () => {
   it('binds click event', () => {
     const button = document.createElement('button')
-    button.setAttribute('vln-on:click', 'vln.handleClick')
+    button.setAttribute('vln-on:click', 'handleClick')
     button.textContent = 'Click me'
 
     Velin.bind(button, { handleClick: () => {} })
@@ -163,10 +163,66 @@ describe('event handling', () => {
   });
 });
 
+describe('vln-less expressions', () => {
+  it('renders text without vln prefix', () => {
+    const div = document.createElement('div')
+    div.setAttribute('vln-text', 'message')
+
+    Velin.bind(div, { message: 'hello world' })
+
+    expect(div).toMatchSnapshot()
+  });
+
+  it('renders expression without vln prefix', () => {
+    const div = document.createElement('div')
+    div.setAttribute('vln-text', 'count + 1')
+
+    Velin.bind(div, { count: 5 })
+
+    expect(div).toMatchSnapshot()
+  });
+
+  it('renders ternary without vln prefix', () => {
+    const div = document.createElement('div')
+    div.setAttribute('vln-text', 'isActive ? "Active" : "Inactive"')
+
+    Velin.bind(div, { isActive: true })
+
+    expect(div).toMatchSnapshot()
+  });
+
+  it('binds class object without vln prefix', () => {
+    const div = document.createElement('div')
+    div.setAttribute('vln-class', '{ active: isActive, disabled: !isEnabled }')
+
+    Velin.bind(div, { isActive: true, isEnabled: false })
+
+    expect(div).toMatchSnapshot()
+  });
+
+  it('renders loop without vln prefix', () => {
+    const div = document.createElement('div')
+    div.innerHTML = '<span vln-loop="item in items" vln-text="item"></span>'
+
+    Velin.bind(div, { items: ['a', 'b', 'c'] })
+
+    expect(div).toMatchSnapshot()
+  });
+
+  it('supports mixed vln and no-vln in same expression', () => {
+    const div = document.createElement('div')
+    div.setAttribute('vln-text', 'count + count')
+
+    Velin.bind(div, { count: 5 })
+
+    expect(div).toMatchSnapshot()
+  });
+});
+
 describe('complex expressions', () => {
   it('evaluates arithmetic', () => {
     const div = document.createElement('div')
-    div.setAttribute('vln-text', '(vln.a + vln.b) * vln.c')
+    div.setAttribute('vln-text', '(a + b) * c')
 
     Velin.bind(div, { a: 2, b: 3, c: 4 })
 
@@ -175,7 +231,7 @@ describe('complex expressions', () => {
 
   it('evaluates logical expressions', () => {
     const div = document.createElement('div')
-    div.setAttribute('vln-text', 'vln.isActive && vln.isEnabled ? "Yes" : "No"')
+    div.setAttribute('vln-text', 'isActive && isEnabled ? "Yes" : "No"')
 
     Velin.bind(div, { isActive: true, isEnabled: false })
 
@@ -184,7 +240,7 @@ describe('complex expressions', () => {
 
   it('calls methods with arguments', () => {
     const div = document.createElement('div')
-    div.setAttribute('vln-text', 'vln.format(vln.value, 2)')
+    div.setAttribute('vln-text', 'format(value, 2)')
 
     Velin.bind(div, {
       value: 3.14159,
@@ -196,7 +252,7 @@ describe('complex expressions', () => {
 
   it('accesses nested properties', () => {
     const div = document.createElement('div')
-    div.setAttribute('vln-text', 'vln.user.profile.name')
+    div.setAttribute('vln-text', 'user.profile.name')
 
     Velin.bind(div, {
       user: {
@@ -211,7 +267,7 @@ describe('complex expressions', () => {
 
   it('uses array indexing', () => {
     const div = document.createElement('div')
-    div.setAttribute('vln-text', 'vln.items[1]')
+    div.setAttribute('vln-text', 'items[1]')
 
     Velin.bind(div, { items: ['first', 'second', 'third'] })
 

@@ -741,10 +741,12 @@ function evaluate(reactiveState, expr) {
     // Parse and evaluate using CSP-safe approach
     const tokens = tokenize(expr);
     const ast = parse(tokens);
-    return evalAst(ast, { vln: contextualizedProxy });
+
+    // Directly use the contextualized proxy as the evaluation context
+    return evalAst(ast, contextualizedProxy);
   } catch (err) {
     console.error(
-      `Velin evaluate() error in expression "${expr}". Make sure all your state accesses start with 'vln.'`
+      `Velin evaluate() error in expression "${expr}".`
     );
     throw err;
   } finally {
@@ -758,8 +760,14 @@ function evaluate(reactiveState, expr) {
  */
 function getSetter(reactiveState, expr) {
   const inter = reactiveState.interpolations;
-  const property = inter?.has(expr.slice(4)) ? inter.get(expr.slice(4)) : expr; // .slice to remove 'vln.'
+  const property = inter?.has(expr) ? inter.get(expr) : expr;
   const lastDotIndex = property.lastIndexOf(".");
+
+  // Handle root-level properties (no dots)
+  if (lastDotIndex === -1) {
+    return (value) => (reactiveState.state[property] = value);
+  }
+
   const parent = evaluate(reactiveState, property.slice(0, lastDotIndex));
   const key = property.slice(lastDotIndex + 1);
   return (value) => (parent[key] = value);
