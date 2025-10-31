@@ -211,11 +211,12 @@
         reactiveState.state.examples = [];
       }
 
+      const exampleIndex = reactiveState.state.examples.length;
       reactiveState.state.examples.push({
         id,
         title: expr,
         templateId,
-        originalHtml: null,
+        originalHtml: node.outerHTML,
         interpolatedHtml: null,
       });
 
@@ -318,26 +319,17 @@
     }
   });
 
-  // Capture original HTML and build tabs
+  // Build tabs and select first one after examples are populated
   setTimeout(() => {
-    const exampleNodes = document.querySelectorAll('#example-definitions [vln-diff]');
-    exampleNodes.forEach((node, idx) => {
-      if (bound.examples[idx]) {
-        bound.examples[idx].originalHtml = node.outerHTML;
-      }
-    });
-
-    // Build tabs from examples
     bound.tabs = bound.examples.map(ex => ({
       id: ex.id,
       title: ex.title
     }));
 
-    // Select first tab
     if (bound.tabs.length > 0) {
       bound.selectTab(bound.tabs[0].id);
     }
-  }, 200);
+  }, 100);
 </script>
 
 </html>
