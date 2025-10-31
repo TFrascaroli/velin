@@ -19,12 +19,12 @@
         id="sizeInput"
         type="number"
         min="1"
-        vln-input="vln.newSize"
+        vln-input="newSize"
         class="bg-gray-800 text-white px-2 py-1 rounded border border-gray-700"
         aria-label="Set new grid size"
       />
       <button
-        vln-on:click="vln.outerSize = vln.newSize"
+        vln-on:click="outerSize = newSize"
         class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded"
         aria-label="Update grid size"
       >
@@ -32,20 +32,20 @@
       </button>
     </div>
     <div>
-      <button vln-on:click="vln.startStop()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded" vln-text="vln.running ? 'Stop': 'Start'"></button>
+      <button vln-on:click="startStop()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded" vln-text="running ? 'Stop': 'Start'"></button>
     </div>
     <div>
-      <button vln-on:click="vln.cycle()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded">Cycle once</button>
+      <button vln-on:click="cycle()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded">Cycle once</button>
     </div>
-    <div vln-text="Math.floor(1000 / vln.time) + ' FPS'" class="text-sm text-gray-400"></div>
+    <div vln-text="Math.floor(1000 / time) + ' FPS'" class="text-sm text-gray-400"></div>
   </div>
 
   <div class="grid-container grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
-    <div class="square bg-gray-800 p-2 rounded" vln-loop:dot_square="vln.dots">
+    <div class="square bg-gray-800 p-2 rounded" vln-loop:dot_square="dots">
       <div class="flex flex-wrap gap-1">
         <div
           class="dot w-2 h-2 rounded-full bg-gradient-to-br from-indigo-400 to-purple-500"
-          vln-loop="vln.dot_square"
+          vln-loop="dot_square"
         ></div>
       </div>
     </div>
