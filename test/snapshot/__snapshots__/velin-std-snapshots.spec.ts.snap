@@ -166,3 +166,48 @@ exports[`text binding > renders text with ternary 1`] = `
   Active
 </div>
 `;
+
+exports[`vln-less expressions > binds class object without vln prefix 1`] = `
+<div
+  class="active disabled"
+  reflect-vln-class="{ active: isActive, disabled: !isEnabled }"
+/>
+`;
+
+exports[`vln-less expressions > renders expression without vln prefix 1`] = `
+<div
+  reflect-vln-text="count + 1"
+>
+  6
+</div>
+`;
+
+exports[`vln-less expressions > renders loop without vln prefix 1`] = `
+<div>
+  <!--vln-loop-->
+</div>
+`;
+
+exports[`vln-less expressions > renders ternary without vln prefix 1`] = `
+<div
+  reflect-vln-text="isActive ? "Active" : "Inactive""
+>
+  Active
+</div>
+`;
+
+exports[`vln-less expressions > renders text without vln prefix 1`] = `
+<div
+  reflect-vln-text="message"
+>
+  hello world
+</div>
+`;
+
+exports[`vln-less expressions > supports mixed vln and no-vln in same expression 1`] = `
+<div
+  reflect-vln-text="vln.count + count"
+>
+  10
+</div>
+`;
