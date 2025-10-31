@@ -1,44 +1,311 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <title>Velin Sandbox Escape Test</title>
+  <title>Velin Security Guide - Templates vs User Data</title>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <script src="velin.js"></script>
   <style>
+    * { box-sizing: border-box; }
+
     body {
-      font-family: monospace;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      padding: 30px 20px;
+      max-width: 1100px;
+      margin: 0 auto;
+      background: #fafafa;
+      color: #212121;
+      line-height: 1.7;
+    }
+
+    h1 {
+      color: #c62828;
+      font-size: 2.2em;
+      font-weight: 700;
+      margin: 0 0 20px 0;
+      padding-bottom: 15px;
+      border-bottom: 4px solid #c62828;
+    }
+
+    h2 {
+      color: #1565c0;
+      font-size: 1.8em;
+      font-weight: 600;
+      margin: 40px 0 20px 0;
+      padding-left: 20px;
+      border-left: 5px solid #1565c0;
+    }
+
+    h3 {
+      color: #e65100;
+      font-size: 1.3em;
+      font-weight: 600;
+      margin: 15px 0 10px 0;
+    }
+
+    p {
+      margin: 12px 0;
+    }
+
+    .intro {
+      background: linear-gradient(135deg, #fff9e6 0%, #fff3cd 100%);
+      border-left: 5px solid #f57f17;
+      padding: 25px;
+      margin: 25px 0;
+      border-radius: 6px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+
+    .intro h2 {
+      color: #e65100;
+      margin-top: 0;
+      padding-left: 0;
+      border-left: none;
+      font-size: 1.5em;
+    }
+
+    .safe-pattern {
+      background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+      border-left: 5px solid #2e7d32;
       padding: 20px;
-      background: #1a1a1a;
-      color: #00ff00;
+      margin: 20px 0;
+      border-radius: 6px;
+      box-shadow: 0 2px 8px rgba(46,125,50,0.15);
     }
+
+    .safe-pattern h3 {
+      color: #1b5e20;
+      margin-top: 0;
+    }
+
+    .safe-pattern h3::before {
+      content: '✓ ';
+      color: #2e7d32;
+      font-weight: bold;
+    }
+
+    .dangerous-pattern {
+      background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%);
+      border-left: 5px solid #c62828;
+      padding: 20px;
+      margin: 20px 0;
+      border-radius: 6px;
+      box-shadow: 0 2px 8px rgba(198,40,40,0.15);
+    }
+
+    .dangerous-pattern h3 {
+      color: #b71c1c;
+      margin-top: 0;
+    }
+
     .test {
-      margin: 10px 0;
-      padding: 10px;
-      border: 1px solid #333;
-      background: #0a0a0a;
+      margin: 12px 0;
+      padding: 12px 15px;
+      border: 1px solid #e0e0e0;
+      background: #ffffff;
+      border-radius: 4px;
+      font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+      font-size: 13px;
+      line-height: 1.5;
     }
-    .pass { color: #00ff00; }
-    .fail { color: #ff0000; }
-    .warn { color: #ffaa00; }
-    h1 { color: #ff0000; }
-    h2 { color: #ff6600; margin-top: 20px; }
+
+    .pass {
+      color: #2e7d32;
+      font-weight: 700;
+    }
+
+    .fail {
+      color: #c62828;
+      font-weight: 700;
+    }
+
+    .warn {
+      color: #ef6c00;
+      font-weight: 700;
+    }
+
     pre {
-      background: #000;
-      padding: 10px;
+      background: #263238;
+      color: #c3e88d;
+      padding: 18px;
+      margin: 15px 0;
       overflow-x: auto;
-      border-left: 3px solid #ff0000;
+      border-radius: 6px;
+      border-left: 4px solid #42a5f5;
+      font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+      font-size: 13px;
+      line-height: 1.6;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+
+    code {
+      background: #f5f5f5;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+      color: #c7254e;
+      border: 1px solid #e1e1e1;
+    }
+
+    .security-tests {
+      background: linear-gradient(135deg, #1a1a1a 0%, #0d0d0d 100%);
+      color: #33ff33;
+      padding: 25px;
+      border-radius: 6px;
+      margin-top: 40px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      border: 1px solid #333;
+    }
+
+    .security-tests h2 {
+      color: #ff9800;
+      border-left-color: #ff9800;
+      margin-top: 0;
+    }
+
+    .security-tests .test {
+      background: #0a0a0a;
+      border-color: #333;
+      color: #33ff33;
+    }
+
+    ul {
+      margin: 15px 0;
+      padding-left: 25px;
+    }
+
+    li {
+      margin: 8px 0;
+    }
+
+    strong {
+      font-weight: 600;
     }
   </style>
 </head>
 <body>
-  <h1>⚠️ VELIN SANDBOX ESCAPE ATTEMPTS ⚠️</h1>
-  <p>Attempting to break out of the CSP-safe evaluator sandbox...</p>
+  <h1>⚠️ Velin Security Guide: Templates vs User Data</h1>
 
-  <div id="results"></div>
+  <div class="intro">
+    <h2>🔒 The Golden Rules of Template Security</h2>
+    <p><strong>Templates are executable code.</strong> Like Angular, Vue, and Alpine, Velin treats templates as trusted developer code that should NEVER be generated from user input.</p>
+
+    <ul>
+      <li><strong>✅ DO:</strong> Write templates in your HTML files</li>
+      <li><strong>✅ DO:</strong> Bind user data to the state object</li>
+      <li><strong>✅ DO:</strong> Use Content Security Policy (CSP) in production</li>
+      <li><strong>✅ DO:</strong> Sanitize user HTML content before displaying it</li>
+      <li><strong>❌ DON'T:</strong> Build templates dynamically using string concatenation</li>
+      <li><strong>❌ DON'T:</strong> Use user input in template expressions</li>
+      <li><strong>❌ DON'T:</strong> Create templates from API responses</li>
+      <li><strong>❌ DON'T:</strong> Assume the sandbox protects you from yourself</li>
+    </ul>
+
+    <p><strong>Why constructor blocking exists:</strong> It's not for security (CSP handles that). It prevents developers from "writing JavaScript" in templates. Keep templates declarative!</p>
+  </div>
+
+  <h2>✅ Safe Patterns - How TO Use Velin</h2>
+
+  <div class="safe-pattern">
+    <h3>Pattern 1: Static Templates with Dynamic Data</h3>
+    <pre>&lt;!-- HTML Template (safe) --&gt;
+&lt;div id="app"&gt;
+  &lt;h1 vln-text="userName"&gt;&lt;/h1&gt;
+  &lt;p vln-text="userBio"&gt;&lt;/p&gt;
+&lt;/div&gt;
+
+&lt;script&gt;
+  // User data from API (treated as DATA, not code)
+  const apiResponse = await fetch('/api/user').then(r =&gt; r.json());
+
+  Velin.bind(document.getElementById('app'), {
+    userName: apiResponse.name,    // ✅ User data in STATE
+    userBio: apiResponse.bio        // ✅ User data in STATE
+  });
+&lt;/script&gt;</pre>
+    <p><strong>✅ Safe because:</strong> Template is static HTML. User data is bound to state. No code execution possible.</p>
+  </div>
+
+  <div class="safe-pattern">
+    <h3>Pattern 2: Sanitizing User HTML</h3>
+    <pre>&lt;div id="comment" vln-html="sanitizedComment"&gt;&lt;/div&gt;
+
+&lt;script&gt;
+  // If you MUST render user HTML, sanitize it first!
+  const userComment = apiResponse.comment;
+
+  Velin.bind(document.getElementById('comment'), {
+    sanitizedComment: DOMPurify.sanitize(userComment)  // ✅ Sanitized!
+  });
+&lt;/script&gt;</pre>
+    <p><strong>✅ Safe because:</strong> User HTML is sanitized with DOMPurify before binding.</p>
+  </div>
+
+  <div class="safe-pattern">
+    <h3>Pattern 3: CSP Protection</h3>
+    <pre>&lt;!-- Add CSP header or meta tag --&gt;
+&lt;meta http-equiv="Content-Security-Policy"
+      content="script-src 'self'; object-src 'none';"&gt;
+
+&lt;!-- Velin's CSP-safe evaluator works without eval() or new Function() --&gt;</pre>
+    <p><strong>✅ Safe because:</strong> CSP blocks arbitrary code execution. Velin's AST evaluator is CSP-compatible.</p>
+  </div>
+
+  <h2>❌ Dangerous Patterns - What NOT To Do</h2>
+
+  <div class="dangerous-pattern">
+    <h3>⚠️ NEVER: Building Templates from User Data</h3>
+    <pre>&lt;script&gt;
+  // ❌❌❌ DANGEROUS! NEVER DO THIS! ❌❌❌
+  const userInput = '&lt;div vln-text="userName"&gt;&lt;/div&gt;';  // From user!
+  document.body.innerHTML = userInput;  // 💀 User controls template!
+
+  Velin.bind(document.body, { userName: 'Alice' });
+&lt;/script&gt;</pre>
+    <p><strong>❌ Dangerous because:</strong> User controls the template = user controls what code runs!</p>
+  </div>
+
+  <div class="dangerous-pattern">
+    <h3>⚠️ NEVER: User Data in Template Expressions</h3>
+    <pre>&lt;script&gt;
+  // ❌❌❌ DANGEROUS! ❌❌❌
+  const userExpression = 'items.constructor.constructor("alert(1)")()';
+
+  // This creates a template with user-controlled expression
+  div.setAttribute('vln-text', userExpression);  // 💀 Breach!
+
+  Velin.bind(div, { items: [1, 2, 3] });
+&lt;/script&gt;</pre>
+    <p><strong>❌ Dangerous because:</strong> User-controlled expressions can access constructors and escape!</p>
+  </div>
+
+  <div class="dangerous-pattern">
+    <h3>⚠️ NEVER: API-Generated Templates</h3>
+    <pre>&lt;script&gt;
+  // ❌❌❌ DANGEROUS! ❌❌❌
+  const templateFromAPI = await fetch('/api/template').then(r =&gt; r.text());
+  div.innerHTML = templateFromAPI;  // 💀 API controls code!
+
+  Velin.bind(div, state);
+&lt;/script&gt;</pre>
+    <p><strong>❌ Dangerous because:</strong> If API is compromised or returns malicious template, your page is compromised!</p>
+  </div>
+
+  <h2>🔬 What Could Go Wrong: Breach Demonstrations</h2>
+
+  <p>Below are security tests showing what happens when you violate the rules above. These tests demonstrate why <strong>templates must be trusted developer code</strong>, not user-generated content.</p>
+
+  <div class="security-tests">
+    <p style="color: #ffb74d; font-size: 14px; margin-bottom: 20px; line-height: 1.6;">
+      These tests demonstrate Velin's constructor blocking and show what attack vectors would be available if you misuse templates.
+      All tests should show <span style="color: #66ff66; font-weight: 700;">✓ BLOCKED</span> - proving that constructor access is denied.
+      <strong style="color: #fff;">Remember:</strong> This blocking is not your security layer - it's a developer guardrail. Real security comes from CSP and treating templates as code.
+    </p>
+    <div id="results"></div>
+  </div>
 
   <script>
-    const results = document.getElementById('results');
+    const results = document.querySelector('.security-tests #results');
 
     function log(category, name, passed, details = '') {
       const div = document.createElement('div');
