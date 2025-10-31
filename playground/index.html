@@ -31,10 +31,10 @@
   <nav class="bg-gray-800 border-b border-gray-700 px-6 flex-shrink-0 overflow-x-auto">
     <div class="flex space-x-1">
       <button
-        vln-loop:tab="tabs"
-        vln-on:click="selectTab(tab.id)"
-        vln-text="tab.title"
-        vln-class="currentTab === tab.id ? 'bg-gray-700 text-white border-b-2 border-indigo-500' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700/50'"
+        vln-loop:example="examples"
+        vln-on:click="selectTab(example.id)"
+        vln-text="example.title"
+        vln-class="currentTab === example.id ? 'bg-gray-700 text-white border-b-2 border-indigo-500' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700/50'"
         class="px-4 py-3 font-medium text-sm transition-colors whitespace-nowrap">
       </button>
     </div>
@@ -301,7 +301,6 @@
 
     // UI state
     examples: [],
-    tabs: [],
     currentTab: null,
 
     // Functions
@@ -319,15 +318,10 @@
     }
   });
 
-  // Build tabs and select first one after examples are populated
+  // Select first example after they're populated
   setTimeout(() => {
-    bound.tabs = bound.examples.map(ex => ({
-      id: ex.id,
-      title: ex.title
-    }));
-
-    if (bound.tabs.length > 0) {
-      bound.selectTab(bound.tabs[0].id);
+    if (bound.examples.length > 0) {
+      bound.selectTab(bound.examples[0].id);
     }
   }, 100);
 </script>
