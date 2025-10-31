@@ -269,26 +269,37 @@ function setupVelinStd(vln) {
           newSubstates.push(substate);
           lastInserted = node;
 
+          // Update $index interpolation for reused substates
+          if (substate?.interpolations) {
+            substate.interpolations.set('$index', `${i}`);
+          }
+
           if (substate?.interpolations.size) {
             vln.ø__internal.triggerEffects(
               `${expr}[${i}]`,
               substate
             );
+            // Trigger $index updates
+            vln.ø__internal.triggerEffects('root.$index', substate);
           }
         } else {
           const clone = template.cloneNode(true);
           newChildren.push(clone);
 
-          const substate = subkey
-            ? vln.composeState(
-                reactiveState,
-                new Map([[subkey, `${expr}[${i}]`]])
-              )
-            : reactiveState;
+          // Build interpolations map with item and $index
+          const interpolations = new Map();
+          if (subkey) {
+            interpolations.set(subkey, `${expr}[${i}]`);
+          }
+          // Add $index as a literal expression
+          interpolations.set('$index', `${i}`);
+
+          const substate = vln.composeState(reactiveState, interpolations);
 
           if (subkey) {
             substate.interpolations.set(subkey, `${expr}[${i}]`);
           }
+          substate.interpolations.set('$index', `${i}`);
 
           newSubstates.push(substate);
           placeholder.parentNode.insertBefore(clone, lastInserted.nextSibling);
