@@ -80,10 +80,14 @@
 
     try {
       const result = Velin.evaluate(reactiveState, 'Math.constructor');
-      if (result === Number) {
+      if (result === Number || typeof result === 'function') {
         log('Constructor', 'Math.constructor access', false,
-          `Got Number constructor: ${result.name}`);
+          `Got constructor: ${result?.name || result}`);
         breachAttempts++;
+      } else {
+        log('Constructor', 'Math.constructor blocked', true,
+          `Got undefined as expected`);
+        blockedAttempts++;
       }
     } catch (e) {
       log('Constructor', 'Math.constructor access', true, e.message);
@@ -387,6 +391,164 @@
       }
     } catch (e) {
       log('WASM', 'WebAssembly access', true, e.message);
+      blockedAttempts++;
+    }
+
+    // ============================================================
+    // ATTACK VECTOR 11: __proto__ and Prototype Chain
+    // ============================================================
+    addHeader('11. __proto__ and Prototype Chain Attacks');
+
+    try {
+      const result = Velin.evaluate(reactiveState, 'Math.__proto__');
+      if (result && result.constructor === Object) {
+        log('Proto', '__proto__ on Math', false,
+          `Accessed __proto__!`);
+        breachAttempts++;
+      }
+    } catch (e) {
+      log('Proto', '__proto__ on Math', true, e.message);
+      blockedAttempts++;
+    }
+
+    try {
+      const result = Velin.evaluate(reactiveState, '({}).__proto__.constructor');
+      if (result === Object) {
+        log('Proto', 'Object literal __proto__', false,
+          `Got Object constructor via __proto__!`);
+        breachAttempts++;
+      }
+    } catch (e) {
+      log('Proto', 'Object literal __proto__', true, e.message);
+      blockedAttempts++;
+    }
+
+    try {
+      const result = Velin.evaluate(reactiveState, 'username.constructor');
+      if (result === String) {
+        log('Proto', 'String constructor via state', false,
+          `Got String constructor from state property!`);
+        breachAttempts++;
+      }
+    } catch (e) {
+      log('Proto', 'String constructor via state', true, e.message);
+      blockedAttempts++;
+    }
+
+    try {
+      const result = Velin.evaluate(reactiveState, 'username.constructor.constructor');
+      if (result === Function) {
+        log('Proto', 'Function via String chain', false,
+          `Got Function constructor via string.constructor.constructor!`);
+        breachAttempts++;
+      }
+    } catch (e) {
+      log('Proto', 'Function via String chain', true, e.message);
+      blockedAttempts++;
+    }
+
+    // ============================================================
+    // ATTACK VECTOR 12: toString/valueOf Exploitation
+    // ============================================================
+    addHeader('12. toString/valueOf Attacks');
+
+    try {
+      const result = Velin.evaluate(reactiveState, 'Math.toString.constructor');
+      if (result === Function) {
+        log('ToString', 'Function via toString', false,
+          `Got Function through Math.toString.constructor!`);
+        breachAttempts++;
+      }
+    } catch (e) {
+      log('ToString', 'Function via toString', true, e.message);
+      blockedAttempts++;
+    }
+
+    try {
+      const result = Velin.evaluate(reactiveState, 'Math.valueOf.call');
+      if (typeof result === 'function') {
+        log('ToString', 'Function.prototype.call access', false,
+          `Got call() function!`);
+        breachAttempts++;
+      }
+    } catch (e) {
+      log('ToString', 'Function.prototype.call access', true, e.message);
+      blockedAttempts++;
+    }
+
+    // ============================================================
+    // ATTACK VECTOR 13: Error Stack Traces
+    // ============================================================
+    addHeader('13. Error Stack Trace Attacks');
+
+    try {
+      const result = Velin.evaluate(reactiveState, 'Error');
+      if (result === Error) {
+        log('Error', 'Error constructor access', false,
+          `Error constructor is accessible!`);
+        breachAttempts++;
+      }
+    } catch (e) {
+      log('Error', 'Error constructor access', true, e.message);
+      blockedAttempts++;
+    }
+
+    try {
+      Velin.evaluate(reactiveState, 'new Error().stack');
+      log('Error', 'Error stack access', false,
+        `Can create Error and access stack!`);
+      breachAttempts++;
+    } catch (e) {
+      log('Error', 'Error stack access', true, e.message);
+      blockedAttempts++;
+    }
+
+    // ============================================================
+    // ATTACK VECTOR 14: Indirect Global Access via Object Methods
+    // ============================================================
+    addHeader('14. Indirect Global Access via Object Methods');
+
+    try {
+      const result = Velin.evaluate(reactiveState, 'Object.keys.constructor');
+      if (result === Function) {
+        log('Indirect', 'Function via Object.keys', false,
+          `Got Function through Object.keys.constructor!`);
+        breachAttempts++;
+      }
+    } catch (e) {
+      log('Indirect', 'Function via Object.keys', true, e.message);
+      blockedAttempts++;
+    }
+
+    try {
+      const result = Velin.evaluate(reactiveState,
+        'Object.getOwnPropertyNames(Math)');
+      if (Array.isArray(result)) {
+        log('Indirect', 'Object.getOwnPropertyNames', false,
+          `getOwnPropertyNames leaked through! Got: ${result.length} props`);
+        breachAttempts++;
+      }
+    } catch (e) {
+      log('Indirect', 'Object.getOwnPropertyNames', true, e.message);
+      blockedAttempts++;
+    }
+
+    // ============================================================
+    // ATTACK VECTOR 15: Accessing Global Through State Functions
+    // ============================================================
+    addHeader('15. State Function Closure Attacks');
+
+    try {
+      // User function might have access to global scope
+      state.maliciousFunc = function() { return this; };
+      const result = Velin.evaluate(reactiveState, 'maliciousFunc()');
+      if (result === window || result === globalThis) {
+        log('Closure', 'Global via function this', false,
+          `Function returned global object!`);
+        breachAttempts++;
+      }
+    } catch (e) {
+      log('Closure', 'Global via function this', true, e.message);
       blockedAttempts++;
     }
 
