@@ -11,21 +11,21 @@ function setupTemplatesAndFragments(vln) {
    * Usage:
    *   <template id="userCard" vln-vars="user, onSave">
    *     <div class="card">
-   *       <h3 vln-text="vln.user.name"></h3>
-   *       <button vln-on:click="vln.onSave(vln.user)">Save</button>
+   *       <h3 vln-text="user.name"></h3>
+   *       <button vln-on:click="onSave(user)">Save</button>
    *     </div>
    *   </template>
    *
    *   <div vln-fragment="'userCard'"
-   *        vln-var:user="vln.currentUser"
-   *        vln-var:onSave="vln.handleSave"></div>
+   *        vln-var:user="currentUser"
+   *        vln-var:onSave="handleSave"></div>
    *
    * Dynamic templates:
-   *   <div vln-fragment="vln.user.role + 'Card'" ...></div>
+   *   <div vln-fragment="user.role + 'Card'" ...></div>
    *
    * Lifecycle hooks (optional special vars):
-   *   vln-var:onMount="vln.setupComponent()"
-   *   vln-var:onUnmount="vln.cleanupComponent()"
+   *   vln-var:onMount="setupComponent()"
+   *   vln-var:onUnmount="cleanupComponent()"
    */
   vln.plugins.registerPlugin({
     name: "fragment",
@@ -73,7 +73,7 @@ function setupTemplatesAndFragments(vln) {
       if (!templateId) {
         console.error(
           '[Velin Templates] vln-fragment requires a template ID. ' +
-          'Usage: vln-fragment="\'templateId\'" or vln-fragment="vln.dynamicId"'
+          'Usage: vln-fragment="\'templateId\'" or vln-fragment="dynamicId"'
         );
         return { halt: true };
       }
@@ -138,7 +138,7 @@ function setupTemplatesAndFragments(vln) {
         console.error(
           `[Velin Templates] Template #${templateId} requires missing variables: ` +
           `[${missingVars.join(", ")}]. ` +
-          `Add them as: vln-var:${missingVars[0]}="vln.yourValue"`
+          `Add them as: vln-var:${missingVars[0]}="yourValue"`
         );
         return { halt: true };
       }
