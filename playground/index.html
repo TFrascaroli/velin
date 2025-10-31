@@ -40,41 +40,46 @@
     </div>
   </nav>
 
-  <!-- 4-Quadrant Grid -->
-  <main class="flex-1 grid grid-cols-2 grid-rows-2 gap-4 p-6 overflow-hidden">
-    <!-- Top-Left: Original HTML -->
-    <section class="bg-gray-800 rounded-lg border border-gray-700 flex flex-col overflow-hidden">
-      <header class="px-4 py-2 bg-gray-750 border-b border-gray-700 flex-shrink-0">
-        <h2 class="text-sm font-semibold text-gray-300">Original HTML</h2>
-      </header>
-      <div class="flex-1 overflow-auto p-4 text-xs" vln-html="currentExample.originalHtml"></div>
-    </section>
+  <!-- 4-Quadrant Grid Template -->
+  <template id="exampleQuadrant" vln-vars="example">
+    <div vln-if="currentTab === example.id" class="absolute inset-0 grid grid-cols-2 grid-rows-2 gap-4">
+      <!-- Top-Left: Original HTML -->
+      <section class="bg-gray-800 rounded-lg border border-gray-700 flex flex-col overflow-hidden">
+        <header class="px-4 py-2 bg-gray-750 border-b border-gray-700 flex-shrink-0">
+          <h2 class="text-sm font-semibold text-gray-300">Original HTML</h2>
+        </header>
+        <div class="flex-1 overflow-auto p-4 text-xs" vln-html="example.originalHtml"></div>
+      </section>
 
-    <!-- Top-Right: Interpolated HTML -->
-    <section class="bg-gray-800 rounded-lg border border-gray-700 flex flex-col overflow-hidden">
-      <header class="px-4 py-2 bg-gray-750 border-b border-gray-700 flex-shrink-0">
-        <h2 class="text-sm font-semibold text-gray-300">Interpolated HTML</h2>
-      </header>
-      <div class="flex-1 overflow-auto p-4 text-xs" vln-html="currentExample.interpolatedHtml"></div>
-    </section>
+      <!-- Top-Right: Interpolated HTML -->
+      <section class="bg-gray-800 rounded-lg border border-gray-700 flex flex-col overflow-hidden">
+        <header class="px-4 py-2 bg-gray-750 border-b border-gray-700 flex-shrink-0">
+          <h2 class="text-sm font-semibold text-gray-300">Interpolated HTML</h2>
+        </header>
+        <div class="flex-1 overflow-auto p-4 text-xs" vln-html="example.interpolatedHtml"></div>
+      </section>
 
-    <!-- Bottom-Left: State Dump -->
-    <section class="bg-gray-800 rounded-lg border border-gray-700 flex flex-col overflow-hidden">
-      <header class="px-4 py-2 bg-gray-750 border-b border-gray-700 flex-shrink-0">
-        <h2 class="text-sm font-semibold text-gray-300">State</h2>
-      </header>
-      <div class="flex-1 overflow-auto p-4 text-xs" id="state-dump"></div>
-    </section>
+      <!-- Bottom-Left: State Dump -->
+      <section class="bg-gray-800 rounded-lg border border-gray-700 flex flex-col overflow-hidden">
+        <header class="px-4 py-2 bg-gray-750 border-b border-gray-700 flex-shrink-0">
+          <h2 class="text-sm font-semibold text-gray-300">State</h2>
+        </header>
+        <div class="flex-1 overflow-auto p-4 text-xs" vln-html="stateDump"></div>
+      </section>
 
-    <!-- Bottom-Right: Live Render -->
-    <section class="bg-gray-800 rounded-lg border border-gray-700 flex flex-col overflow-hidden">
-      <header class="px-4 py-2 bg-gray-750 border-b border-gray-700 flex-shrink-0">
-        <h2 class="text-sm font-semibold text-gray-300">Live Render</h2>
-      </header>
-      <div class="flex-1 overflow-auto p-4" id="live-render-container">
-        <div vln-if="currentTab" id="live-render"></div>
-      </div>
-    </section>
+      <!-- Bottom-Right: Live Render -->
+      <section class="bg-gray-800 rounded-lg border border-gray-700 flex flex-col overflow-hidden">
+        <header class="px-4 py-2 bg-gray-750 border-b border-gray-700 flex-shrink-0">
+          <h2 class="text-sm font-semibold text-gray-300">Live Render</h2>
+        </header>
+        <div class="flex-1 overflow-auto p-4" vln-fragment="example.templateId"></div>
+      </section>
+    </div>
+  </template>
+
+  <!-- Main Content Area -->
+  <main class="flex-1 p-6 overflow-hidden relative">
+    <div vln-loop:ex="examples" vln-fragment="'exampleQuadrant'" vln-var:example="ex"></div>
   </main>
 
   <!-- Hidden: Example definitions -->
@@ -219,16 +224,22 @@
     name: 'html',
     track: Velin.trackers.expressionTracker,
     render: ({ node, tracked }) => {
-      prettier.format(tracked || '', {
+      const value = tracked || '';
+      prettier.format(value, {
         parser: 'html',
         plugins: prettierPlugins
       }).then(formatted => {
         const escaped = formatted
           .replace(/&/g, "&amp;")
           .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;")
-          .replace(/"/g, "&quot;")
-          .replace(/'/g, "&#039;");
+          .replace(/>/g, "&gt;");
+        node.innerHTML = `<pre><code class="language-markup">${escaped}</code></pre>`;
+        Prism.highlightAllUnder(node);
+      }).catch(() => {
+        const escaped = value
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
         node.innerHTML = `<pre><code class="language-markup">${escaped}</code></pre>`;
         Prism.highlightAllUnder(node);
       });
@@ -251,11 +262,7 @@
     examples: [],
     tabs: [],
     currentTab: null,
-    currentExample: {
-      originalHtml: '',
-      interpolatedHtml: '',
-      templateId: '',
-    },
+    stateDump: '',
 
     // Functions
     grabClasses: (isActive, isEnabled) => {
@@ -267,55 +274,20 @@
       const count = Math.floor(Math.random() * friends.length) + 1;
       setTimeout(() => bound.friends = shuffled.slice(0, count), 0);
     },
-    selectTab: async (tabId) => {
+    selectTab: (tabId) => {
       bound.currentTab = tabId;
-      const example = bound.examples.find(ex => ex.id === tabId);
-      if (!example) return;
+    }
+  });
 
-      // Set loading state
-      bound.currentExample = {
-        originalHtml: '<pre class="text-gray-500">Formatting...</pre>',
-        interpolatedHtml: '<pre class="text-gray-500">Rendering...</pre>',
-        templateId: example.templateId,
-      };
-
-      // Get the template
-      const template = document.getElementById(example.templateId);
-      if (!template) {
-        console.error(`Template ${example.templateId} not found`);
-        return;
+  // Capture interpolated HTML continuously
+  Velin.on('afterProcessNode', ({ node }) => {
+    // Check if this is a fragment render for one of our examples
+    if (node.hasAttribute && node.hasAttribute('vln-fragment')) {
+      const templateId = node.getAttribute('vln-fragment');
+      const example = bound.examples.find(ex => ex.templateId === templateId);
+      if (example && node.innerHTML) {
+        example.interpolatedHtml = node.innerHTML;
       }
-
-      // Manually render the template into the live-render div
-      const liveRender = document.getElementById('live-render');
-      if (liveRender) {
-        // Clear previous content
-        liveRender.innerHTML = '';
-
-        // Clone template content
-        const clone = template.content.cloneNode(true);
-        liveRender.appendChild(clone);
-
-        // Rebind Velin to the new content
-        Velin.bind(liveRender, bound);
-
-        // Capture interpolated HTML after render
-        setTimeout(() => {
-          if (liveRender.innerHTML) {
-            example.interpolatedHtml = liveRender.innerHTML;
-            // Update the display with formatted version
-            formatHTML(example.interpolatedHtml).then(formatted => {
-              bound.currentExample.interpolatedHtml = formatted;
-            });
-          }
-        }, 100);
-      }
-
-      // Format original HTML asynchronously
-      const originalHtml = await formatHTML(example.originalHtml);
-      bound.currentExample.originalHtml = originalHtml;
-
-      updateStateDump();
     }
   });
 
@@ -340,37 +312,13 @@
     }
   }, 200);
 
-  // Format HTML for display
-  function formatHTML(html) {
-    if (!html) return '<pre class="text-gray-500">Loading...</pre>';
-    return prettier.format(html, {
-      parser: 'html',
-      plugins: prettierPlugins
-    }).then(formatted => {
-      const escaped = formatted
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;");
-      return `<pre><code class="language-markup">${escaped}</code></pre>`;
-    }).catch(() => {
-      const escaped = (html || '')
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;");
-      return `<pre><code class="language-markup">${escaped}</code></pre>`;
-    });
-  }
-
-  // Update state dump with syntax highlighting
-  function updateStateDump() {
-    const stateDump = document.getElementById('state-dump');
-    if (!stateDump) return;
-
-    // Get clean state (exclude functions and internal stuff)
+  // Update state dump continuously
+  function refreshStateDump() {
+    // Get clean state (exclude functions and internal UI state)
     const cleanState = {};
     for (const key in bound) {
       if (typeof bound[key] === 'function') continue;
-      if (key === 'examples' || key === 'tabs' || key === 'currentExample') continue;
+      if (key === 'examples' || key === 'tabs' || key === 'stateDump') continue;
       cleanState[key] = bound[key];
     }
 
@@ -380,19 +328,24 @@
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;");
 
-    stateDump.innerHTML = `<pre><code class="language-javascript">${escaped}</code></pre>`;
-    Prism.highlightAllUnder(stateDump);
+    bound.stateDump = `<pre><code class="language-javascript">${escaped}</code></pre>`;
+
+    // Highlight after DOM update
+    setTimeout(() => {
+      const codeBlocks = document.querySelectorAll('code.language-javascript');
+      codeBlocks.forEach(block => Prism.highlightElement(block));
+    }, 10);
   }
 
-  // Watch for state changes and update dump
+  // Watch for ANY state changes and update dump
   let stateUpdateTimeout;
   Velin.on('afterProcessNode', () => {
-    if (bound.currentTab) {
-      // Debounce state dump updates to avoid excessive re-renders
-      clearTimeout(stateUpdateTimeout);
-      stateUpdateTimeout = setTimeout(updateStateDump, 50);
-    }
+    clearTimeout(stateUpdateTimeout);
+    stateUpdateTimeout = setTimeout(refreshStateDump, 50);
   });
+
+  // Initial state dump
+  refreshStateDump();
 </script>
 
 </html>
