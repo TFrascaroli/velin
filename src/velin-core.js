@@ -98,15 +98,9 @@ const DefaultPluginPriorities = {
  * @property {ComposeState} composeState
  * @property {CleanupState} cleanupState
  * @property {ProcessNode} processNode
- * @property {Subscribe} on - Listener subscription function.
  * @property {Trackers} trackers
  * @property {VelinInternal} ø__internal
  */
-
-/** @typedef {{selector?: string, plugin?: string, parentSelector?: string}} EvtOpts */
-/** @typedef {{plugin: string, node: HTMLElement, reactiveState: ReactiveState, originalNode: HTMLElement}} EvtArgs */
-/** @typedef {(event: string, args: EvtArgs) => void} Emit */
-/** @typedef {(event: string, fn: (args: EvtArgs) => void, opts: EvtOpts?) => () => void} Subscribe */
 
 /** @type {Map<string, VelinPlugin>} */
 const plugins = new Map();
@@ -114,9 +108,6 @@ const plugins = new Map();
 const pluginStates = new WeakMap();
 /** @type {{root?: ReactiveState}} */
 const boundState = { root: undefined };
-
-/** @type {Map<string, Set<{fn: (...args: any[]) => void, opts: EvtOpts}>>} */
-const listeners = new Map();
 
 /**
  *
@@ -126,41 +117,6 @@ const listeners = new Map();
 function peek(arr) {
   return arr[arr.length - 1];
 }
-
-/**
- * Subscribes a function to an event.
- * @type {Subscribe}
- */
-function on(event, fn, opts = {}) {
-  if (!listeners.has(event)) listeners.set(event, new Set());
-  const evt = {fn, opts};
-  listeners.get(event).add(evt);
-  return () => {
-    listeners.get(event)?.delete(evt);
-    if (listeners.get(event)?.size === 0) listeners.delete(event);
-  };
-}
-
-/**
- * Emits an event with optional arguments.
- * @internal
- * @type {Emit}
- */
-function emit(event, args) {
-  Array.from(listeners.get(event) || [])
-    .filter(evt => {
-      const opts = evt.opts || {};
-      if (opts.selector && !args.node.matches(opts.selector)) return false;
-      if (opts.parentSelector) {
-        const parent = document.querySelector(opts.parentSelector);
-        if (!parent || !parent.contains(args.node)) return false;
-      }
-      if (opts.plugin && args.plugin !== opts.plugin) return false;
-      return true;
-    })
-    .forEach(evt => evt.fn(args));
-}
-
 
 const trackers = {
   /**
@@ -241,12 +197,6 @@ function processPlugin(plugin, reactiveState, expr, node, attributeName, subkey 
         pluginStates.set(node, nodeState);
       }
 
-      emit("afterProcessNode", {
-        reactiveState,
-        node,
-        plugin: plugin.name,
-        originalNode: nodeState["ø__originalNode"],
-      });
       return control;
     };
     const entries = Array.from(depCapture.deps);
@@ -1133,7 +1083,6 @@ const Velin = {
   composeState,
   cleanupState,
   processNode,
-  on,
   plugins: {
     registerPlugin,
     processPlugin,
