@@ -22,68 +22,68 @@
 <body class="bg-gray-50 text-gray-800 p-6 font-sans">
   <div style="display:none;">
     <div vln-diff="Text interpolation" class="mb-6">
-      <div vln-text="vln.username" class="text-xl font-semibold text-indigo-700"></div>
+      <div vln-text="username" class="text-xl font-semibold text-indigo-700"></div>
     </div>
 
     <div vln-diff="Input reactivity (push binding)" class="mb-6">
       <label for="login" class="mr-2 font-medium">Is logged in?</label>
-      <input name="login" vln-input="vln.isLoggedIn" type="checkbox" checked class="mr-2" />
-      <div vln-text="vln.isLoggedIn ? 'Logged In' : 'Disconnected'" class="inline font-semibold text-green-600"></div>
+      <input name="login" vln-input="isLoggedIn" type="checkbox" checked class="mr-2" />
+      <div vln-text="isLoggedIn ? 'Logged In' : 'Disconnected'" class="inline font-semibold text-green-600"></div>
     </div>
 
     <div vln-diff="Visibility control" class="mb-6">
-      <div vln-if="vln.isLoggedIn" class="text-green-700 font-bold text-lg">Welcome!</div>
+      <div vln-if="isLoggedIn" class="text-green-700 font-bold text-lg">Welcome!</div>
     </div>
 
     <div vln-diff="Generic attribute setter" class="mb-6">
-      <input vln-input="vln.tooltipText" type="text" placeholder="Enter tooltip text"
+      <input vln-input="tooltipText" type="text" placeholder="Enter tooltip text"
         class="border border-gray-300 rounded px-2 py-1 mr-2" />
-      <span vln-attr:title="vln.tooltipText" class="underline cursor-help text-indigo-600">I have a tooltip!</span>
+      <span vln-attr:title="tooltipText" class="underline cursor-help text-indigo-600">I have a tooltip!</span>
     </div>
 
     <div vln-diff="Class reactivity" class="mb-8 space-y-4">
       <h3 class="font-semibold text-lg">Literal reactive object</h3>
       <div class="flex items-center gap-4">
         <label for="active" class="cursor-pointer">Active</label>
-        <input name="active" vln-input="vln.isActive" type="checkbox" checked class="cursor-pointer" />
+        <input name="active" vln-input="isActive" type="checkbox" checked class="cursor-pointer" />
         <label for="enabled" class="cursor-pointer">Enabled</label>
-        <input name="enabled" vln-input="vln.isEnabled" type="checkbox" checked class="cursor-pointer" />
+        <input name="enabled" vln-input="isEnabled" type="checkbox" checked class="cursor-pointer" />
       </div>
-      <div vln-class="{ active: vln.isActive, disabled: !vln.isEnabled }"
+      <div vln-class="{ active: isActive, disabled: !isEnabled }"
         class="p-3 rounded border transition-colors duration-200">
         This should have
-        <span vln-text="vln.grabClasses(vln.isActive, vln.isEnabled)" class="font-mono text-indigo-600"></span>
+        <span vln-text="grabClasses(isActive, isEnabled)" class="font-mono text-indigo-600"></span>
         classes
       </div>
 
       <h3 class="font-semibold text-lg">Reactive string</h3>
-      <div vln-class="vln.someClass" class="p-2 rounded bg-indigo-100 text-indigo-800">
+      <div vln-class="someClass" class="p-2 rounded bg-indigo-100 text-indigo-800">
         this should have 'nice-class' class
       </div>
 
       <h3 class="font-semibold text-lg">Reactive object</h3>
-      <div vln-class="vln.classObject" class="p-2 rounded border border-gray-300">
+      <div vln-class="classObject" class="p-2 rounded border border-gray-300">
         this should have 'this-class' but NOT 'not-this-one'
       </div>
 
       <h3 class="font-semibold text-lg">Interpolated literal strings string</h3>
-      <div vln-class="vln.isActive ? 'on' : 'off'" class="p-2 rounded text-white"
-        :class="vln.isActive ? 'bg-green-500' : 'bg-red-500'">
-        This is now <span vln-text="vln.isActive ? 'on' : 'off'" class="font-bold"></span>
+      <div vln-class="isActive ? 'on' : 'off'" class="p-2 rounded text-white"
+        :class="isActive ? 'bg-green-500' : 'bg-red-500'">
+        This is now <span vln-text="isActive ? 'on' : 'off'" class="font-bold"></span>
       </div>
     </div>
 
     <div vln-diff="Loops" class="mb-6">
       <ul class="list-disc list-inside space-y-1 text-gray-700">
-        <li vln-loop:friend="vln.friends" vln-text="vln.friend.name" class="hover:text-indigo-600 cursor-default">
+        <li vln-loop:friend="friends" vln-text="friend.name" class="hover:text-indigo-600 cursor-default">
         </li>
       </ul>
     </div>
 
     <div vln-diff="Events" class="space-y-6">
-      <button 
-        class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded transition cursor-pointer active:bg-blue-500" 
-        vln-on:click="vln.update()">
+      <button
+        class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded transition cursor-pointer active:bg-blue-500"
+        vln-on:click="update()">
         Randomize friends!
       </button>
     </div>
@@ -92,26 +92,26 @@
       <template id="friendCard" vln-vars="friend">
         <div class="p-4 mb-4 rounded-xl shadow-md bg-white border border-gray-200 hover:shadow-lg transition">
           <div class="text-lg font-semibold mb-2 text-indigo-700">
-            This is my friend, their name is <span vln-text="vln.friend.name"></span>
+            This is my friend, their name is <span vln-text="friend.name"></span>
           </div>
           <div class="text-sm text-gray-700 space-y-1">
-            <div><strong>Age:</strong> <span vln-text="vln.friend.age"></span></div>
+            <div><strong>Age:</strong> <span vln-text="friend.age"></span></div>
             <div>
               <strong>Email:</strong>
-              <a vln-text="vln.friend.email" vln-attr:href="'mailto:' + vln.friend.email"
+              <a vln-text="friend.email" vln-attr:href="'mailto:' + friend.email"
                 class="text-blue-500 underline hover:text-blue-700"></a>
             </div>
-            <div vln-if="vln.friend.pets.length">
+            <div vln-if="friend.pets.length">
               <strong>Pets:</strong>
               <ul class="list-disc list-inside ml-4">
-                <li vln-loop:pet="vln.friend.pets" vln-text="vln.pet"></li>
+                <li vln-loop:pet="friend.pets" vln-text="pet"></li>
               </ul>
             </div>
           </div>
         </div>
       </template>
       <div class="friends grid grid-cols-1 gap-4">
-        <div class="friend" vln-loop:friend_obj="vln.friends" vln-fragment="'friendCard'" vln-var:friend="vln.friend_obj">
+        <div class="friend" vln-loop:friend_obj="friends" vln-fragment="'friendCard'" vln-var:friend="friend_obj">
         </div>
       </div>
     </div>
@@ -119,13 +119,13 @@
 
 
   <div class="flex flex-col space-y-6 mt-8">
-    <div class="flex flex-col" vln-loop:diff="vln.diffs">
-      <h2 vln-text="vln.diff.title" class="text-xl font-bold mb-2"></h2>
+    <div class="flex flex-col" vln-loop:diff="diffs">
+      <h2 vln-text="diff.title" class="text-xl font-bold mb-2"></h2>
       <div class="flex flex-row gap-4 w-full">
-        <div class="w-[30%] grow-0 p-4 bg-white rounded shadow text-sm" vln-html="vln.diff.initialHtml"></div>
-        <div class="w-[45%] grow-0 p-4 bg-white rounded shadow text-sm" vln-html="vln.diff.interpolatedHtml"></div>
-        <div class="w-[25%] grow-0 diff-output p-4 bg-white rounded shadow text-sm" vln-attr:id="vln.diff.id"
-          vln-fragment="vln.diff.key"></div>
+        <div class="w-[30%] grow-0 p-4 bg-white rounded shadow text-sm" vln-html="diff.initialHtml"></div>
+        <div class="w-[45%] grow-0 p-4 bg-white rounded shadow text-sm" vln-html="diff.interpolatedHtml"></div>
+        <div class="w-[25%] grow-0 diff-output p-4 bg-white rounded shadow text-sm" vln-attr:id="diff.id"
+          vln-fragment="diff.key"></div>
       </div>
     </div>
   </div>
