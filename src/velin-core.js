@@ -633,6 +633,16 @@ function parse(tokens) {
  * Evaluates an expression against the reactive state with optional context proxying
  * CSP-safe implementation using tokenizer + parser + AST walker
  *
+ * SECURITY MODEL:
+ * - Templates are executable code and should be treated as such
+ * - NEVER create templates by concatenating or using user input
+ * - Use Content Security Policy (script-src) to block eval/Function calls
+ * - Constructor access is blocked to prevent introspection chains
+ * - Available globals: Math, Object (keys/values/entries), Array (isArray/from/concat)
+ *
+ * Like Angular, Vue, and other frameworks: templates are developer code, not user data.
+ * If you need to display user content, bind it as DATA, not as template expressions.
+ *
  * @type {Evaluate}
  */
 function evaluate(reactiveState, expr) {
@@ -655,8 +665,12 @@ function evaluate(reactiveState, expr) {
         if (obj == null) return undefined;
         if (ast.computed) {
           const prop = evalAst(ast.property, context);
+          // Block constructor access to prevent introspection/escape chains
+          if (prop === 'constructor') return undefined;
           return obj[prop];
         } else {
+          // Block constructor access to prevent introspection/escape chains
+          if (ast.property === 'constructor') return undefined;
           return obj[ast.property];
         }
 
@@ -756,6 +770,7 @@ function evaluate(reactiveState, expr) {
     const ast = parse(tokens);
 
     // Create sandboxed wrappers for minimal globals
+    // These are for utility/display logic, not security (use CSP for that)
     const sandboxedGlobals = {
       Math: new Proxy(Math, {
         get(target, prop) {
@@ -768,6 +783,16 @@ function evaluate(reactiveState, expr) {
           if (prop === 'constructor') return undefined;
           // Only allow safe iteration helpers
           if (typeof prop === 'string' && ['keys', 'values', 'entries'].includes(prop)) {
+            return Reflect.get(target, prop);
+          }
+          return undefined;
+        }
+      }),
+      Array: new Proxy(Array, {
+        get(target, prop) {
+          if (prop === 'constructor') return undefined;
+          // Only allow safe utility methods
+          if (typeof prop === 'string' && ['isArray', 'from', 'concat'].includes(prop)) {
             return Reflect.get(target, prop);
           }
           return undefined;
