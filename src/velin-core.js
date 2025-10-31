@@ -741,10 +741,21 @@ function evaluate(reactiveState, expr) {
     // Parse and evaluate using CSP-safe approach
     const tokens = tokenize(expr);
     const ast = parse(tokens);
-    return evalAst(ast, { vln: contextualizedProxy });
+
+    // Create context that supports both direct access and vln. prefix for backward compatibility
+    const context = new Proxy(contextualizedProxy, {
+      get(target, prop) {
+        // If accessing 'vln', return the proxy itself for backward compatibility
+        if (prop === 'vln') return target;
+        // Otherwise, pass through to the state
+        return target[prop];
+      }
+    });
+
+    return evalAst(ast, context);
   } catch (err) {
     console.error(
-      `Velin evaluate() error in expression "${expr}". Make sure all your state accesses start with 'vln.'`
+      `Velin evaluate() error in expression "${expr}".`
     );
     throw err;
   } finally {
