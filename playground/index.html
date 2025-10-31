@@ -71,8 +71,8 @@
       <header class="px-4 py-2 bg-gray-750 border-b border-gray-700 flex-shrink-0">
         <h2 class="text-sm font-semibold text-gray-300">Live Render</h2>
       </header>
-      <div class="flex-1 overflow-auto p-4">
-        <div vln-if="currentExample.templateId" vln-fragment="currentExample.templateId" id="live-render"></div>
+      <div class="flex-1 overflow-auto p-4" id="live-render-container">
+        <div vln-if="currentTab" id="live-render"></div>
       </div>
     </section>
   </main>
@@ -270,18 +270,38 @@
     selectTab: async (tabId) => {
       bound.currentTab = tabId;
       const example = bound.examples.find(ex => ex.id === tabId);
-      if (example) {
-        // Set templateId immediately so the fragment renders
-        bound.currentExample = {
-          originalHtml: '<pre class="text-gray-500">Formatting...</pre>',
-          interpolatedHtml: '<pre class="text-gray-500">Rendering...</pre>',
-          templateId: example.templateId,
-        };
+      if (!example) return;
 
-        // Wait for fragment to render, then capture interpolated HTML
+      // Set loading state
+      bound.currentExample = {
+        originalHtml: '<pre class="text-gray-500">Formatting...</pre>',
+        interpolatedHtml: '<pre class="text-gray-500">Rendering...</pre>',
+        templateId: example.templateId,
+      };
+
+      // Get the template
+      const template = document.getElementById(example.templateId);
+      if (!template) {
+        console.error(`Template ${example.templateId} not found`);
+        return;
+      }
+
+      // Manually render the template into the live-render div
+      const liveRender = document.getElementById('live-render');
+      if (liveRender) {
+        // Clear previous content
+        liveRender.innerHTML = '';
+
+        // Clone template content
+        const clone = template.content.cloneNode(true);
+        liveRender.appendChild(clone);
+
+        // Rebind Velin to the new content
+        Velin.bind(liveRender, bound);
+
+        // Capture interpolated HTML after render
         setTimeout(() => {
-          const liveRender = document.getElementById('live-render');
-          if (liveRender && liveRender.innerHTML) {
+          if (liveRender.innerHTML) {
             example.interpolatedHtml = liveRender.innerHTML;
             // Update the display with formatted version
             formatHTML(example.interpolatedHtml).then(formatted => {
@@ -289,13 +309,13 @@
             });
           }
         }, 100);
-
-        // Format original HTML asynchronously
-        const originalHtml = await formatHTML(example.originalHtml);
-        bound.currentExample.originalHtml = originalHtml;
-
-        updateStateDump();
       }
+
+      // Format original HTML asynchronously
+      const originalHtml = await formatHTML(example.originalHtml);
+      bound.currentExample.originalHtml = originalHtml;
+
+      updateStateDump();
     }
   });
 
