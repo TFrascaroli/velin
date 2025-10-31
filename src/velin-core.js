@@ -755,58 +755,9 @@ function evaluate(reactiveState, expr) {
     const tokens = tokenize(expr);
     const ast = parse(tokens);
 
-    // Create sandboxed wrappers for global objects to prevent constructor access
+    // Create sandboxed wrapper for Math to prevent constructor access
     const sandboxedGlobals = {
       Math: new Proxy(Math, {
-        get(target, prop) {
-          if (prop === 'constructor') return undefined;
-          return Reflect.get(target, prop);
-        }
-      }),
-      Date: new Proxy(Date, {
-        get(target, prop) {
-          if (prop === 'constructor') return undefined;
-          return Reflect.get(target, prop);
-        }
-      }),
-      JSON: new Proxy(JSON, {
-        get(target, prop) {
-          if (prop === 'constructor') return undefined;
-          return Reflect.get(target, prop);
-        }
-      }),
-      Object: new Proxy(Object, {
-        get(target, prop) {
-          if (prop === 'constructor') return undefined;
-          // Block dangerous introspection methods
-          if (prop === 'getPrototypeOf') return undefined;
-          if (prop === 'getOwnPropertyDescriptor') return undefined;
-          if (prop === 'getOwnPropertyDescriptors') return undefined;
-          if (prop === 'setPrototypeOf') return undefined;
-          if (prop === 'defineProperty') return undefined;
-          if (prop === 'defineProperties') return undefined;
-          return Reflect.get(target, prop);
-        }
-      }),
-      Array: new Proxy(Array, {
-        get(target, prop) {
-          if (prop === 'constructor') return undefined;
-          return Reflect.get(target, prop);
-        }
-      }),
-      String: new Proxy(String, {
-        get(target, prop) {
-          if (prop === 'constructor') return undefined;
-          return Reflect.get(target, prop);
-        }
-      }),
-      Number: new Proxy(Number, {
-        get(target, prop) {
-          if (prop === 'constructor') return undefined;
-          return Reflect.get(target, prop);
-        }
-      }),
-      Boolean: new Proxy(Boolean, {
         get(target, prop) {
           if (prop === 'constructor') return undefined;
           return Reflect.get(target, prop);
