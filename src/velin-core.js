@@ -762,6 +762,12 @@ function getSetter(reactiveState, expr) {
   const inter = reactiveState.interpolations;
   const property = inter?.has(expr) ? inter.get(expr) : expr;
   const lastDotIndex = property.lastIndexOf(".");
+
+  // Handle root-level properties (no dots)
+  if (lastDotIndex === -1) {
+    return (value) => (reactiveState.state[property] = value);
+  }
+
   const parent = evaluate(reactiveState, property.slice(0, lastDotIndex));
   const key = property.slice(lastDotIndex + 1);
   return (value) => (parent[key] = value);
