@@ -52,22 +52,56 @@ function setupVelinStd(vln) {
         console.warn("[VLN003] Cannot set classes on non-HTML elements");
         return;
       }
+
+      // Helper: Split space-separated class names and filter empty strings
+      const splitClassNames = (str) => str.trim().split(/\s+/).filter(Boolean);
+
+      // Helper: Activate classes by splitting and adding to both sets
+      const activateClasses = (classString, current, managedClasses) => {
+        const classes = splitClassNames(classString);
+        for (const cls of classes) {
+          current.add(cls);
+          managedClasses.add(cls);
+        }
+      };
+
+      // Start with current classes as a Set for efficient operations
       const current = new Set(Array.from(node.classList));
-      if (pluginState) {
-        for (const cls of Object.keys(pluginState)) current.delete(cls);
-      }
-      const newState = {};
-      if (typeof tracked === "string") {
-        current.add(tracked);
-        newState[tracked] = true;
-      } else if (tracked && typeof tracked === "object") {
-        for (const [cls, active] of Object.entries(tracked)) {
-          if (active) current.add(cls);
-          newState[cls] = active;
+
+      // Remove previously managed classes (already split and stored individually)
+      if (pluginState?.managedClasses) {
+        for (const cls of pluginState.managedClasses) {
+          current.delete(cls);
         }
       }
+
+      // Track which individual classes we're managing in this render
+      const managedClasses = new Set();
+
+      if (typeof tracked === "string") {
+        // String mode: split once and add each class individually
+        activateClasses(tracked, current, managedClasses);
+
+      } else if (tracked && typeof tracked === "object") {
+        // Object mode: keys are class names (can contain spaces), values are boolean
+        for (const [classKey, active] of Object.entries(tracked)) {
+          if (classKey.includes(" ")) {
+            // Warn about potentially ambiguous space-separated keys in object syntax
+            console.warn(
+              `[VLN003.1] Class key "${classKey}" contains spaces and will be split. ` +
+              `Consider using separate keys or string syntax instead.`
+            );
+          }
+
+          if (active) {
+            activateClasses(classKey, current, managedClasses);
+          }
+        }
+      }
+
+      // Apply all classes at once
       node.className = Array.from(current).join(" ");
-      return { state: newState };
+      return { state: { managedClasses } };
     },
   });
 
