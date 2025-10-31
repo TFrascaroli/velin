@@ -116,11 +116,31 @@
           <label for="enabled" class="cursor-pointer">Enabled</label>
           <input name="enabled" vln-input="isEnabled" type="checkbox" checked class="cursor-pointer" />
         </div>
-        <div vln-class="{ active: isActive, disabled: !isEnabled }"
-          class="p-3 rounded border border-gray-600 transition-colors duration-200">
-          This should have
-          <span vln-text="grabClasses(isActive, isEnabled)" class="font-mono text-indigo-400"></span>
-          classes
+
+        <div>
+          <strong class="text-gray-300">Object syntax (single classes):</strong>
+          <div vln-class="{ active: isActive, disabled: !isEnabled }"
+            class="p-3 rounded border border-gray-600 transition-colors duration-200 mt-2">
+            This should have
+            <span vln-text="grabClasses(isActive, isEnabled)" class="font-mono text-indigo-400"></span>
+            classes
+          </div>
+        </div>
+
+        <div>
+          <strong class="text-gray-300">Ternary syntax (space-separated classes):</strong>
+          <div vln-class="isActive ? 'bg-green-500 text-white font-bold' : 'bg-gray-600 text-gray-300'"
+            class="p-3 rounded border border-gray-600 transition-colors duration-200 mt-2">
+            Toggles between green+white+bold and gray styles
+          </div>
+        </div>
+
+        <div>
+          <strong class="text-gray-300">Object syntax (space-separated classes):</strong>
+          <div vln-class="{'bg-blue-500 text-white': isEnabled, 'bg-orange-500 text-black': !isEnabled}"
+            class="p-3 rounded border border-gray-600 transition-colors duration-200 mt-2">
+            Toggles between blue+white and orange+black
+          </div>
         </div>
       </div>
     </div>
@@ -228,18 +248,17 @@
 
       // Listen for when the live fragment renders and capture its HTML
       const parentSelector = `[vln-source="${templateId}"]`;
-      const unsub = Velin.on('afterProcessNode', ({ node }) => {
+      function refresh() {
         const examples = reactiveState.state.examples;
         const exampleIdx = examples.findIndex(ex => ex.id === id);
-        if (exampleIdx !== -1 && node.matches && node.matches(parentSelector)) {
-          const html = node.innerHTML;
-          if (examples[exampleIdx].interpolatedHtml !== html) {
-            // Use setter to trigger reactivity
-            const setter = Velin.getSetter(reactiveState, `examples[${exampleIdx}].interpolatedHtml`);
-            setter(html);
-          }
+        if (exampleIdx !== -1) {
+          const html = document.querySelector(parentSelector).innerHTML;
+          examples[exampleIdx].interpolatedHtml = html;
         }
-      }, {
+      }
+      // Initial capture
+      setTimeout(refresh, 0);
+      const unsub = Velin.on('afterProcessNode', refresh, {
         parentSelector,
       });
 
@@ -308,7 +327,7 @@
 
     // Functions
     grabClasses: (isActive, isEnabled) => {
-      let arr = [isActive ? 'active' : null, !isEnabled ? 'disabled' : null].filter(c => !!c);
+      let arr = [isActive ? 'active' : null, isEnabled ? null : 'disabled'].filter(c => !!c);
       return arr.length ? arr.join(' and ') : 'no';
     },
     update: () => {
