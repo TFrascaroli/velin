@@ -31,18 +31,18 @@
   <nav class="bg-gray-800 border-b border-gray-700 px-6 flex-shrink-0 overflow-x-auto">
     <div class="flex space-x-1">
       <button
-        vln-loop:example="examples"
-        vln-on:click="selectTab(example.id)"
+        vln-loop:example,idx="examples"
+        vln-on:click="selectTab(idx)"
         vln-text="example.title"
-        vln-class="currentTab === example.id ? 'bg-gray-700 text-white border-b-2 border-indigo-500' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700/50'"
+        vln-class="currentTab === idx ? 'bg-gray-700 text-white border-b-2 border-indigo-500' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700/50'"
         class="px-4 py-3 font-medium text-sm transition-colors whitespace-nowrap">
       </button>
     </div>
   </nav>
 
   <!-- 4-Quadrant Grid Template -->
-  <template id="exampleQuadrant" vln-vars="example">
-    <div vln-if="currentTab === example.id" class="absolute inset-0 grid grid-cols-2 grid-rows-2 gap-4">
+  <template id="exampleQuadrant" vln-vars="example,idx">
+    <div vln-if="currentTab === idx" class="absolute inset-0 grid grid-cols-2 grid-rows-2 gap-4">
       <!-- Top-Left: Original HTML -->
       <section class="bg-gray-800 rounded-lg border border-gray-700 flex flex-col overflow-hidden">
         <header class="px-4 py-2 bg-gray-750 border-b border-gray-700 flex-shrink-0">
@@ -83,7 +83,7 @@
 
   <!-- Main Content Area -->
   <main class="flex-1 p-6 overflow-hidden relative">
-    <div vln-loop:ex="examples" vln-fragment="'exampleQuadrant'" vln-var:example="ex"></div>
+    <div vln-loop:ex,exIdx="examples" vln-fragment="'exampleQuadrant'" vln-var:example="ex" vln-var:idx="exIdx"></div>
   </main>
 
   <!-- Hidden: Example definitions -->
@@ -301,7 +301,7 @@
 
     // UI state
     examples: [],
-    currentTab: null,
+    currentTab: 0,
 
     // Functions
     grabClasses: (isActive, isEnabled) => {
@@ -313,17 +313,10 @@
       const count = Math.floor(Math.random() * friends.length) + 1;
       setTimeout(() => bound.friends = shuffled.slice(0, count), 0);
     },
-    selectTab: (tabId) => {
-      bound.currentTab = tabId;
+    selectTab: (idx) => {
+      bound.currentTab = idx;
     }
   });
-
-  // Select first example after they're populated
-  setTimeout(() => {
-    if (bound.examples.length > 0) {
-      bound.selectTab(bound.examples[0].id);
-    }
-  }, 100);
 </script>
 
 </html>
