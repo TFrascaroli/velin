@@ -287,28 +287,432 @@ function processPlugin(plugin, reactiveState, expr, node, attributeName, subkey 
 }
 
 /**
+ * Tokenizer for CSP-safe expression evaluation
+ */
+function tokenize(expr) {
+  const tokens = [];
+  let i = 0;
+
+  while (i < expr.length) {
+    let char = expr[i];
+
+    // Skip whitespace
+    if (/\s/.test(char)) {
+      i++;
+      continue;
+    }
+
+    // Numbers
+    if (/[0-9]/.test(char)) {
+      let num = '';
+      while (i < expr.length && /[0-9.]/.test(expr[i])) {
+        num += expr[i++];
+      }
+      tokens.push({ type: 'NUMBER', value: parseFloat(num) });
+      continue;
+    }
+
+    // Strings
+    if (char === '"' || char === "'") {
+      const quote = char;
+      let str = '';
+      i++; // skip opening quote
+      while (i < expr.length && expr[i] !== quote) {
+        if (expr[i] === '\\') {
+          i++; // skip escape
+          if (i < expr.length) str += expr[i++];
+        } else {
+          str += expr[i++];
+        }
+      }
+      i++; // skip closing quote
+      tokens.push({ type: 'STRING', value: str });
+      continue;
+    }
+
+    // Identifiers
+    if (/[a-zA-Z_$]/.test(char)) {
+      let ident = '';
+      while (i < expr.length && /[a-zA-Z0-9_$]/.test(expr[i])) {
+        ident += expr[i++];
+      }
+      // Handle keywords/literals
+      if (ident === 'true') tokens.push({ type: 'BOOLEAN', value: true });
+      else if (ident === 'false') tokens.push({ type: 'BOOLEAN', value: false });
+      else if (ident === 'null') tokens.push({ type: 'NULL', value: null });
+      else if (ident === 'undefined') tokens.push({ type: 'UNDEFINED', value: undefined });
+      else tokens.push({ type: 'IDENTIFIER', value: ident });
+      continue;
+    }
+
+    // Multi-char operators
+    if (i + 2 < expr.length && expr.substr(i, 3) === '===') {
+      tokens.push({ type: 'OPERATOR', value: '===' });
+      i += 3;
+      continue;
+    }
+    if (i + 2 < expr.length && expr.substr(i, 3) === '!==') {
+      tokens.push({ type: 'OPERATOR', value: '!==' });
+      i += 3;
+      continue;
+    }
+    if (i + 1 < expr.length && expr.substr(i, 2) === '&&') {
+      tokens.push({ type: 'OPERATOR', value: '&&' });
+      i += 2;
+      continue;
+    }
+    if (i + 1 < expr.length && expr.substr(i, 2) === '||') {
+      tokens.push({ type: 'OPERATOR', value: '||' });
+      i += 2;
+      continue;
+    }
+    if (i + 1 < expr.length && expr.substr(i, 2) === '>=') {
+      tokens.push({ type: 'OPERATOR', value: '>=' });
+      i += 2;
+      continue;
+    }
+    if (i + 1 < expr.length && expr.substr(i, 2) === '<=') {
+      tokens.push({ type: 'OPERATOR', value: '<=' });
+      i += 2;
+      continue;
+    }
+    if (i + 1 < expr.length && expr.substr(i, 2) === '==') {
+      tokens.push({ type: 'OPERATOR', value: '==' });
+      i += 2;
+      continue;
+    }
+    if (i + 1 < expr.length && expr.substr(i, 2) === '!=') {
+      tokens.push({ type: 'OPERATOR', value: '!=' });
+      i += 2;
+      continue;
+    }
+
+    // Check for assignment (not supported)
+    if (char === '=') {
+      throw new Error('[VLN010] Setting values during evaluation is forbidden. Use Velin.getSetter');
+    }
+
+    // Single-char tokens
+    if ('+-*/%><()[]{}.,?:!'.includes(char)) {
+      if ('+-*/%><!='.includes(char)) {
+        tokens.push({ type: 'OPERATOR', value: char });
+      } else {
+        tokens.push({ type: 'PUNCTUATION', value: char });
+      }
+      i++;
+      continue;
+    }
+
+    throw new Error(`Unexpected character: ${char}`);
+  }
+
+  return tokens;
+}
+
+/**
+ * Parser for CSP-safe expression evaluation
+ */
+function parse(tokens) {
+  let pos = 0;
+
+  function peek() {
+    return tokens[pos];
+  }
+
+  function next() {
+    return tokens[pos++];
+  }
+
+  function expect(type, value) {
+    const token = next();
+    if (!token || token.type !== type || (value !== undefined && token.value !== value)) {
+      throw new Error(`Expected ${type} ${value || ''}, got ${token ? token.type : 'EOF'}`);
+    }
+    return token;
+  }
+
+  function parseTernary() {
+    let node = parseLogicalOr();
+
+    if (peek() && peek().type === 'PUNCTUATION' && peek().value === '?') {
+      next(); // consume ?
+      const consequent = parseTernary();
+      expect('PUNCTUATION', ':');
+      const alternate = parseTernary();
+      return { type: 'Ternary', test: node, consequent, alternate };
+    }
+
+    return node;
+  }
+
+  function parseLogicalOr() {
+    let left = parseLogicalAnd();
+
+    while (peek() && peek().type === 'OPERATOR' && peek().value === '||') {
+      const op = next().value;
+      const right = parseLogicalAnd();
+      left = { type: 'Binary', operator: op, left, right };
+    }
+
+    return left;
+  }
+
+  function parseLogicalAnd() {
+    let left = parseEquality();
+
+    while (peek() && peek().type === 'OPERATOR' && peek().value === '&&') {
+      const op = next().value;
+      const right = parseEquality();
+      left = { type: 'Binary', operator: op, left, right };
+    }
+
+    return left;
+  }
+
+  function parseEquality() {
+    let left = parseComparison();
+
+    while (peek() && peek().type === 'OPERATOR' && ['===', '!==', '==', '!='].includes(peek().value)) {
+      const op = next().value;
+      const right = parseComparison();
+      left = { type: 'Binary', operator: op, left, right };
+    }
+
+    return left;
+  }
+
+  function parseComparison() {
+    let left = parseAdditive();
+
+    while (peek() && peek().type === 'OPERATOR' && ['>', '<', '>=', '<='].includes(peek().value)) {
+      const op = next().value;
+      const right = parseAdditive();
+      left = { type: 'Binary', operator: op, left, right };
+    }
+
+    return left;
+  }
+
+  function parseAdditive() {
+    let left = parseMultiplicative();
+
+    while (peek() && peek().type === 'OPERATOR' && ['+', '-'].includes(peek().value)) {
+      const op = next().value;
+      const right = parseMultiplicative();
+      left = { type: 'Binary', operator: op, left, right };
+    }
+
+    return left;
+  }
+
+  function parseMultiplicative() {
+    let left = parseUnary();
+
+    while (peek() && peek().type === 'OPERATOR' && ['*', '/', '%'].includes(peek().value)) {
+      const op = next().value;
+      const right = parseUnary();
+      left = { type: 'Binary', operator: op, left, right };
+    }
+
+    return left;
+  }
+
+  function parseUnary() {
+    if (peek() && peek().type === 'OPERATOR' && ['!', '-', '+'].includes(peek().value)) {
+      const op = next().value;
+      const argument = parseUnary();
+      return { type: 'Unary', operator: op, argument };
+    }
+
+    return parseCall();
+  }
+
+  function parseCall() {
+    let node = parseMember();
+
+    while (peek() && peek().type === 'PUNCTUATION' && peek().value === '(') {
+      next(); // consume (
+      const args = [];
+
+      while (!peek() || (peek().type !== 'PUNCTUATION' || peek().value !== ')')) {
+        args.push(parseTernary());
+        if (peek() && peek().type === 'PUNCTUATION' && peek().value === ',') {
+          next(); // consume ,
+        }
+      }
+
+      expect('PUNCTUATION', ')');
+      node = { type: 'Call', callee: node, arguments: args };
+    }
+
+    return node;
+  }
+
+  function parseMember() {
+    let node = parsePrimary();
+
+    while (true) {
+      if (peek() && peek().type === 'PUNCTUATION' && peek().value === '.') {
+        next(); // consume .
+        const property = expect('IDENTIFIER');
+        node = { type: 'Member', object: node, property: property.value, computed: false };
+      } else if (peek() && peek().type === 'PUNCTUATION' && peek().value === '[') {
+        next(); // consume [
+        const property = parseTernary();
+        expect('PUNCTUATION', ']');
+        node = { type: 'Member', object: node, property, computed: true };
+      } else {
+        break;
+      }
+    }
+
+    return node;
+  }
+
+  function parsePrimary() {
+    const token = peek();
+
+    if (!token) {
+      throw new Error('Unexpected end of expression');
+    }
+
+    if (token.type === 'NUMBER' || token.type === 'STRING' || token.type === 'BOOLEAN' || token.type === 'NULL' || token.type === 'UNDEFINED') {
+      next();
+      return { type: 'Literal', value: token.value };
+    }
+
+    if (token.type === 'IDENTIFIER') {
+      next();
+      return { type: 'Identifier', name: token.value };
+    }
+
+    if (token.type === 'PUNCTUATION' && token.value === '(') {
+      next(); // consume (
+      const node = parseTernary();
+      expect('PUNCTUATION', ')');
+      return node;
+    }
+
+    // Object literal
+    if (token.type === 'PUNCTUATION' && token.value === '{') {
+      next(); // consume {
+      const properties = [];
+
+      while (peek() && !(peek().type === 'PUNCTUATION' && peek().value === '}')) {
+        // Parse property key
+        let key;
+        const keyToken = peek();
+        if (keyToken.type === 'IDENTIFIER') {
+          key = next().value;
+        } else if (keyToken.type === 'STRING') {
+          key = next().value;
+        } else {
+          throw new Error(`Expected property name, got ${keyToken.type}`);
+        }
+
+        expect('PUNCTUATION', ':');
+        const value = parseTernary();
+        properties.push({ key, value });
+
+        if (peek() && peek().type === 'PUNCTUATION' && peek().value === ',') {
+          next(); // consume ,
+        }
+      }
+
+      expect('PUNCTUATION', '}');
+      return { type: 'ObjectLiteral', properties };
+    }
+
+    throw new Error(`Unexpected token: ${token.type} ${token.value}`);
+  }
+
+  return parseTernary();
+}
+
+/**
+ * Evaluates AST with given context
+ */
+function evalAst(ast, context) {
+  switch (ast.type) {
+    case 'Literal':
+      return ast.value;
+
+    case 'Identifier':
+      return context[ast.name];
+
+    case 'Member':
+      const obj = evalAst(ast.object, context);
+      if (obj == null) return undefined;
+      if (ast.computed) {
+        const prop = evalAst(ast.property, context);
+        return obj[prop];
+      } else {
+        return obj[ast.property];
+      }
+
+    case 'Call':
+      const callee = evalAst(ast.callee, context);
+      if (typeof callee !== 'function') {
+        throw new Error('Cannot call non-function');
+      }
+      const args = ast.arguments.map(arg => evalAst(arg, context));
+      // Get the object for 'this' binding
+      let thisArg = undefined;
+      if (ast.callee.type === 'Member') {
+        thisArg = evalAst(ast.callee.object, context);
+      }
+      return callee.apply(thisArg, args);
+
+    case 'Binary':
+      const left = evalAst(ast.left, context);
+      const right = evalAst(ast.right, context);
+      switch (ast.operator) {
+        case '+': return left + right;
+        case '-': return left - right;
+        case '*': return left * right;
+        case '/': return left / right;
+        case '%': return left % right;
+        case '>': return left > right;
+        case '<': return left < right;
+        case '>=': return left >= right;
+        case '<=': return left <= right;
+        case '===': return left === right;
+        case '!==': return left !== right;
+        case '==': return left == right;
+        case '!=': return left != right;
+        case '&&': return left && right;
+        case '||': return left || right;
+        default: throw new Error(`Unknown operator: ${ast.operator}`);
+      }
+
+    case 'Unary':
+      const arg = evalAst(ast.argument, context);
+      switch (ast.operator) {
+        case '!': return !arg;
+        case '-': return -arg;
+        case '+': return +arg;
+        default: throw new Error(`Unknown unary operator: ${ast.operator}`);
+      }
+
+    case 'Ternary':
+      const test = evalAst(ast.test, context);
+      return test ? evalAst(ast.consequent, context) : evalAst(ast.alternate, context);
+
+    case 'ObjectLiteral':
+      const result = {};
+      for (const prop of ast.properties) {
+        result[prop.key] = evalAst(prop.value, context);
+      }
+      return result;
+
+    default:
+      throw new Error(`Unknown AST node type: ${ast.type}`);
+  }
+}
+
+/**
  * Evaluates an expression against the reactive state with optional context proxying
- *
- * SECURITY NOTE: This function uses `new Function()` to evaluate expressions, which has
- * important security implications:
- *
- * 1. TRUSTED EXPRESSIONS ONLY: Expressions MUST come from trusted sources (your own code,
- *    templates you control). Never pass user-generated or untrusted content.
- *
- * 2. NO EFFECTIVE SANDBOXING: Attempts to shadow globals (window, document, etc.) do not
- *    work because Function constructor has access to the real global scope. Any sandboxing
- *    would be security theater providing false confidence.
- *
- * 3. CSP INCOMPATIBILITY: Strict Content Security Policies that disallow 'unsafe-eval'
- *    will block this function entirely. Velin is not compatible with CSP-strict environments.
- *
- * 4. DESIGN DECISION: We chose `new Function()` over alternatives because:
- *    - eval() is worse (same issues, fewer benefits)
- *    - Full tokenizer/parser/evaluator would be slow, large, and complex
- *    - Most use cases involve trusted templates in controlled environments
- *
- * If you need to use Velin with untrusted content or in CSP-strict environments,
- * this is a fundamental architectural limitation.
+ * CSP-safe implementation using tokenizer + parser + AST walker
  *
  * @type {Evaluate}
  */
@@ -333,7 +737,11 @@ function evaluate(reactiveState, expr) {
         return Reflect.set(target, prop, value, receiver);
       },
     });
-    return new Function("vln", `return (${expr});`)(contextualizedProxy);
+
+    // Parse and evaluate using CSP-safe approach
+    const tokens = tokenize(expr);
+    const ast = parse(tokens);
+    return evalAst(ast, { vln: contextualizedProxy });
   } catch (err) {
     console.error(
       `Velin evaluate() error in expression "${expr}". Make sure all your state accesses start with 'vln.'`
