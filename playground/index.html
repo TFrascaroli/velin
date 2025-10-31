@@ -76,7 +76,10 @@
         <header class="px-4 py-2 bg-gray-750 border-b border-gray-700 flex-shrink-0">
           <h2 class="text-sm font-semibold text-gray-300">Live Render</h2>
         </header>
-        <div class="flex-1 overflow-auto p-4" vln-fragment="example.templateId" vln-attr:vln-source="example.templateId"></div>
+        <div class="flex-1 overflow-auto p-4"
+             vln-fragment="example.templateId"
+             vln-mirror="examples[idx].interpolatedHtml"
+             vln-attr:vln-source="example.templateId"></div>
       </section>
     </div>
   </template>
@@ -204,6 +207,39 @@
     return str.toLowerCase().replace(/-([a-z0-9])/g, (_, char) => char.toUpperCase());
   }
 
+  // Register vln-mirror plugin - mirrors innerHTML to reactive state
+  Velin.plugins.registerPlugin({
+    name: 'mirror',
+    render: ({ node, expr, reactiveState, pluginState = {} }) => {
+      // Set up MutationObserver to watch for DOM changes
+      if (!pluginState.observer) {
+        const updateState = () => {
+          const setter = Velin.getSetter(reactiveState, expr);
+          setter(node.innerHTML);
+        };
+
+        // Initial capture
+        updateState();
+
+        // Watch for future changes
+        const observer = new MutationObserver(updateState);
+        observer.observe(node, {
+          childList: true,
+          subtree: true,
+          characterData: true,
+          attributes: true
+        });
+
+        pluginState.observer = observer;
+      }
+
+      return { state: pluginState };
+    },
+    destroy: ({ pluginState }) => {
+      pluginState?.observer?.disconnect();
+    }
+  });
+
   // Register vln-diff plugin to capture examples
   Velin.plugins.registerPlugin({
     name: 'diff',
@@ -231,7 +267,6 @@
         reactiveState.state.examples = [];
       }
 
-      const exampleIndex = reactiveState.state.examples.length;
       reactiveState.state.examples.push({
         id,
         title: expr,
@@ -240,29 +275,7 @@
         interpolatedHtml: null,
       });
 
-      // Cleanup previous event listener if re-rendering
-      if (pluginState.unsub) {
-        pluginState.unsub();
-        pluginState.unsub = undefined;
-      }
-
-      // Listen for when the live fragment renders and capture its HTML
-      const parentSelector = `[vln-source="${templateId}"]`;
-      function refresh() {
-        const examples = reactiveState.state.examples;
-        const exampleIdx = examples.findIndex(ex => ex.id === id);
-        if (exampleIdx !== -1) {
-          const html = document.querySelector(parentSelector).innerHTML;
-          examples[exampleIdx].interpolatedHtml = html;
-        }
-      }
-      // Initial capture
-      setTimeout(refresh, 0);
-      const unsub = Velin.on('afterProcessNode', refresh, {
-        parentSelector,
-      });
-
-      return { halt: true, state: { unsub } };
+      return { halt: true };
     }
   });
 
