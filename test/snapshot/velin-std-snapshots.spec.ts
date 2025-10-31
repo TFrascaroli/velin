@@ -163,6 +163,62 @@ describe('event handling', () => {
   });
 });
 
+describe('vln-less expressions', () => {
+  it('renders text without vln prefix', () => {
+    const div = document.createElement('div')
+    div.setAttribute('vln-text', 'message')
+
+    Velin.bind(div, { message: 'hello world' })
+
+    expect(div).toMatchSnapshot()
+  });
+
+  it('renders expression without vln prefix', () => {
+    const div = document.createElement('div')
+    div.setAttribute('vln-text', 'count + 1')
+
+    Velin.bind(div, { count: 5 })
+
+    expect(div).toMatchSnapshot()
+  });
+
+  it('renders ternary without vln prefix', () => {
+    const div = document.createElement('div')
+    div.setAttribute('vln-text', 'isActive ? "Active" : "Inactive"')
+
+    Velin.bind(div, { isActive: true })
+
+    expect(div).toMatchSnapshot()
+  });
+
+  it('binds class object without vln prefix', () => {
+    const div = document.createElement('div')
+    div.setAttribute('vln-class', '{ active: isActive, disabled: !isEnabled }')
+
+    Velin.bind(div, { isActive: true, isEnabled: false })
+
+    expect(div).toMatchSnapshot()
+  });
+
+  it('renders loop without vln prefix', () => {
+    const div = document.createElement('div')
+    div.innerHTML = '<span vln-loop="item in items" vln-text="item"></span>'
+
+    Velin.bind(div, { items: ['a', 'b', 'c'] })
+
+    expect(div).toMatchSnapshot()
+  });
+
+  it('supports mixed vln and no-vln in same expression', () => {
+    const div = document.createElement('div')
+    div.setAttribute('vln-text', 'vln.count + count')
+
+    Velin.bind(div, { count: 5 })
+
+    expect(div).toMatchSnapshot()
+  });
+});
+
 describe('complex expressions', () => {
   it('evaluates arithmetic', () => {
     const div = document.createElement('div')

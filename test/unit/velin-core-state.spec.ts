@@ -61,6 +61,48 @@ describe("Velin Public API", () => {
     });
   });
 
+  describe("evaluate without vln prefix", () => {
+    let reactiveState: ReactiveState;
+    beforeEach(() => {
+      Velin.bind(node, {
+        message: "hello",
+        count: 5,
+        isActive: true,
+        isEnabled: false,
+        getValue: (n: number) => n * 2,
+      });
+      reactiveState = Velin.ø__internal.boundState.root!;
+    });
+
+    it("should access state properties directly", () => {
+      expect(Velin.evaluate(reactiveState, "message")).toBe("hello");
+    });
+
+    it("should evaluate expressions without vln prefix", () => {
+      expect(Velin.evaluate(reactiveState, "count + 1")).toBe(6);
+    });
+
+    it("should evaluate ternary without vln prefix", () => {
+      expect(Velin.evaluate(reactiveState, 'isActive ? "yes" : "no"')).toBe("yes");
+    });
+
+    it("should call functions without vln prefix", () => {
+      expect(Velin.evaluate(reactiveState, "getValue(10)")).toBe(20);
+    });
+
+    it("should evaluate object literals without vln prefix", () => {
+      const result = Velin.evaluate(
+        reactiveState,
+        "{ active: isActive, disabled: !isEnabled }"
+      );
+      expect(result).toEqual({ active: true, disabled: true });
+    });
+
+    it("should support both vln and no-vln in same expression", () => {
+      expect(Velin.evaluate(reactiveState, "vln.count + count")).toBe(10);
+    });
+  });
+
   describe("getSetter", () => {
     let reactiveState: ReactiveState;
     let state: any;
