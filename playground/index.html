@@ -71,7 +71,9 @@
       <header class="px-4 py-2 bg-gray-750 border-b border-gray-700 flex-shrink-0">
         <h2 class="text-sm font-semibold text-gray-300">Live Render</h2>
       </header>
-      <div class="flex-1 overflow-auto p-4" id="live-render" vln-fragment="currentExample.templateId"></div>
+      <div class="flex-1 overflow-auto p-4">
+        <div vln-if="currentExample.templateId" vln-fragment="currentExample.templateId" id="live-render"></div>
+      </div>
     </section>
   </main>
 
@@ -200,7 +202,6 @@
         reactiveState.state.examples = [];
       }
 
-      const exampleIndex = reactiveState.state.examples.length;
       reactiveState.state.examples.push({
         id,
         title: expr,
@@ -208,16 +209,6 @@
         originalHtml: null,
         interpolatedHtml: null,
       });
-
-      // Capture HTML after render
-      const renderContainerId = `render-${id}`;
-      setTimeout(() => {
-        const renderContainer = document.getElementById(renderContainerId);
-        if (renderContainer) {
-          const example = reactiveState.state.examples[exampleIndex];
-          example.interpolatedHtml = renderContainer.innerHTML;
-        }
-      }, 100);
 
       return { halt: true };
     }
@@ -276,15 +267,33 @@
       const count = Math.floor(Math.random() * friends.length) + 1;
       setTimeout(() => bound.friends = shuffled.slice(0, count), 0);
     },
-    selectTab: (tabId) => {
+    selectTab: async (tabId) => {
       bound.currentTab = tabId;
       const example = bound.examples.find(ex => ex.id === tabId);
       if (example) {
+        // Set templateId immediately so the fragment renders
         bound.currentExample = {
-          originalHtml: formatHTML(example.originalHtml),
-          interpolatedHtml: formatHTML(example.interpolatedHtml),
+          originalHtml: '<pre class="text-gray-500">Formatting...</pre>',
+          interpolatedHtml: '<pre class="text-gray-500">Rendering...</pre>',
           templateId: example.templateId,
         };
+
+        // Wait for fragment to render, then capture interpolated HTML
+        setTimeout(() => {
+          const liveRender = document.getElementById('live-render');
+          if (liveRender && liveRender.innerHTML) {
+            example.interpolatedHtml = liveRender.innerHTML;
+            // Update the display with formatted version
+            formatHTML(example.interpolatedHtml).then(formatted => {
+              bound.currentExample.interpolatedHtml = formatted;
+            });
+          }
+        }, 100);
+
+        // Format original HTML asynchronously
+        const originalHtml = await formatHTML(example.originalHtml);
+        bound.currentExample.originalHtml = originalHtml;
+
         updateStateDump();
       }
     }
@@ -356,9 +365,12 @@
   }
 
   // Watch for state changes and update dump
+  let stateUpdateTimeout;
   Velin.on('afterProcessNode', () => {
     if (bound.currentTab) {
-      updateStateDump();
+      // Debounce state dump updates to avoid excessive re-renders
+      clearTimeout(stateUpdateTimeout);
+      stateUpdateTimeout = setTimeout(updateStateDump, 50);
     }
   });
 </script>
