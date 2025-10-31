@@ -2,7 +2,7 @@
 <html lang="es">
 
 <head>
-  <title>First Velin Playground</title>
+  <title>Velin Playground</title>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <!-- Velin (All) -->
@@ -14,92 +14,163 @@
   <!-- Prism JS core + HTML support -->
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-markup.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-javascript.min.js"></script>
   <!-- Prettier -->
   <script src="https://cdn.jsdelivr.net/npm/prettier@3.2.5/standalone.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/prettier@3.2.5/plugins/html.js"></script>
 </head>
 
-<body class="bg-gray-50 text-gray-800 p-6 font-sans">
-  <div style="display:none;">
-    <div vln-diff="Text interpolation" class="mb-6">
-      <div vln-text="username" class="text-xl font-semibold text-indigo-700"></div>
+<body class="bg-gray-900 text-gray-100 h-screen overflow-hidden flex flex-col font-sans">
+  <!-- Header -->
+  <header class="bg-gray-800 border-b border-gray-700 px-6 py-4 flex-shrink-0">
+    <h1 class="text-2xl font-bold text-indigo-400">Velin Playground</h1>
+    <p class="text-sm text-gray-400 mt-1">Interactive examples with live state inspection</p>
+  </header>
+
+  <!-- Tabs -->
+  <nav class="bg-gray-800 border-b border-gray-700 px-6 flex-shrink-0 overflow-x-auto">
+    <div class="flex space-x-1">
+      <button
+        vln-loop:example="examples"
+        vln-on:click="selectTab($index)"
+        vln-text="example.title"
+        vln-class="{'bg-gray-700 text-white border-b-2 border-indigo-500': currentTab === $index, 'text-gray-400 hover:text-gray-200 hover:bg-gray-700/50': currentTab !== $index}"
+        class="px-4 py-3 font-medium text-sm transition-colors whitespace-nowrap">
+      </button>
+    </div>
+  </nav>
+
+  <!-- 4-Quadrant Grid Template -->
+  <template id="exampleQuadrant" vln-vars="example, idx">
+    <div vln-if="currentTab === idx" class="absolute inset-0 grid grid-cols-2 grid-rows-2 gap-4">
+      <!-- Top-Left: Original HTML -->
+      <section class="bg-gray-800 rounded-lg border border-gray-700 flex flex-col overflow-hidden">
+        <header class="px-4 py-2 bg-gray-750 border-b border-gray-700 flex-shrink-0">
+          <h2 class="text-sm font-semibold text-gray-300">Original HTML</h2>
+        </header>
+        <div class="flex-1 overflow-auto p-4 text-xs" vln-html="example.originalHtml"></div>
+      </section>
+
+      <!-- Top-Right: Interpolated HTML -->
+      <section class="bg-gray-800 rounded-lg border border-gray-700 flex flex-col overflow-hidden">
+        <header class="px-4 py-2 bg-gray-750 border-b border-gray-700 flex-shrink-0">
+          <h2 class="text-sm font-semibold text-gray-300">Interpolated HTML</h2>
+        </header>
+        <div class="flex-1 overflow-auto p-4 text-xs" vln-html="example.interpolatedHtml"></div>
+      </section>
+
+      <!-- Bottom-Left: State Dump -->
+      <section class="bg-gray-800 rounded-lg border border-gray-700 flex flex-col overflow-hidden">
+        <header class="px-4 py-2 bg-gray-750 border-b border-gray-700 flex-shrink-0">
+          <h2 class="text-sm font-semibold text-gray-300">State</h2>
+        </header>
+        <div class="flex-1 overflow-auto p-4 text-xs">
+          <!-- Hidden element to ensure friends tracking -->
+          <div style="display:none;" vln-loop:f="friends"></div>
+          <div vln-json="{ username, isLoggedIn, tooltipText, isActive, isEnabled, friends, someClass, classObject, currentTab }"></div>
+        </div>
+      </section>
+
+      <!-- Bottom-Right: Live Render -->
+      <section class="bg-gray-800 rounded-lg border border-gray-700 flex flex-col overflow-hidden">
+        <header class="px-4 py-2 bg-gray-750 border-b border-gray-700 flex-shrink-0">
+          <h2 class="text-sm font-semibold text-gray-300">Live Render</h2>
+        </header>
+        <div class="flex-1 overflow-auto p-4" vln-fragment="example.templateId" vln-attr:vln-source="example.templateId"></div>
+      </section>
+    </div>
+  </template>
+
+  <!-- Main Content Area -->
+  <main class="flex-1 p-6 overflow-hidden relative">
+    <div vln-loop:ex="examples" vln-fragment="'exampleQuadrant'" vln-var:example="ex" vln-var:idx="$index"></div>
+  </main>
+
+  <!-- Hidden: Example definitions -->
+  <div style="display:none;" id="example-definitions">
+    <div vln-diff="Text interpolation">
+      <div vln-text="username" class="text-xl font-semibold text-indigo-400"></div>
     </div>
 
-    <div vln-diff="Input reactivity (push binding)" class="mb-6">
+    <div vln-diff="Input reactivity">
       <label for="login" class="mr-2 font-medium">Is logged in?</label>
       <input name="login" vln-input="isLoggedIn" type="checkbox" checked class="mr-2" />
-      <div vln-text="isLoggedIn ? 'Logged In' : 'Disconnected'" class="inline font-semibold text-green-600"></div>
+      <div vln-text="isLoggedIn ? 'Logged In' : 'Disconnected'" class="inline font-semibold text-green-400"></div>
     </div>
 
-    <div vln-diff="Visibility control" class="mb-6">
-      <div vln-if="isLoggedIn" class="text-green-700 font-bold text-lg">Welcome!</div>
+    <div vln-diff="Visibility control">
+      <div vln-if="isLoggedIn" class="text-green-400 font-bold text-lg">Welcome!</div>
     </div>
 
-    <div vln-diff="Generic attribute setter" class="mb-6">
+    <div vln-diff="Attribute binding">
       <input vln-input="tooltipText" type="text" placeholder="Enter tooltip text"
-        class="border border-gray-300 rounded px-2 py-1 mr-2" />
-      <span vln-attr:title="tooltipText" class="underline cursor-help text-indigo-600">I have a tooltip!</span>
+        class="border border-gray-600 rounded px-2 py-1 mr-2 bg-gray-700 text-gray-100" />
+      <span vln-attr:title="tooltipText" class="underline cursor-help text-indigo-400">I have a tooltip!</span>
     </div>
 
-    <div vln-diff="Class reactivity" class="mb-8 space-y-4">
-      <h3 class="font-semibold text-lg">Literal reactive object</h3>
-      <div class="flex items-center gap-4">
-        <label for="active" class="cursor-pointer">Active</label>
-        <input name="active" vln-input="isActive" type="checkbox" checked class="cursor-pointer" />
-        <label for="enabled" class="cursor-pointer">Enabled</label>
-        <input name="enabled" vln-input="isEnabled" type="checkbox" checked class="cursor-pointer" />
-      </div>
-      <div vln-class="{ active: isActive, disabled: !isEnabled }"
-        class="p-3 rounded border transition-colors duration-200">
-        This should have
-        <span vln-text="grabClasses(isActive, isEnabled)" class="font-mono text-indigo-600"></span>
-        classes
-      </div>
+    <div vln-diff="Class reactivity">
+      <div class="space-y-4">
+        <div class="flex items-center gap-4">
+          <label for="active" class="cursor-pointer">Active</label>
+          <input name="active" vln-input="isActive" type="checkbox" checked class="cursor-pointer" />
+          <label for="enabled" class="cursor-pointer">Enabled</label>
+          <input name="enabled" vln-input="isEnabled" type="checkbox" checked class="cursor-pointer" />
+        </div>
 
-      <h3 class="font-semibold text-lg">Reactive string</h3>
-      <div vln-class="someClass" class="p-2 rounded bg-indigo-100 text-indigo-800">
-        this should have 'nice-class' class
-      </div>
+        <div>
+          <strong class="text-gray-300">Object syntax (single classes):</strong>
+          <div vln-class="{ active: isActive, disabled: !isEnabled }"
+            class="p-3 rounded border border-gray-600 transition-colors duration-200 mt-2">
+            This should have
+            <span vln-text="grabClasses(isActive, isEnabled)" class="font-mono text-indigo-400"></span>
+            classes
+          </div>
+        </div>
 
-      <h3 class="font-semibold text-lg">Reactive object</h3>
-      <div vln-class="classObject" class="p-2 rounded border border-gray-300">
-        this should have 'this-class' but NOT 'not-this-one'
-      </div>
+        <div>
+          <strong class="text-gray-300">Ternary syntax (space-separated classes):</strong>
+          <div vln-class="isActive ? 'bg-green-500 text-white font-bold' : 'bg-gray-600 text-gray-300'"
+            class="p-3 rounded border border-gray-600 transition-colors duration-200 mt-2">
+            Toggles between green+white+bold and gray styles
+          </div>
+        </div>
 
-      <h3 class="font-semibold text-lg">Interpolated literal strings string</h3>
-      <div vln-class="isActive ? 'on' : 'off'" class="p-2 rounded text-white"
-        :class="isActive ? 'bg-green-500' : 'bg-red-500'">
-        This is now <span vln-text="isActive ? 'on' : 'off'" class="font-bold"></span>
+        <div>
+          <strong class="text-gray-300">Object syntax (space-separated classes):</strong>
+          <div vln-class="{'bg-blue-500 text-white': isEnabled, 'bg-orange-500 text-black': !isEnabled}"
+            class="p-3 rounded border border-gray-600 transition-colors duration-200 mt-2">
+            Toggles between blue+white and orange+black
+          </div>
+        </div>
       </div>
     </div>
 
-    <div vln-diff="Loops" class="mb-6">
-      <ul class="list-disc list-inside space-y-1 text-gray-700">
-        <li vln-loop:friend="friends" vln-text="friend.name" class="hover:text-indigo-600 cursor-default">
-        </li>
+    <div vln-diff="Loops">
+      <ul class="list-disc list-inside space-y-1">
+        <li vln-loop:friend="friends" vln-text="friend.name" class="hover:text-indigo-400 cursor-default"></li>
       </ul>
     </div>
 
-    <div vln-diff="Events" class="space-y-6">
+    <div vln-diff="Events">
       <button
-        class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded transition cursor-pointer active:bg-blue-500"
+        class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded transition cursor-pointer"
         vln-on:click="update()">
         Randomize friends!
       </button>
     </div>
 
-    <div vln-diff="Templates" class="space-y-6">
+    <div vln-diff="Templates">
       <template id="friendCard" vln-vars="friend">
-        <div class="p-4 mb-4 rounded-xl shadow-md bg-white border border-gray-200 hover:shadow-lg transition">
-          <div class="text-lg font-semibold mb-2 text-indigo-700">
-            This is my friend, their name is <span vln-text="friend.name"></span>
+        <div class="p-4 mb-4 rounded-lg bg-gray-700 border border-gray-600">
+          <div class="text-lg font-semibold mb-2 text-indigo-400">
+            <span vln-text="friend.name"></span>
           </div>
-          <div class="text-sm text-gray-700 space-y-1">
+          <div class="text-sm text-gray-300 space-y-1">
             <div><strong>Age:</strong> <span vln-text="friend.age"></span></div>
             <div>
               <strong>Email:</strong>
               <a vln-text="friend.email" vln-attr:href="'mailto:' + friend.email"
-                class="text-blue-500 underline hover:text-blue-700"></a>
+                class="text-indigo-400 underline hover:text-indigo-300"></a>
             </div>
             <div vln-if="friend.pets.length">
               <strong>Pets:</strong>
@@ -110,22 +181,8 @@
           </div>
         </div>
       </template>
-      <div class="friends grid grid-cols-1 gap-4">
-        <div class="friend" vln-loop:friend_obj="friends" vln-fragment="'friendCard'" vln-var:friend="friend_obj">
-        </div>
-      </div>
-    </div>
-  </div>
-
-
-  <div class="flex flex-col space-y-6 mt-8">
-    <div class="flex flex-col" vln-loop:diff="diffs">
-      <h2 vln-text="diff.title" class="text-xl font-bold mb-2"></h2>
-      <div class="flex flex-row gap-4 w-full">
-        <div class="w-[30%] grow-0 p-4 bg-white rounded shadow text-sm" vln-html="diff.initialHtml"></div>
-        <div class="w-[45%] grow-0 p-4 bg-white rounded shadow text-sm" vln-html="diff.interpolatedHtml"></div>
-        <div class="w-[25%] grow-0 diff-output p-4 bg-white rounded shadow text-sm" vln-attr:id="diff.id"
-          vln-fragment="diff.key"></div>
+      <div>
+        <div vln-loop:friend_obj="friends" vln-fragment="'friendCard'" vln-var:friend="friend_obj"></div>
       </div>
     </div>
   </div>
@@ -144,31 +201,44 @@
   }
 
   function slugToCamel(str) {
-    return str
-      .toLowerCase()
-      .replace(/-([a-z0-9])/g, (_, char) => char.toUpperCase());
+    return str.toLowerCase().replace(/-([a-z0-9])/g, (_, char) => char.toUpperCase());
   }
 
-  /**
-   * Advanced Plugin Example: vln-diff
-   *
-   * This plugin demonstrates:
-   * 1. Dynamic template creation from markup
-   * 2. Using Velin's event system to capture live output
-   * 3. Complex plugin interactions (fragments, templates, events)
-   *
-   * Use case: Create a 3-column comparison view showing:
-   * - Original markup
-   * - Interpolated markup (with Velin expressions visible)
-   * - Live rendered output (fully reactive)
-   */
+  // Register vln-diff plugin to capture examples
   Velin.plugins.registerPlugin({
     name: 'diff',
     priority: Velin.plugins.priorities.STOPPER,
     render: ({ reactiveState, node, expr, pluginState = {} }) => {
       const id = slugify(expr);
-      const key = slugToCamel(id);
-      if (!id || !key) return { halt: true };
+      const templateId = slugToCamel(id) + 'Tpl';
+
+      // Create template dynamically
+      const template = document.createElement('template');
+      template.id = templateId;
+      template.innerHTML = node.innerHTML;
+
+      const varsAttr = node.getAttribute('vln-vars');
+      if (varsAttr) {
+        template.setAttribute('vln-vars', varsAttr);
+      }
+
+      if (!document.getElementById(templateId)) {
+        document.body.appendChild(template);
+      }
+
+      // Store example metadata
+      if (!reactiveState.state.examples) {
+        reactiveState.state.examples = [];
+      }
+
+      const exampleIndex = reactiveState.state.examples.length;
+      reactiveState.state.examples.push({
+        id,
+        title: expr,
+        templateId,
+        originalHtml: node.outerHTML,
+        interpolatedHtml: null,
+      });
 
       // Cleanup previous event listener if re-rendering
       if (pluginState.unsub) {
@@ -176,90 +246,98 @@
         pluginState.unsub = undefined;
       }
 
-      // Templates don't have to be static - you can
-      // create them programmatically and use them with vln-fragment
-      const template = document.createElement('template');
-      const templateId = key + 'Tpl';
-      template.id = templateId;
-      template.innerHTML = node.innerHTML;
-
-      // Preserve any vln-vars declaration from the source node
-      const varsAttr = node.getAttribute('vln-vars');
-      if (varsAttr) {
-        template.setAttribute('vln-vars', varsAttr);
-      }
-
-      // Add to DOM if not already registered
-      if (!document.getElementById(templateId)) {
-        document.body.appendChild(template);
-      }
-
-      // Store metadata for rendering the comparison view
-      if (!reactiveState.state.diffs)
-        reactiveState.state.diffs = [];
-
-      reactiveState.state.diffs.push({
-        initialHtml: node.outerHTML,  // Original source
-        interpolatedHtml: null,        // Will be captured from live render
-        title: expr,
-        key: templateId,  // Template name for vln-fragment
-        id,   // DOM id for the output container
-      });
-
       // Listen for when the live fragment renders and capture its HTML
-      const parentSelector = `#${id}.diff-output`;
-      const unsub = Velin.on('afterProcessNode', ({node}) => {
-        const _diff = reactiveState.state.diffs.find(d => d.id === id);
-        const html = document.querySelector(parentSelector).innerHTML;
-        if (_diff.interpolatedHtml !== html)
-          _diff.interpolatedHtml = html;
-      },{
+      const parentSelector = `[vln-source="${templateId}"]`;
+      function refresh() {
+        const examples = reactiveState.state.examples;
+        const exampleIdx = examples.findIndex(ex => ex.id === id);
+        if (exampleIdx !== -1) {
+          const html = document.querySelector(parentSelector).innerHTML;
+          examples[exampleIdx].interpolatedHtml = html;
+        }
+      }
+      // Initial capture
+      setTimeout(refresh, 0);
+      const unsub = Velin.on('afterProcessNode', refresh, {
         parentSelector,
       });
 
-      return { halt: true, state: {unsub} };
+      return { halt: true, state: { unsub } };
     }
   });
+
+  // Register vln-html plugin for syntax highlighting
   Velin.plugins.registerPlugin({
     name: 'html',
     track: Velin.trackers.expressionTracker,
-    render: ({ reactiveState, node, tracked }) => {
-      prettier.format(tracked || '', {
+    render: ({ node, tracked }) => {
+      const value = tracked || '';
+      prettier.format(value, {
         parser: 'html',
         plugins: prettierPlugins
       }).then(formatted => {
         const escaped = formatted
           .replace(/&/g, "&amp;")
           .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;")
-          .replace(/"/g, "&quot;")
-          .replace(/'/g, "&#039;");
+          .replace(/>/g, "&gt;");
+        node.innerHTML = `<pre><code class="language-markup">${escaped}</code></pre>`;
+        Prism.highlightAllUnder(node);
+      }).catch(() => {
+        const escaped = value
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
         node.innerHTML = `<pre><code class="language-markup">${escaped}</code></pre>`;
         Prism.highlightAllUnder(node);
       });
     }
   });
+
+  // Register vln-json plugin for JSON formatting with syntax highlighting
+  Velin.plugins.registerPlugin({
+    name: 'json',
+    track: Velin.trackers.expressionTracker,
+    render: ({ node, tracked }) => {
+      const json = JSON.stringify(tracked, null, 2);
+      const escaped = json
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+
+      node.innerHTML = `<pre><code class="language-javascript">${escaped}</code></pre>`;
+      Prism.highlightAllUnder(node);
+    }
+  });
+
+  // Initialize state
   const bound = Velin.bind(document.body, {
+    // Core data
     username: "Alex",
     isLoggedIn: true,
-    tooltipText: "Hello",
-    changeHeidiTmp: '',
+    tooltipText: "Hello, hover over me!",
     isActive: true,
     isEnabled: false,
     friends: friends.slice(0, 2),
     someClass: "nice-class",
     classObject: { "this-class": true, "not-this-one": false },
-    running: false,
-    diffs: [],
+
+    // UI state
+    examples: [],
+    currentTab: 0,
+
+    // Functions
     grabClasses: (isActive, isEnabled) => {
-      let arr = [isActive ? 'active' : null, !isEnabled ? 'disabled' : null].filter(c => !!c);
+      let arr = [isActive ? 'active' : null, isEnabled ? null : 'disabled'].filter(c => !!c);
       return arr.length ? arr.join(' and ') : 'no';
     },
     update: () => {
       const shuffled = friends.slice().sort(() => 0.5 - Math.random());
-      const count = Math.floor(Math.random() * (friends.length) + 1);
+      const count = Math.floor(Math.random() * friends.length) + 1;
       setTimeout(() => bound.friends = shuffled.slice(0, count), 0);
     },
+    selectTab: (idx) => {
+      bound.currentTab = idx;
+    }
   });
 </script>
 
