@@ -64,7 +64,7 @@
         <header class="px-4 py-2 bg-gray-750 border-b border-gray-700 flex-shrink-0">
           <h2 class="text-sm font-semibold text-gray-300">State</h2>
         </header>
-        <div class="flex-1 overflow-auto p-4 text-xs" vln-html="stateDump"></div>
+        <div class="flex-1 overflow-auto p-4 text-xs" vln-state="{ username, isLoggedIn, tooltipText, isActive, isEnabled, friends, someClass, classObject, currentTab }"></div>
       </section>
 
       <!-- Bottom-Right: Live Render -->
@@ -246,6 +246,22 @@
     }
   });
 
+  // Register vln-state plugin for state dump with syntax highlighting
+  Velin.plugins.registerPlugin({
+    name: 'state',
+    track: Velin.trackers.expressionTracker,
+    render: ({ node, tracked }) => {
+      const json = JSON.stringify(tracked, null, 2);
+      const escaped = json
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+
+      node.innerHTML = `<pre><code class="language-javascript">${escaped}</code></pre>`;
+      Prism.highlightAllUnder(node);
+    }
+  });
+
   // Initialize state
   const bound = Velin.bind(document.body, {
     // Core data
@@ -262,7 +278,6 @@
     examples: [],
     tabs: [],
     currentTab: null,
-    stateDump: '',
 
     // Functions
     grabClasses: (isActive, isEnabled) => {
@@ -279,19 +294,7 @@
     }
   });
 
-  // Capture interpolated HTML continuously
-  Velin.on('afterProcessNode', ({ node }) => {
-    // Check if this is a fragment render for one of our examples
-    if (node.hasAttribute && node.hasAttribute('vln-fragment')) {
-      const templateId = node.getAttribute('vln-fragment');
-      const example = bound.examples.find(ex => ex.templateId === templateId);
-      if (example && node.innerHTML) {
-        example.interpolatedHtml = node.innerHTML;
-      }
-    }
-  });
-
-  // Capture original HTML for each example
+  // Capture original HTML and build tabs
   setTimeout(() => {
     const exampleNodes = document.querySelectorAll('#example-definitions [vln-diff]');
     exampleNodes.forEach((node, idx) => {
@@ -310,42 +313,17 @@
     if (bound.tabs.length > 0) {
       bound.selectTab(bound.tabs[0].id);
     }
-  }, 200);
 
-  // Update state dump continuously
-  function refreshStateDump() {
-    // Get clean state (exclude functions and internal UI state)
-    const cleanState = {};
-    for (const key in bound) {
-      if (typeof bound[key] === 'function') continue;
-      if (key === 'examples' || key === 'tabs' || key === 'stateDump') continue;
-      cleanState[key] = bound[key];
-    }
-
-    const json = JSON.stringify(cleanState, null, 2);
-    const escaped = json
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;");
-
-    bound.stateDump = `<pre><code class="language-javascript">${escaped}</code></pre>`;
-
-    // Highlight after DOM update
+    // Capture interpolated HTML after initial render
     setTimeout(() => {
-      const codeBlocks = document.querySelectorAll('code.language-javascript');
-      codeBlocks.forEach(block => Prism.highlightElement(block));
-    }, 10);
-  }
-
-  // Watch for ANY state changes and update dump
-  let stateUpdateTimeout;
-  Velin.on('afterProcessNode', () => {
-    clearTimeout(stateUpdateTimeout);
-    stateUpdateTimeout = setTimeout(refreshStateDump, 50);
-  });
-
-  // Initial state dump
-  refreshStateDump();
+      bound.examples.forEach(ex => {
+        const fragment = document.querySelector(`[vln-fragment="${ex.templateId}"]`);
+        if (fragment && fragment.innerHTML) {
+          ex.interpolatedHtml = fragment.innerHTML;
+        }
+      });
+    }, 300);
+  }, 200);
 </script>
 
 </html>
