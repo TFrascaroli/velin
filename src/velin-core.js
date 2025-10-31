@@ -610,8 +610,22 @@ function parse(tokens) {
           throw new Error(`Expected property name, got ${keyToken.type}`);
         }
 
-        expect('PUNCTUATION', ':');
-        const value = parseTernary();
+        // Check for shorthand property syntax: { foo } instead of { foo: foo }
+        let value;
+        const nextToken = peek();
+        if (nextToken && nextToken.type === 'PUNCTUATION' &&
+            (nextToken.value === ',' || nextToken.value === '}')) {
+          // Shorthand syntax: use key as identifier
+          if (keyToken.type !== 'IDENTIFIER') {
+            throw new Error(`Shorthand property syntax requires identifier, got ${keyToken.type}`);
+          }
+          value = { type: 'Identifier', name: key };
+        } else {
+          // Regular syntax: expect colon and value
+          expect('PUNCTUATION', ':');
+          value = parseTernary();
+        }
+
         properties.push({ key, value });
 
         if (peek() && peek().type === 'PUNCTUATION' && peek().value === ',') {
