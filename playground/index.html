@@ -33,8 +33,8 @@
       <button
         vln-loop:tab="tabs"
         vln-on:click="selectTab(tab.id)"
-        vln-class="{ 'bg-gray-700 text-white border-b-2 border-indigo-500': currentTab === tab.id, 'text-gray-400 hover:text-gray-200 hover:bg-gray-750': currentTab !== tab.id }"
         vln-text="tab.title"
+        vln-class="currentTab === tab.id ? 'bg-gray-700 text-white border-b-2 border-indigo-500' : 'text-gray-400 hover:text-gray-200 hover:bg-gray-700/50'"
         class="px-4 py-3 font-medium text-sm transition-colors whitespace-nowrap">
       </button>
     </div>
