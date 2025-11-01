@@ -8,10 +8,15 @@ const files = fs.readdirSync(srcDir).filter(f => f.startsWith('velin-') && f.end
 
 const baseConfig = {
   minify: true,
+  minifyWhitespace: true,
+  minifyIdentifiers: true,
+  minifySyntax: true,
   sourcemap: true,
   format: 'iife',
   bundle: true,
   platform: 'browser',
+  target: 'es2020', // Allow modern syntax for smaller output
+  legalComments: 'none', // Remove license comments
 };
 
 const buildFile = async (file, isDev) => {
