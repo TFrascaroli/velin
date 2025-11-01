@@ -199,7 +199,7 @@ function processPlugin(plugin, reactiveState, expr, node, attributeName, subkey 
 
       return control;
     };
-    const entries = Array.from(depCapture.deps);
+    const entries = [...depCapture.deps];
     const deps = entries.filter(
       (e) =>
         !entries.some(
@@ -209,9 +209,8 @@ function processPlugin(plugin, reactiveState, expr, node, attributeName, subkey 
             [".", "["].includes(other.charAt(e.length))
         )
     );
-    if (deps.length)
-      if (__DEV__)
-        console.log("Dependencies tracked: " + Array.from(deps).join(", "));
+    if (deps.length && __DEV__)
+      console.log("Dependencies tracked: " + deps.join(", "));
     for (const dep of deps) {
       let prop = dep;
       if (reactiveState.interpolations) {
@@ -296,46 +295,17 @@ function tokenize(expr) {
     }
 
     // Multi-char operators
-    if (i + 2 < expr.length && expr.substr(i, 3) === '===') {
-      tokens.push({ type: 'OPERATOR', value: '===' });
-      i += 3;
-      continue;
+    const ops = ['===', '!==', '&&', '||', '>=', '<=', '==', '!='];
+    let matched = false;
+    for (const op of ops) {
+      if (expr.slice(i, i + op.length) === op) {
+        tokens.push({ type: 'OPERATOR', value: op });
+        i += op.length;
+        matched = true;
+        break;
+      }
     }
-    if (i + 2 < expr.length && expr.substr(i, 3) === '!==') {
-      tokens.push({ type: 'OPERATOR', value: '!==' });
-      i += 3;
-      continue;
-    }
-    if (i + 1 < expr.length && expr.substr(i, 2) === '&&') {
-      tokens.push({ type: 'OPERATOR', value: '&&' });
-      i += 2;
-      continue;
-    }
-    if (i + 1 < expr.length && expr.substr(i, 2) === '||') {
-      tokens.push({ type: 'OPERATOR', value: '||' });
-      i += 2;
-      continue;
-    }
-    if (i + 1 < expr.length && expr.substr(i, 2) === '>=') {
-      tokens.push({ type: 'OPERATOR', value: '>=' });
-      i += 2;
-      continue;
-    }
-    if (i + 1 < expr.length && expr.substr(i, 2) === '<=') {
-      tokens.push({ type: 'OPERATOR', value: '<=' });
-      i += 2;
-      continue;
-    }
-    if (i + 1 < expr.length && expr.substr(i, 2) === '==') {
-      tokens.push({ type: 'OPERATOR', value: '==' });
-      i += 2;
-      continue;
-    }
-    if (i + 1 < expr.length && expr.substr(i, 2) === '!=') {
-      tokens.push({ type: 'OPERATOR', value: '!=' });
-      i += 2;
-      continue;
-    }
+    if (matched) continue;
 
     // Check for assignment (not supported)
     if (char === '=') {
@@ -353,7 +323,7 @@ function tokenize(expr) {
       continue;
     }
 
-    throw new Error(`Unexpected character: ${char}`);
+    throw new Error(`Unexpected: ${char}`);
   }
 
   return tokens;
@@ -381,11 +351,20 @@ function parse(tokens) {
     return token;
   }
 
-  function parseTernary() {
-    let node = parseLogicalOr();
+  // Helper to check if current token matches criteria
+  const match = (type, val) => {
+    const t = peek();
+    return t && t.type === type && (!val || t.value === val || val.includes?.(t.value));
+  };
 
-    if (peek() && peek().type === 'PUNCTUATION' && peek().value === '?') {
-      next(); // consume ?
+  // Precedence table for binary operators
+  const prec = [[['||']], [['&&']], [['===', '!==', '==', '!=']], [['>', '<', '>=', '<=']], [['+', '-']], [['*', '/', '%']]];
+
+  function parseTernary() {
+    let node = parseBinary(0);
+
+    if (match('PUNCTUATION', '?')) {
+      next();
       const consequent = parseTernary();
       expect('PUNCTUATION', ':');
       const alternate = parseTernary();
@@ -395,80 +374,23 @@ function parse(tokens) {
     return node;
   }
 
-  function parseLogicalOr() {
-    let left = parseLogicalAnd();
+  // Consolidated binary operator parser with precedence levels
+  function parseBinary(p) {
+    let left = p === 5 ? parseUnary() : parseBinary(p + 1);
 
-    while (peek() && peek().type === 'OPERATOR' && peek().value === '||') {
-      const op = next().value;
-      const right = parseLogicalAnd();
-      left = { type: 'Binary', operator: op, left, right };
-    }
-
-    return left;
-  }
-
-  function parseLogicalAnd() {
-    let left = parseEquality();
-
-    while (peek() && peek().type === 'OPERATOR' && peek().value === '&&') {
-      const op = next().value;
-      const right = parseEquality();
-      left = { type: 'Binary', operator: op, left, right };
-    }
-
-    return left;
-  }
-
-  function parseEquality() {
-    let left = parseComparison();
-
-    while (peek() && peek().type === 'OPERATOR' && ['===', '!==', '==', '!='].includes(peek().value)) {
-      const op = next().value;
-      const right = parseComparison();
-      left = { type: 'Binary', operator: op, left, right };
-    }
-
-    return left;
-  }
-
-  function parseComparison() {
-    let left = parseAdditive();
-
-    while (peek() && peek().type === 'OPERATOR' && ['>', '<', '>=', '<='].includes(peek().value)) {
-      const op = next().value;
-      const right = parseAdditive();
-      left = { type: 'Binary', operator: op, left, right };
-    }
-
-    return left;
-  }
-
-  function parseAdditive() {
-    let left = parseMultiplicative();
-
-    while (peek() && peek().type === 'OPERATOR' && ['+', '-'].includes(peek().value)) {
-      const op = next().value;
-      const right = parseMultiplicative();
-      left = { type: 'Binary', operator: op, left, right };
-    }
-
-    return left;
-  }
-
-  function parseMultiplicative() {
-    let left = parseUnary();
-
-    while (peek() && peek().type === 'OPERATOR' && ['*', '/', '%'].includes(peek().value)) {
-      const op = next().value;
-      const right = parseUnary();
-      left = { type: 'Binary', operator: op, left, right };
+    if (p < 6) {
+      while (match('OPERATOR', prec[p][0])) {
+        const op = next().value;
+        const right = p === 5 ? parseUnary() : parseBinary(p + 1);
+        left = { type: 'Binary', operator: op, left, right };
+      }
     }
 
     return left;
   }
 
   function parseUnary() {
-    if (peek() && peek().type === 'OPERATOR' && ['!', '-', '+'].includes(peek().value)) {
+    if (match('OPERATOR', ['!', '-', '+'])) {
       const op = next().value;
       const argument = parseUnary();
       return { type: 'Unary', operator: op, argument };
@@ -480,15 +402,13 @@ function parse(tokens) {
   function parseCall() {
     let node = parseMember();
 
-    while (peek() && peek().type === 'PUNCTUATION' && peek().value === '(') {
-      next(); // consume (
+    while (match('PUNCTUATION', '(')) {
+      next();
       const args = [];
 
-      while (!peek() || (peek().type !== 'PUNCTUATION' || peek().value !== ')')) {
+      while (!match('PUNCTUATION', ')')) {
         args.push(parseTernary());
-        if (peek() && peek().type === 'PUNCTUATION' && peek().value === ',') {
-          next(); // consume ,
-        }
+        if (match('PUNCTUATION', ',')) next();
       }
 
       expect('PUNCTUATION', ')');
@@ -502,12 +422,12 @@ function parse(tokens) {
     let node = parsePrimary();
 
     while (true) {
-      if (peek() && peek().type === 'PUNCTUATION' && peek().value === '.') {
-        next(); // consume .
+      if (match('PUNCTUATION', '.')) {
+        next();
         const property = expect('IDENTIFIER');
         node = { type: 'Member', object: node, property: property.value, computed: false };
-      } else if (peek() && peek().type === 'PUNCTUATION' && peek().value === '[') {
-        next(); // consume [
+      } else if (match('PUNCTUATION', '[')) {
+        next();
         const property = parseTernary();
         expect('PUNCTUATION', ']');
         node = { type: 'Member', object: node, property, computed: true };
@@ -523,10 +443,10 @@ function parse(tokens) {
     const token = peek();
 
     if (!token) {
-      throw new Error('Unexpected end of expression');
+      throw new Error('Unexpected end');
     }
 
-    if (token.type === 'NUMBER' || token.type === 'STRING' || token.type === 'BOOLEAN' || token.type === 'NULL' || token.type === 'UNDEFINED') {
+    if (['NUMBER', 'STRING', 'BOOLEAN', 'NULL', 'UNDEFINED'].includes(token.type)) {
       next();
       return { type: 'Literal', value: token.value };
     }
@@ -536,19 +456,19 @@ function parse(tokens) {
       return { type: 'Identifier', name: token.value };
     }
 
-    if (token.type === 'PUNCTUATION' && token.value === '(') {
-      next(); // consume (
+    if (match('PUNCTUATION', '(')) {
+      next();
       const node = parseTernary();
       expect('PUNCTUATION', ')');
       return node;
     }
 
     // Object literal
-    if (token.type === 'PUNCTUATION' && token.value === '{') {
-      next(); // consume {
+    if (match('PUNCTUATION', '{')) {
+      next();
       const properties = [];
 
-      while (peek() && !(peek().type === 'PUNCTUATION' && peek().value === '}')) {
+      while (!match('PUNCTUATION', '}')) {
         // Parse property key
         let key;
         const keyToken = peek();
@@ -557,17 +477,15 @@ function parse(tokens) {
         } else if (keyToken.type === 'STRING') {
           key = next().value;
         } else {
-          throw new Error(`Expected property name, got ${keyToken.type}`);
+          throw new Error(`Bad property name`);
         }
 
         // Check for shorthand property syntax: { foo } instead of { foo: foo }
         let value;
-        const nextToken = peek();
-        if (nextToken && nextToken.type === 'PUNCTUATION' &&
-            (nextToken.value === ',' || nextToken.value === '}')) {
+        if (match('PUNCTUATION', [',', '}'])) {
           // Shorthand syntax: use key as identifier
           if (keyToken.type !== 'IDENTIFIER') {
-            throw new Error(`Shorthand property syntax requires identifier, got ${keyToken.type}`);
+            throw new Error(`Bad shorthand`);
           }
           value = { type: 'Identifier', name: key };
         } else {
@@ -578,16 +496,14 @@ function parse(tokens) {
 
         properties.push({ key, value });
 
-        if (peek() && peek().type === 'PUNCTUATION' && peek().value === ',') {
-          next(); // consume ,
-        }
+        if (match('PUNCTUATION', ',')) next();
       }
 
       expect('PUNCTUATION', '}');
       return { type: 'ObjectLiteral', properties };
     }
 
-    throw new Error(`Unexpected token: ${token.type} ${token.value}`);
+    throw new Error(`Unexpected: ${token.type}`);
   }
 
   return parseTernary();
@@ -617,7 +533,7 @@ function evalAst(ast, context) {
     case 'Call':
       const callee = evalAst(ast.callee, context);
       if (typeof callee !== 'function') {
-        throw new Error('Cannot call non-function');
+        throw new Error('Not a function');
       }
       const args = ast.arguments.map(arg => evalAst(arg, context));
       // Get the object for 'this' binding
@@ -630,33 +546,16 @@ function evalAst(ast, context) {
     case 'Binary':
       const left = evalAst(ast.left, context);
       const right = evalAst(ast.right, context);
-      switch (ast.operator) {
-        case '+': return left + right;
-        case '-': return left - right;
-        case '*': return left * right;
-        case '/': return left / right;
-        case '%': return left % right;
-        case '>': return left > right;
-        case '<': return left < right;
-        case '>=': return left >= right;
-        case '<=': return left <= right;
-        case '===': return left === right;
-        case '!==': return left !== right;
-        case '==': return left == right;
-        case '!=': return left != right;
-        case '&&': return left && right;
-        case '||': return left || right;
-        default: throw new Error(`Unknown operator: ${ast.operator}`);
-      }
+      const op = ast.operator;
+      return op === '+' ? left + right : op === '-' ? left - right : op === '*' ? left * right :
+             op === '/' ? left / right : op === '%' ? left % right : op === '>' ? left > right :
+             op === '<' ? left < right : op === '>=' ? left >= right : op === '<=' ? left <= right :
+             op === '===' ? left === right : op === '!==' ? left !== right : op === '==' ? left == right :
+             op === '!=' ? left != right : op === '&&' ? left && right : left || right;
 
     case 'Unary':
       const arg = evalAst(ast.argument, context);
-      switch (ast.operator) {
-        case '!': return !arg;
-        case '-': return -arg;
-        case '+': return +arg;
-        default: throw new Error(`Unknown unary operator: ${ast.operator}`);
-      }
+      return ast.operator === '!' ? !arg : ast.operator === '-' ? -arg : +arg;
 
     case 'Ternary':
       const test = evalAst(ast.test, context);
@@ -670,7 +569,7 @@ function evalAst(ast, context) {
       return result;
 
     default:
-      throw new Error(`Unknown AST node type: ${ast.type}`);
+      throw new Error(`Bad AST: ${ast.type}`);
   }
 }
 
