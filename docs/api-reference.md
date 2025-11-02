@@ -58,7 +58,7 @@ Returns a setter function for a property expression.
 **Example:**
 ```javascript
 const setName = Velin.getSetter(reactiveState, 'vln.user.name');
-setName('Charlie'); // equivalent to: vln.user.name = 'Charlie'
+setName('Charlie'); // equivalent to: user.name = 'Charlie'
 ```
 
 **Note:** This is used internally by plugins like `vln-input`. Most users won't need this.
@@ -308,8 +308,8 @@ const vln = Velin.bind(root, {
 ```
 
 ```html
-<button vln-on:click="vln.increment()">+</button>
-<button vln-on:click="vln.reset()">Reset</button>
+<button vln-on:[^=]+="increment()">+</button>
+<button vln-on:[^=]+="reset()">Reset</button>
 ```
 
 ### Async Methods
