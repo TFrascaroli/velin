@@ -39,16 +39,16 @@ Complete form with validation, error messages, and submission:
   <div id="app">
     <h1>Sign Up</h1>
 
-    <form vln-on:submit="event.preventDefault(); vln.handleSubmit()">
+    <form vln-on:submit="event.preventDefault(); handleSubmit()">
       <div class="field">
         <label>Email</label>
         <input
-          vln-input="vln.email"
-          vln-class="{ invalid: vln.touched.email && !vln.isEmailValid }"
-          vln-on:blur="vln.touched.email = true"
+          vln-input="email"
+          vln-class="{ invalid: touched.email && !isEmailValid }"
+          vln-on:[^=]+="touched.email = true"
           type="email"
         />
-        <div vln-if="vln.touched.email && !vln.isEmailValid" class="error">
+        <div vln-if="touched.email && !isEmailValid" class="error">
           Please enter a valid email address
         </div>
       </div>
@@ -56,34 +56,34 @@ Complete form with validation, error messages, and submission:
       <div class="field">
         <label>Password</label>
         <input
-          vln-input="vln.password"
-          vln-class="{ invalid: vln.touched.password && !vln.isPasswordValid }"
-          vln-on:blur="vln.touched.password = true"
+          vln-input="password"
+          vln-class="{ invalid: touched.password && !isPasswordValid }"
+          vln-on:[^=]+="touched.password = true"
           type="password"
         />
-        <div vln-if="vln.touched.password && !vln.isPasswordValid" class="error">
+        <div vln-if="touched.password && !isPasswordValid" class="error">
           Password must be at least 8 characters
         </div>
       </div>
 
       <div class="field">
         <label>
-          <input type="checkbox" vln-input="vln.agreed" />
+          <input type="checkbox" vln-input="agreed" />
           I agree to the terms and conditions
         </label>
-        <div vln-if="vln.touched.agreed && !vln.agreed" class="error">
+        <div vln-if="touched.agreed && !agreed" class="error">
           You must agree to the terms
         </div>
       </div>
 
       <button
         type="submit"
-        vln-attr:disabled="!vln.canSubmit || vln.loading">
-        <span vln-if="!vln.loading">Sign Up</span>
-        <span vln-if="vln.loading">Creating account...</span>
+        vln-attr:disabled="!canSubmit || loading">
+        <span vln-if="!loading">Sign Up</span>
+        <span vln-if="loading">Creating account...</span>
       </button>
 
-      <div vln-if="vln.success" class="success">
+      <div vln-if="success" class="success">
         Account created successfully!
       </div>
     </form>
@@ -164,25 +164,25 @@ Managing a list with create, read, update, delete:
   <h1>Task Manager</h1>
 
   <!-- Create -->
-  <form vln-on:submit="event.preventDefault(); vln.addTask()">
-    <input vln-input="vln.newTask" placeholder="New task..." />
+  <form vln-on:submit="event.preventDefault(); addTask()">
+    <input vln-input="newTask" placeholder="New task..." />
     <button type="submit">Add</button>
   </form>
 
   <!-- Read / Update / Delete -->
   <ul>
-    <li vln-loop:task="vln.tasks">
-      <div vln-if="vln.editingId !== vln.task.id">
-        <input type="checkbox" vln-input="vln.task.done" />
-        <span vln-text="vln.task.text"></span>
-        <button vln-on:click="vln.startEdit(vln.task)">Edit</button>
-        <button vln-on:click="vln.deleteTask(vln.task.id)">Delete</button>
+    <li vln-loop:[^=]+="tasks">
+      <div vln-if="editingId !== task.id">
+        <input type="checkbox" vln-input="task.done" />
+        <span vln-text="task.text"></span>
+        <button vln-on:[^=]+="startEdit(task)">Edit</button>
+        <button vln-on:[^=]+="deleteTask(task.id)">Delete</button>
       </div>
 
-      <div vln-if="vln.editingId === vln.task.id">
-        <input vln-input="vln.editText" />
-        <button vln-on:click="vln.saveEdit(vln.task)">Save</button>
-        <button vln-on:click="vln.cancelEdit()">Cancel</button>
+      <div vln-if="editingId === task.id">
+        <input vln-input="editText" />
+        <button vln-on:[^=]+="saveEdit(task)">Save</button>
+        <button vln-on:[^=]+="cancelEdit()">Cancel</button>
       </div>
     </li>
   </ul>
@@ -240,20 +240,20 @@ Real-time search with filtering:
 ```html
 <div id="app">
   <input
-    vln-input="vln.search"
+    vln-input="search"
     placeholder="Search users..."
     type="search"
   />
 
   <div>
-    Showing <strong vln-text="vln.filteredUsers.length"></strong>
-    of <strong vln-text="vln.users.length"></strong> users
+    Showing <strong vln-text="filteredUsers.length"></strong>
+    of <strong vln-text="users.length"></strong> users
   </div>
 
   <ul>
-    <li vln-loop:user="vln.filteredUsers">
-      <strong vln-text="vln.user.name"></strong>
-      - <span vln-text="vln.user.email"></span>
+    <li vln-loop:[^=]+="filteredUsers">
+      <strong vln-text="user.name"></strong>
+      - <span vln-text="user.email"></span>
     </li>
   </ul>
 </div>
@@ -289,16 +289,16 @@ Reusable modal pattern:
 
 ```html
 <div id="app">
-  <button vln-on:click="vln.openModal()">Open Modal</button>
+  <button vln-on:[^=]+="openModal()">Open Modal</button>
 
   <div
-    vln-if="vln.isModalOpen"
+    vln-if="isModalOpen"
     class="modal-overlay"
-    vln-on:click="vln.closeModal()">
+    vln-on:[^=]+="closeModal()">
     <div class="modal-content" vln-on:click="event.stopPropagation()">
       <h2>Modal Title</h2>
-      <p vln-text="vln.modalMessage"></p>
-      <button vln-on:click="vln.closeModal()">Close</button>
+      <p vln-text="modalMessage"></p>
+      <button vln-on:[^=]+="closeModal()">Close</button>
     </div>
   </div>
 </div>
@@ -352,25 +352,25 @@ Tab navigation component:
 <div id="app">
   <div class="tabs">
     <button
-      vln-loop:tab="vln.tabs"
-      vln-text="vln.tab"
-      vln-class="{ active: vln.activeTab === vln.tab }"
-      vln-on:click="vln.activeTab = vln.tab">
+      vln-loop:[^=]+="tabs"
+      vln-text="tab"
+      vln-class="{ active: activeTab === tab }"
+      vln-on:[^=]+="activeTab = vln.tab">
     </button>
   </div>
 
   <div class="tab-content">
-    <div vln-if="vln.activeTab === 'Home'">
+    <div vln-if="activeTab === 'Home'">
       <h2>Home</h2>
       <p>Welcome to the home tab!</p>
     </div>
 
-    <div vln-if="vln.activeTab === 'Profile'">
+    <div vln-if="activeTab === 'Profile'">
       <h2>Profile</h2>
       <p>Your profile information goes here.</p>
     </div>
 
-    <div vln-if="vln.activeTab === 'Settings'">
+    <div vln-if="activeTab === 'Settings'">
       <h2>Settings</h2>
       <p>Adjust your settings here.</p>
     </div>
@@ -416,16 +416,16 @@ Expandable/collapsible sections:
 
 ```html
 <div id="app">
-  <div vln-loop:item="vln.items" class="accordion-item">
+  <div vln-loop:[^=]+="items" class="accordion-item">
     <button
-      vln-on:click="vln.toggle(vln.item.id)"
+      vln-on:[^=]+="toggle(item.id)"
       class="accordion-header">
-      <span vln-text="vln.item.title"></span>
-      <span vln-text="vln.isOpen(vln.item.id) ? '−' : '+'"></span>
+      <span vln-text="item.title"></span>
+      <span vln-text="isOpen(item.id) ? '−' : '+'"></span>
     </button>
 
-    <div vln-if="vln.isOpen(vln.item.id)" class="accordion-content">
-      <p vln-text="vln.item.content"></p>
+    <div vln-if="isOpen(item.id)" class="accordion-content">
+      <p vln-text="item.content"></p>
     </div>
   </div>
 </div>
@@ -483,15 +483,15 @@ Search with debouncing to reduce API calls:
 
 ```html
 <div id="app">
-  <input vln-input="vln.query" placeholder="Search..." />
+  <input vln-input="query" placeholder="Search..." />
 
-  <div vln-if="vln.loading">Searching...</div>
+  <div vln-if="loading">Searching...</div>
 
-  <ul vln-if="!vln.loading && vln.results.length">
-    <li vln-loop:result="vln.results" vln-text="vln.result.name"></li>
+  <ul vln-if="!loading && results.length">
+    <li vln-loop:[^=]+="results" vln-text="result.name"></li>
   </ul>
 
-  <div vln-if="!vln.loading && vln.query && !vln.results.length">
+  <div vln-if="!loading && query && !results.length">
     No results found
   </div>
 </div>
@@ -526,15 +526,15 @@ const vln = Velin.bind(document.getElementById('app'), {
 // Watch query changes with debouncing
 let lastQuery = vln.query;
 setInterval(() => {
-  if (vln.query !== lastQuery) {
+  if (query !== lastQuery) {
     lastQuery = vln.query;
 
-    if (vln.debounceTimer) {
-      clearTimeout(vln.debounceTimer);
+    if (debounceTimer) {
+      clearTimeout(debounceTimer);
     }
 
     vln.debounceTimer = setTimeout(() => {
-      vln.search();
+      search();
     }, 300);
   }
 }, 50);
@@ -552,29 +552,29 @@ Product listing with cart:
   <h1>Shop</h1>
 
   <div class="products">
-    <div vln-loop:product="vln.products" class="product">
-      <h3 vln-text="vln.product.name"></h3>
-      <p vln-text="'$' + vln.product.price"></p>
-      <button vln-on:click="vln.addToCart(vln.product)">Add to Cart</button>
+    <div vln-loop:[^=]+="products" class="product">
+      <h3 vln-text="product.name"></h3>
+      <p vln-text="'$' + product.price"></p>
+      <button vln-on:[^=]+="addToCart(product)">Add to Cart</button>
     </div>
   </div>
 
   <div class="cart">
-    <h2>Cart (<span vln-text="vln.cart.length"></span>)</h2>
+    <h2>Cart (<span vln-text="cart.length"></span>)</h2>
 
-    <div vln-if="vln.cart.length">
-      <div vln-loop:item="vln.cart">
-        <span vln-text="vln.item.name"></span>
-        - $<span vln-text="vln.item.price"></span>
-        <button vln-on:click="vln.removeFromCart(vln.item)">Remove</button>
+    <div vln-if="cart.length">
+      <div vln-loop:[^=]+="cart">
+        <span vln-text="item.name"></span>
+        - $<span vln-text="item.price"></span>
+        <button vln-on:[^=]+="removeFromCart(item)">Remove</button>
       </div>
 
       <div>
-        <strong>Total: $<span vln-text="vln.total"></span></strong>
+        <strong>Total: $<span vln-text="total"></span></strong>
       </div>
     </div>
 
-    <div vln-if="!vln.cart.length">
+    <div vln-if="!cart.length">
       Cart is empty
     </div>
   </div>
