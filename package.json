@@ -29,6 +29,7 @@
     "http-server": "^14.1.1",
     "jsdom": "^26.1.0",
     "postcss": "^8.5.4",
+    "puppeteer": "^24.27.0",
     "react": "^19.1.0",
     "tailwindcss": "^4.1.8",
     "typescript": "^5.8.3",
