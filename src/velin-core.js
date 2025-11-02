@@ -904,7 +904,11 @@ function processNode(node, reactiveState) {
 
   // List all applicable plugins
   const applicable = [];
-  for (const { name, value } of Array.from(node.attributes)) {
+  const attrs = node.attributes;
+  for (let i = 0; i < attrs.length; i++) {
+    const attr = attrs[i];
+    const name = attr.name;
+    const value = attr.value;
     if (!name.startsWith("vln-")) continue;
 
     const key = name.slice(4);
@@ -946,8 +950,10 @@ function processNode(node, reactiveState) {
     }
   }
 
-  // Sort by priorities (highest = first)
-  applicable.sort((a, b) => (b.plugin.priority || 0) - (a.plugin.priority || 0));
+  // Sort by priorities (highest = first) - skip if 0 or 1 item
+  if (applicable.length > 1) {
+    applicable.sort((a, b) => (b.plugin.priority || 0) - (a.plugin.priority || 0));
+  }
 
   // Apply
   for (const { plugin, name, value, subcommand } of applicable) {
@@ -957,8 +963,9 @@ function processNode(node, reactiveState) {
   }
 
   // Process tree
-  for (const child of Array.from(node.children)) {
-    processNode(child, reactiveState);
+  const children = node.children;
+  for (let i = 0; i < children.length; i++) {
+    processNode(children[i], reactiveState);
   }
 }
 
