@@ -9,7 +9,7 @@ This guide will walk you through the basics of using Velin to add reactivity to 
 Add this to your HTML `<head>`:
 
 ```html
-<script src="https://unpkg.com/velin/dist/velin-all.min.js"></script>
+<script src="https://unpkg.com/velin/dist/build/velin-all.min.js"></script>
 ```
 
 ### Via npm
@@ -42,7 +42,7 @@ Create an HTML file:
 <head>
   <meta charset="UTF-8">
   <title>My First Velin App</title>
-  <script src="https://unpkg.com/velin/dist/velin-all.min.js"></script>
+  <script src="https://unpkg.com/velin/dist/build/velin-all.min.js"></script>
 </head>
 <body>
   <div id="app">
@@ -209,7 +209,7 @@ Let's build a simple todo app to practice:
 <!DOCTYPE html>
 <html>
 <head>
-  <script src="https://unpkg.com/velin/dist/velin-all.min.js"></script>
+  <script src="https://unpkg.com/velin/dist/build/velin-all.min.js"></script>
   <style>
     .completed { text-decoration: line-through; opacity: 0.6; }
   </style>

@@ -25,7 +25,7 @@ Complete form with validation, error messages, and submission:
 <!DOCTYPE html>
 <html>
 <head>
-  <script src="https://unpkg.com/velin/dist/velin-all.min.js"></script>
+  <script src="https://unpkg.com/velin/dist/build/velin-all.min.js"></script>
   <style>
     .error { color: red; font-size: 0.875rem; }
     .field { margin-bottom: 1rem; }
