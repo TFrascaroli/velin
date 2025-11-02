@@ -257,7 +257,7 @@ Here's a complete example of a user management interface using templates:
 <!DOCTYPE html>
 <html>
 <head>
-  <script src="https://unpkg.com/velin/dist/velin-all.min.js"></script>
+  <script src="https://unpkg.com/velin/dist/build/velin-all.min.js"></script>
   <style>
     .user-card {
       border: 1px solid #ddd;
