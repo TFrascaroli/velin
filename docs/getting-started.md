@@ -277,10 +277,10 @@ const vln = Velin.bind(root, {
   user: { name: 'Alice' }
 });
 
-// This automatically updates any elements using vln.count
+// This automatically updates any elements using count
 vln.count++;
 
-// This automatically updates any elements using vln.user.name
+// This automatically updates any elements using user.name
 vln.user.name = 'Bob';
 
 // Array methods work too

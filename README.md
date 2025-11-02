@@ -103,20 +103,18 @@ Toggles `display: none` based on expression truthiness.
 <div vln-if="!isLoggedIn">Please log in.</div>
 ```
 
-### `vln-loop` — Render arrays
+### `vln-loop:varname` — Render arrays
 
-Clones the element for each item in an array. The loop variable is available in nested directives.
+Repeats the element for each item in an array. The variable name after the colon is scoped to the element and its children.
 
 ```html
 <ul>
-  <li vln-loop="items:item">
+  <li vln-loop:item="items">
     <span vln-text="item.name"></span>
-    <span vln-text="'#' + $index"></span>
+    <button vln-on:click="removeItem(item)">Remove</button>
   </li>
 </ul>
 ```
-
-The `$index` variable is automatically available inside loops.
 
 ### `vln-on:event` — Event handlers
 
@@ -342,7 +340,7 @@ Then call them from directives:
 
 ```html
 <button vln-on:click="addItem('New Item')">Add</button>
-<button vln-on:click="removeItem(item.id)" vln-loop="items:item">
+<button vln-loop:item="items" vln-on:click="removeItem(item.id)">
   Remove <span vln-text="item.name"></span>
 </button>
 ```
