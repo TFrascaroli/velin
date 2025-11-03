@@ -120,7 +120,8 @@ function setupVelinStd(vln) {
         console.warn("[VLN005] Expected event name 'on:event'");
         return;
       }
-      const handler = () => vln.evaluate(reactiveState, expr);
+      // Pass true for allowMutations - event handlers should be able to mutate state
+      const handler = () => vln.evaluate(reactiveState, expr, true);
       node.addEventListener(subkey, handler);
       return { state: { handler } };
     },
