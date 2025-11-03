@@ -6,6 +6,17 @@
  */
 function setupVelinStd(vln) {
   // Default PLUGINS
+
+  /**
+   * vln-text: Sets element's text content reactively.
+   *
+   * @example
+   * <h1 vln-text="title"></h1>
+   * <p vln-text="'Hello, ' + name"></p>
+   * <span vln-text="count * 2"></span>
+   *
+   * @see {@link https://github.com/yourusername/velin/blob/main/docs/directives.md#vln-text|Directives Guide: vln-text}
+   */
   vln.plugins.registerPlugin({
     name: "text",
     track: vln.trackers.expressionTracker,
@@ -14,6 +25,17 @@ function setupVelinStd(vln) {
     },
   });
 
+  /**
+   * vln-if: Shows/hides element based on condition.
+   * Uses CSS display property (element stays in DOM).
+   *
+   * @example
+   * <div vln-if="isLoggedIn">Welcome!</div>
+   * <div vln-if="count > 0">You have items</div>
+   * <p vln-if="!loading && !error">Content</p>
+   *
+   * @see {@link https://github.com/yourusername/velin/blob/main/docs/directives.md#vln-if|Directives Guide: vln-if}
+   */
   vln.plugins.registerPlugin({
     name: "if",
     track: vln.trackers.expressionTracker,
@@ -23,6 +45,18 @@ function setupVelinStd(vln) {
     },
   });
 
+  /**
+   * vln-attr:name: Sets HTML attributes dynamically.
+   * Use null/undefined to remove attribute.
+   *
+   * @example
+   * <img vln-attr:src="imageUrl" vln-attr:alt="imageAlt" />
+   * <button vln-attr:disabled="!isValid">Submit</button>
+   * <a vln-attr:href="'/user/' + userId">Profile</a>
+   * <div vln-attr:data-id="itemId"></div>
+   *
+   * @see {@link https://github.com/yourusername/velin/blob/main/docs/directives.md#vln-attrname|Directives Guide: vln-attr}
+   */
   vln.plugins.registerPlugin({
     name: "attr",
     track: vln.trackers.expressionTracker,
@@ -43,6 +77,24 @@ function setupVelinStd(vln) {
     },
   });
 
+  /**
+   * vln-class: Adds/removes CSS classes dynamically.
+   * Accepts string (class name) or object ({ className: boolean }).
+   *
+   * @example
+   * // String mode
+   * <div vln-class="theme"></div>
+   *
+   * @example
+   * // Object mode (multiple classes)
+   * <div vln-class="{ active: isActive, disabled: !isEnabled }"></div>
+   *
+   * @example
+   * // Conditional expression
+   * <div vln-class="status === 'error' ? 'text-red' : 'text-green'"></div>
+   *
+   * @see {@link https://github.com/yourusername/velin/blob/main/docs/directives.md#vln-class|Directives Guide: vln-class}
+   */
   vln.plugins.registerPlugin({
     name: "class",
     priority: vln.plugins.priorities.OVERRIDABLE,
@@ -105,6 +157,20 @@ function setupVelinStd(vln) {
     },
   });
 
+  /**
+   * vln-on:event: Attaches event listeners.
+   * Evaluates expression when event fires. Use 'event' to access event object.
+   *
+   * @example
+   * <button vln-on:click="count++">Increment</button>
+   * <button vln-on:click="handleClick()">Click me</button>
+   * <form vln-on:submit="event.preventDefault(); handleSubmit()">...</form>
+   * <input vln-on:keydown="lastKey = event.key" />
+   * <div vln-on:mouseenter="isHovering = true"
+   *      vln-on:mouseleave="isHovering = false">Hover</div>
+   *
+   * @see {@link https://github.com/yourusername/velin/blob/main/docs/directives.md#vln-onevent|Directives Guide: vln-on}
+   */
   vln.plugins.registerPlugin({
     name: "on",
     destroy: ({ node, pluginState, subkey }) => {
@@ -126,6 +192,37 @@ function setupVelinStd(vln) {
     },
   });
 
+  /**
+   * vln-input: Creates two-way data binding for form controls.
+   * Works with inputs, textareas, selects, and contenteditable elements.
+   *
+   * @example
+   * // Text input
+   * <input vln-input="name" />
+   *
+   * @example
+   * // Checkbox (boolean value)
+   * <input type="checkbox" vln-input="agreed" />
+   *
+   * @example
+   * // Radio buttons (shared state property)
+   * <input type="radio" name="size" value="small" vln-input="size" />
+   * <input type="radio" name="size" value="large" vln-input="size" />
+   *
+   * @example
+   * // Select dropdown
+   * <select vln-input="country">
+   *   <option value="us">USA</option>
+   *   <option value="uk">UK</option>
+   * </select>
+   *
+   * @example
+   * // ContentEditable
+   * <div contenteditable vln-input="content"></div>
+   *
+   * @see {@link https://github.com/yourusername/velin/blob/main/docs/directives.md#vln-input|Directives Guide: vln-input}
+   * @see {@link https://github.com/yourusername/velin/blob/main/docs/getting-started.md#two-way-binding-vln-input|Getting Started: Two-Way Binding}
+   */
   vln.plugins.registerPlugin({
     name: "input",
     track: vln.trackers.expressionTracker,
@@ -193,6 +290,38 @@ function setupVelinStd(vln) {
     },
   });
 
+  /**
+   * vln-loop:varName: Repeats element for each item in array.
+   * Creates scoped variable for each iteration. Automatically provides $index.
+   *
+   * @example
+   * // Basic list
+   * <ul>
+   *   <li vln-loop:item="items" vln-text="item"></li>
+   * </ul>
+   *
+   * @example
+   * // With object items
+   * <div vln-loop:user="users">
+   *   <h3 vln-text="user.name"></h3>
+   *   <p vln-text="user.email"></p>
+   * </div>
+   *
+   * @example
+   * // Using $index
+   * <li vln-loop:item="items">
+   *   <span vln-text="$index + 1"></span>: <span vln-text="item"></span>
+   * </li>
+   *
+   * @example
+   * // With event handlers
+   * <button vln-loop:item="items" vln-on:click="removeAt($index)">
+   *   Remove <span vln-text="item"></span>
+   * </button>
+   *
+   * @see {@link https://github.com/yourusername/velin/blob/main/docs/directives.md#vln-loop|Directives Guide: vln-loop}
+   * @see {@link https://github.com/yourusername/velin/blob/main/docs/getting-started.md#lists-vln-loop|Getting Started: Lists}
+   */
   vln.plugins.registerPlugin({
     name: "loop",
     priority: vln.plugins.priorities.STOPPER,

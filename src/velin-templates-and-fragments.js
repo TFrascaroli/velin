@@ -6,9 +6,11 @@
  */
 function setupTemplatesAndFragments(vln) {
   /**
-   * Renders a template fragment with scoped reactive state.
+   * vln-fragment: Renders a template with scoped variables.
+   * Creates reusable component-like functionality with data binding.
    *
-   * Usage:
+   * **Basic Usage:**
+   * Define template with required variables using vln-vars attribute:
    *   <template id="userCard" vln-vars="user, onSave">
    *     <div class="card">
    *       <h3 vln-text="user.name"></h3>
@@ -16,16 +18,31 @@ function setupTemplatesAndFragments(vln) {
    *     </div>
    *   </template>
    *
+   * Use template with vln-fragment and provide variables with vln-var:
    *   <div vln-fragment="'userCard'"
    *        vln-var:user="currentUser"
    *        vln-var:onSave="handleSave"></div>
    *
-   * Dynamic templates:
+   * **Dynamic Template Selection:**
    *   <div vln-fragment="user.role + 'Card'" ...></div>
    *
-   * Lifecycle hooks (optional special vars):
-   *   vln-var:onMount="setupComponent()"
-   *   vln-var:onUnmount="cleanupComponent()"
+   * **In Loops:**
+   *   <div vln-loop:user="users"
+   *        vln-fragment="'userCard'"
+   *        vln-var:user="user"
+   *        vln-var:actions="createActions(user)"></div>
+   *
+   * **Lifecycle Hooks (optional special vars):**
+   *   vln-var:onMount="setupComponent()"    - Called after template rendered
+   *   vln-var:onUnmount="cleanupComponent()" - Called before template removed
+   *
+   * **Validation:**
+   * Will error if required variables (from vln-vars) are not provided.
+   * Lifecycle hooks (onMount, onUnmount) are optional and don't need declaration.
+   *
+   * @see {@link https://github.com/yourusername/velin/blob/main/docs/templates.md|Templates & Fragments Guide}
+   * @see {@link https://github.com/yourusername/velin/blob/main/docs/directives.md|Directives Guide}
+   * @see {@link https://github.com/yourusername/velin/blob/main/playground/examples.html|Interactive Examples}
    */
   vln.plugins.registerPlugin({
     name: "fragment",
@@ -182,8 +199,15 @@ function setupTemplatesAndFragments(vln) {
   });
 
   /**
-   * Alternative name for fragment (some devs prefer "use")
-   * Usage: <div vln-use="'templateId'"></div>
+   * vln-use: Alias for vln-fragment.
+   * Some developers prefer this naming convention.
+   *
+   * @example
+   * // These are equivalent:
+   * <div vln-fragment="'userCard'" vln-var:user="currentUser"></div>
+   * <div vln-use="'userCard'" vln-var:user="currentUser"></div>
+   *
+   * @see {@link https://github.com/yourusername/velin/blob/main/docs/templates.md#alternative-vln-use|Templates Guide: vln-use}
    */
   vln.plugins.registerPlugin({
     name: "use",
