@@ -156,11 +156,11 @@ Repeats an element for each item in an array:
 
 ```html
 <ul>
-  <li vln-loop:[^=]+="items" vln-text="item"></li>
+  <li vln-loop:item="items" vln-text="item"></li>
 </ul>
 ```
 
-The syntax is `vln-loop:[^=]+="arrayExpression"`.
+The syntax is `vln-loop:varName="arrayExpression"`.
 
 ### Event Handlers: `vln-on:event`
 
@@ -398,6 +398,6 @@ const vln = Velin.bind(root, {
 <input vln-input="search" placeholder="Search..." />
 
 <ul>
-  <li vln-loop:[^=]+="filteredItems" vln-text="item"></li>
+  <li vln-loop:item="filteredItems" vln-text="item"></li>
 </ul>
 ```
