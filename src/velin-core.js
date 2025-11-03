@@ -71,7 +71,7 @@ const DefaultPluginPriorities = {
 /** @typedef {(def: VelinPlugin) => void} RegisterPlugin */
 /** @typedef {(plugin: VelinPlugin, reactiveState: ReactiveState, expr: string, node: HTMLElement, attributeName: string, subkey?: string | null) => any} ProcessPlugin */
 
-/** @typedef {(reactiveState: ReactiveState, expr: string) => any} Evaluate */
+/** @typedef {(reactiveState: ReactiveState, expr: string, allowMutations?: boolean) => any} Evaluate */
 /** @typedef {(reactiveState: ReactiveState, expr: string) => (value: any) => void} GetSetter */
 /** @typedef {(prop: string, reactiveState: ReactiveState) => void} TriggerEffects */
 /** @typedef {(node: Node, reactiveState: ReactiveState) => void} ProcessNode */
@@ -511,8 +511,12 @@ function parse(tokens) {
 
 /**
  * Evaluates AST with given context
+ * @param {Object} ast - The AST node
+ * @param {Object} context - The context object (reactive proxy)
+ * @param {ReactiveState|null} reactiveState - The reactive state (for mutation control)
+ * @param {boolean} allowMutations - Whether to allow mutations during function calls
  */
-function evalAst(ast, context) {
+function evalAst(ast, context, reactiveState = null, allowMutations = false) {
   switch (ast.type) {
     case 'Literal':
       return ast.value;
@@ -520,54 +524,92 @@ function evalAst(ast, context) {
     case 'Identifier':
       return context[ast.name];
 
-    case 'Member':
-      const obj = evalAst(ast.object, context);
+    case 'Member': {
+      const obj = evalAst(ast.object, context, reactiveState, allowMutations);
       if (obj == null) return undefined;
       if (ast.computed) {
-        const prop = evalAst(ast.property, context);
+        const prop = evalAst(ast.property, context, reactiveState, allowMutations);
         return obj[prop];
       } else {
         return obj[ast.property];
       }
-
-    case 'Call':
-      const callee = evalAst(ast.callee, context);
+    }
+    case 'Call': {
+      const callee = evalAst(ast.callee, context, reactiveState, allowMutations);
       if (typeof callee !== 'function') {
-        throw new Error('Not a function');
+        throw new TypeError('Not a function');
       }
-      const args = ast.arguments.map(arg => evalAst(arg, context));
+      const args = ast.arguments.map(arg => evalAst(arg, context, reactiveState, allowMutations));
       // Get the object for 'this' binding
-      let thisArg = undefined;
+      let thisArg = context;
       if (ast.callee.type === 'Member') {
-        thisArg = evalAst(ast.callee.object, context);
+        thisArg = evalAst(ast.callee.object, context, reactiveState, allowMutations);
       }
-      return callee.apply(thisArg, args);
 
-    case 'Binary':
-      const left = evalAst(ast.left, context);
-      const right = evalAst(ast.right, context);
-      const op = ast.operator;
-      return op === '+' ? left + right : op === '-' ? left - right : op === '*' ? left * right :
-             op === '/' ? left / right : op === '%' ? left % right : op === '>' ? left > right :
-             op === '<' ? left < right : op === '>=' ? left >= right : op === '<=' ? left <= right :
-             op === '===' ? left === right : op === '!==' ? left !== right : op === '==' ? left == right :
-             op === '!=' ? left != right : op === '&&' ? left && right : left || right;
+      // Temporarily disable evaluating flag if mutations are allowed (for event handlers)
+      const shouldAllowMutations = allowMutations && reactiveState;
+      const wasEvaluating = shouldAllowMutations ? reactiveState.ø__control.evaluating : false;
 
-    case 'Unary':
-      const arg = evalAst(ast.argument, context);
-      return ast.operator === '!' ? !arg : ast.operator === '-' ? -arg : +arg;
+      if (shouldAllowMutations) {
+        reactiveState.ø__control.evaluating = false;
+      }
 
-    case 'Ternary':
-      const test = evalAst(ast.test, context);
-      return test ? evalAst(ast.consequent, context) : evalAst(ast.alternate, context);
+      try {
+        return callee.apply(thisArg, args);
+      } finally {
+        if (shouldAllowMutations) {
+          reactiveState.ø__control.evaluating = wasEvaluating;
+        }
+      }
+    }
 
-    case 'ObjectLiteral':
+    case 'Binary': {
+      const left = evalAst(ast.left, context, reactiveState, allowMutations);
+      const right = evalAst(ast.right, context, reactiveState, allowMutations);
+      const ops = {
+        '+':  (a, b) => a + b,
+        '-':  (a, b) => a - b,
+        '*':  (a, b) => a * b,
+        '/':  (a, b) => a / b,
+        '%':  (a, b) => a % b,
+        '>':  (a, b) => a > b,
+        '<':  (a, b) => a < b,
+        '>=': (a, b) => a >= b,
+        '<=': (a, b) => a <= b,
+        '===':(a, b) => a === b,
+        '!==':(a, b) => a !== b,
+        '==': (a, b) => a == b,
+        '!=': (a, b) => a != b,
+        '&&': (a, b) => a && b,
+        '||': (a, b) => a || b,
+      };
+
+      return (ops[ast.operator] || (() => undefined))(left, right);
+
+    }
+
+    case 'Unary': {
+      const arg = evalAst(ast.argument, context, reactiveState, allowMutations);
+      const ops = {
+        '!':  (a) => !a,
+        '-':  (a) => -a,
+      };
+
+      return (ops[ast.operator] || (() => undefined))(arg);
+    }
+
+    case 'Ternary': {
+      const test = evalAst(ast.test, context, reactiveState, allowMutations);
+      return test ? evalAst(ast.consequent, context, reactiveState, allowMutations) : evalAst(ast.alternate, context, reactiveState, allowMutations);
+    }
+
+    case 'ObjectLiteral': {
       const result = {};
       for (const prop of ast.properties) {
-        result[prop.key] = evalAst(prop.value, context);
+        result[prop.key] = evalAst(prop.value, context, reactiveState, allowMutations);
       }
       return result;
-
+    }
     default:
       throw new Error(`Bad AST: ${ast.type}`);
   }
@@ -577,18 +619,21 @@ function evalAst(ast, context) {
  * Evaluates an expression against the reactive state with optional context proxying
  * CSP-safe implementation using tokenizer + parser + AST walker
  *
- * @type {Evaluate}
+ * @param {ReactiveState} reactiveState - The reactive state
+ * @param {string} expr - Expression to evaluate
+ * @param {boolean} allowMutations - If true, allows called functions to mutate state (for event handlers)
+ * @returns {any} Result of evaluation
  */
-function evaluate(reactiveState, expr) {
+function evaluate(reactiveState, expr, allowMutations = false) {
   reactiveState.ø__control.evaluating = true;
   try {
     const inter = reactiveState.interpolations;
     const contextualizedProxy = new Proxy(reactiveState.state, {
       get(target, prop, receiver) {
         const propStr = String(prop);
-        if (inter && inter.has(propStr)) {
+        if (inter?.has(propStr)) {
           const interp = inter.get(propStr);
-          return evaluate(reactiveState, interp);
+          return evaluate(reactiveState, interp, allowMutations);
         }
         return Reflect.get(target, prop, receiver);
       },
@@ -605,8 +650,8 @@ function evaluate(reactiveState, expr) {
     const tokens = tokenize(expr);
     const ast = parse(tokens);
 
-    // Directly use the contextualized proxy as the evaluation context
-    return evalAst(ast, contextualizedProxy);
+    // Pass allowMutations through to evalAst
+    return evalAst(ast, contextualizedProxy, reactiveState, allowMutations);
   } catch (err) {
     console.error(
       `Velin evaluate() error in expression "${expr}".`
