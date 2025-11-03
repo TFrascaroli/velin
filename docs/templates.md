@@ -17,8 +17,8 @@ Use the standard HTML `<template>` tag with an `id` and declare required variabl
 ```html
 <template id="userCard" vln-vars="user">
   <div class="card">
-    <h3 vln-text="vln.user.name"></h3>
-    <p vln-text="vln.user.email"></p>
+    <h3 vln-text="user.name"></h3>
+    <p vln-text="user.email"></p>
   </div>
 </template>
 ```
@@ -28,7 +28,7 @@ Use the standard HTML `<template>` tag with an `id` and declare required variabl
 Use `vln-fragment` to instantiate the template:
 
 ```html
-<div vln-fragment="'userCard'" vln-var:user="vln.currentUser"></div>
+<div vln-fragment="'userCard'" vln-var:user="currentUser"></div>
 ```
 
 **Important:** Template names in `vln-fragment` are JavaScript expressions, so literal strings need quotes: `'userCard'`
@@ -42,9 +42,9 @@ Use `vln-vars="var1, var2"` on the `<template>` tag to declare required variable
 ```html
 <template id="productCard" vln-vars="product, onAddToCart">
   <div class="product">
-    <h3 vln-text="vln.product.name"></h3>
-    <p vln-text="'$' + vln.product.price"></p>
-    <button vln-on:click="vln.onAddToCart(vln.product)">Add to Cart</button>
+    <h3 vln-text="product.name"></h3>
+    <p vln-text="'$' + product.price"></p>
+    <button vln-on:click="onAddToCart(product)">Add to Cart</button>
   </div>
 </template>
 ```
@@ -56,8 +56,8 @@ Pass variables using `vln-var:variableName="expression"`:
 ```html
 <div
   vln-fragment="'productCard'"
-  vln-var:product="vln.selectedProduct"
-  vln-var:onAddToCart="vln.handleAddToCart">
+  vln-var:product="selectedProduct"
+  vln-var:onAddToCart="handleAddToCart">
 </div>
 ```
 
@@ -67,13 +67,13 @@ Velin validates that all required variables are provided:
 
 ```html
 <!-- ERROR: Missing 'onAddToCart' variable -->
-<div vln-fragment="'productCard'" vln-var:product="vln.selectedProduct"></div>
+<div vln-fragment="'productCard'" vln-var:product="selectedProduct"></div>
 ```
 
 Console error:
 ```
 [VLN009] Template 'productCard' requires missing variables: [onAddToCart].
-Add them as: vln-var:onAddToCart="vln.yourValue"
+Add them as: vln-var:onAddToCart="yourValue"
 ```
 
 ## Dynamic Template Selection
@@ -83,21 +83,21 @@ Since `vln-fragment` values are JavaScript expressions, you can dynamically sele
 ```html
 <template id="adminCard" vln-vars="user">
   <div class="admin-card">
-    <strong vln-text="vln.user.name"></strong>
+    <strong vln-text="user.name"></strong>
     <button>Delete User</button>
   </div>
 </template>
 
 <template id="guestCard" vln-vars="user">
   <div class="guest-card">
-    <span vln-text="vln.user.name"></span>
+    <span vln-text="user.name"></span>
   </div>
 </template>
 
 <!-- Dynamically pick template based on role -->
-<div vln-loop:user="vln.users"
-     vln-fragment="vln.user.role + 'Card'"
-     vln-var:user="vln.user">
+<div vln-loop:user="users"
+     vln-fragment="user.role + 'Card'"
+     vln-var:user="user">
 </div>
 ```
 
@@ -108,17 +108,17 @@ Common pattern: using templates to render list items:
 ```html
 <template id="todoItem" vln-vars="todo, actions">
   <li class="todo">
-    <input type="checkbox" vln-input="vln.todo.done" />
-    <span vln-text="vln.todo.text"></span>
-    <button vln-on:click="vln.actions.delete()">×</button>
+    <input type="checkbox" vln-input="todo.done" />
+    <span vln-text="todo.text"></span>
+    <button vln-on:click="actions.delete()">×</button>
   </li>
 </template>
 
 <ul>
-  <li vln-loop:todo="vln.todos"
+  <li vln-loop:todo="todos"
       vln-fragment="'todoItem'"
-      vln-var:todo="vln.todo"
-      vln-var:actions="vln.createActions(vln.todo)">
+      vln-var:todo="todo"
+      vln-var:actions="createActions(todo)">
   </li>
 </ul>
 
@@ -147,13 +147,13 @@ You can use templates with factory functions to create a component-like pattern:
 ```html
 <template id="counter" vln-vars="state">
   <div class="counter">
-    <button vln-on:click="vln.state.decrement()">−</button>
-    <span vln-text="vln.state.count"></span>
-    <button vln-on:click="vln.state.increment()">+</button>
+    <button vln-on:click="state.decrement()">−</button>
+    <span vln-text="state.count"></span>
+    <button vln-on:click="state.increment()">+</button>
   </div>
 </template>
 
-<div vln-fragment="'counter'" vln-var:state="vln.counterState"></div>
+<div vln-fragment="'counter'" vln-var:state="counterState"></div>
 
 <script>
 function createCounter(initialCount = 0) {
@@ -185,14 +185,14 @@ Executed after the template is rendered and processed:
 ```html
 <template id="modal" vln-vars="content">
   <div class="modal">
-    <div vln-text="vln.content"></div>
+    <div vln-text="content"></div>
   </div>
 </template>
 
-<div vln-if="vln.showModal"
+<div vln-if="showModal"
      vln-fragment="'modal'"
-     vln-var:content="vln.modalContent"
-     vln-var:onMount="vln.setupModal()">
+     vln-var:content="modalContent"
+     vln-var:onMount="setupModal()">
 </div>
 
 <script>
@@ -213,11 +213,11 @@ const vln = Velin.bind(root, {
 Executed before the template is removed or replaced:
 
 ```html
-<div vln-if="vln.showModal"
+<div vln-if="showModal"
      vln-fragment="'modal'"
-     vln-var:content="vln.modalContent"
-     vln-var:onMount="vln.setupModal()"
-     vln-var:onUnmount="vln.cleanupModal()">
+     vln-var:content="modalContent"
+     vln-var:onMount="setupModal()"
+     vln-var:onUnmount="cleanupModal()">
 </div>
 
 <script>
@@ -245,8 +245,8 @@ const vln = Velin.bind(root, {
 
 ```html
 <!-- These are equivalent -->
-<div vln-fragment="'userCard'" vln-var:user="vln.currentUser"></div>
-<div vln-use="'userCard'" vln-var:user="vln.currentUser"></div>
+<div vln-fragment="'userCard'" vln-var:user="currentUser"></div>
+<div vln-use="'userCard'" vln-var:user="currentUser"></div>
 ```
 
 ## Complete Example
@@ -257,7 +257,7 @@ Here's a complete example of a user management interface using templates:
 <!DOCTYPE html>
 <html>
 <head>
-  <script src="https://unpkg.com/velin/dist/velin-all.min.js"></script>
+  <script src="https://unpkg.com/velin/dist/build/velin-all.min.js"></script>
   <style>
     .user-card {
       border: 1px solid #ddd;
@@ -273,10 +273,10 @@ Here's a complete example of a user management interface using templates:
   <!-- Template Definition -->
   <template id="userCard" vln-vars="user, actions">
     <div class="user-card">
-      <h3 vln-text="vln.user.name"></h3>
-      <p vln-text="vln.user.email"></p>
-      <button vln-on:click="vln.actions.edit()">Edit</button>
-      <button vln-on:click="vln.actions.delete()">Delete</button>
+      <h3 vln-text="user.name"></h3>
+      <p vln-text="user.email"></p>
+      <button vln-on:click="actions.edit()">Edit</button>
+      <button vln-on:click="actions.delete()">Delete</button>
     </div>
   </template>
 
@@ -284,10 +284,10 @@ Here's a complete example of a user management interface using templates:
   <div id="app">
     <h1>Users</h1>
 
-    <div vln-loop:user="vln.users"
+    <div vln-loop:user="users"
          vln-fragment="'userCard'"
-         vln-var:user="vln.user"
-         vln-var:actions="vln.createUserActions(vln.user)">
+         vln-var:user="user"
+         vln-var:actions="createUserActions(user)">
     </div>
   </div>
 
@@ -335,7 +335,7 @@ Here's a complete example of a user management interface using templates:
 ✅ **Dynamic component selection**
 ```html
 <!-- Different layouts based on data -->
-<div vln-fragment="vln.item.type + 'Layout'" ...></div>
+<div vln-fragment="item.type + 'Layout'" ...></div>
 ```
 
 ✅ **Reusable UI patterns**
@@ -355,7 +355,7 @@ Here's a complete example of a user management interface using templates:
 ❌ **Simple repeated items**
 ```html
 <!-- Just use vln-loop directly -->
-<li vln-loop:item="vln.items" vln-text="vln.item.name"></li>
+<li vln-loop:item="items" vln-text="item.name"></li>
 ```
 
 ❌ **Server-rendered pages**
@@ -369,7 +369,7 @@ Here's a complete example of a user management interface using templates:
 ```html
 <!-- Just write the HTML inline -->
 <div class="card">
-  <h3 vln-text="vln.user.name"></h3>
+  <h3 vln-text="user.name"></h3>
 </div>
 ```
 
@@ -380,7 +380,7 @@ Here's a complete example of a user management interface using templates:
 **Good:**
 ```html
 <template id="userAvatar" vln-vars="user">
-  <img vln-attr:src="vln.user.avatar" vln-attr:alt="vln.user.name" />
+  <img vln-attr:src="user.avatar" vln-attr:alt="user.name" />
 </template>
 ```
 
@@ -408,10 +408,10 @@ Here's a complete example of a user management interface using templates:
 **Good:**
 ```html
 <template id="card" vln-vars="item, actions">
-  <button vln-on:click="vln.actions.delete()">Delete</button>
+  <button vln-on:click="actions.delete()">Delete</button>
 </template>
 
-vln-var:actions="vln.createActions(vln.item)"
+vln-var:actions="createActions(item)"
 ```
 
 ### 4. Use factory functions for component state

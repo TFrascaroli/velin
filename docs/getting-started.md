@@ -9,7 +9,7 @@ This guide will walk you through the basics of using Velin to add reactivity to 
 Add this to your HTML `<head>`:
 
 ```html
-<script src="https://unpkg.com/velin/dist/velin-all.min.js"></script>
+<script src="https://unpkg.com/velin/dist/build/velin-all.min.js"></script>
 ```
 
 ### Via npm
@@ -42,12 +42,12 @@ Create an HTML file:
 <head>
   <meta charset="UTF-8">
   <title>My First Velin App</title>
-  <script src="https://unpkg.com/velin/dist/velin-all.min.js"></script>
+  <script src="https://unpkg.com/velin/dist/build/velin-all.min.js"></script>
 </head>
 <body>
   <div id="app">
-    <h1 vln-text="'Hello, ' + vln.name + '!'"></h1>
-    <input vln-input="vln.name" placeholder="Enter your name" />
+    <h1 vln-text="'Hello, ' + name + '!'"></h1>
+    <input vln-input="name" placeholder="Enter your name" />
   </div>
 
   <script>
@@ -81,9 +81,9 @@ const vln = Velin.bind(rootElement, initialState);
 Directives are HTML attributes that start with `vln-`:
 
 ```html
-<div vln-text="vln.message"></div>
-<input vln-input="vln.email" />
-<button vln-on:click="vln.handleClick()">Click me</button>
+<div vln-text="message"></div>
+<input vln-input="email" />
+<button vln-on:click="handleClick()">Click me</button>
 ```
 
 ### 3. Expressions are JavaScript
@@ -92,19 +92,19 @@ All directive values are JavaScript expressions:
 
 ```html
 <!-- Simple variable -->
-<span vln-text="vln.count"></span>
+<span vln-text="count"></span>
 
 <!-- String literal -->
 <h1 vln-text="'Hello World'"></h1>
 
 <!-- Math -->
-<div vln-text="vln.price * 1.1"></div>
+<div vln-text="price * 1.1"></div>
 
 <!-- Ternary -->
-<div vln-text="vln.isActive ? 'Active' : 'Inactive'"></div>
+<div vln-text="isActive ? 'Active' : 'Inactive'"></div>
 
 <!-- Function calls -->
-<div vln-text="vln.formatDate(vln.timestamp)"></div>
+<div vln-text="formatDate(timestamp)"></div>
 ```
 
 ## Core Directives
@@ -114,8 +114,8 @@ All directive values are JavaScript expressions:
 Sets the text content of an element:
 
 ```html
-<p vln-text="vln.description"></p>
-<h1 vln-text="'Welcome, ' + vln.username"></h1>
+<p vln-text="description"></p>
+<h1 vln-text="'Welcome, ' + username"></h1>
 ```
 
 ### Two-Way Binding: `vln-input`
@@ -124,13 +124,13 @@ Binds form inputs to state:
 
 ```html
 <!-- Text input -->
-<input vln-input="vln.name" />
+<input vln-input="name" />
 
 <!-- Checkbox -->
-<input type="checkbox" vln-input="vln.agreed" />
+<input type="checkbox" vln-input="agreed" />
 
 <!-- Select -->
-<select vln-input="vln.country">
+<select vln-input="country">
   <option value="us">USA</option>
   <option value="uk">UK</option>
 </select>
@@ -141,12 +141,12 @@ Binds form inputs to state:
 Shows/hides elements based on a condition:
 
 ```html
-<div vln-if="vln.isLoggedIn">
+<div vln-if="isLoggedIn">
   Welcome back!
 </div>
 
-<div vln-if="vln.error">
-  Error: <span vln-text="vln.error"></span>
+<div vln-if="error">
+  Error: <span vln-text="error"></span>
 </div>
 ```
 
@@ -156,24 +156,24 @@ Repeats an element for each item in an array:
 
 ```html
 <ul>
-  <li vln-loop:item="vln.items" vln-text="vln.item"></li>
+  <li vln-loop:item="items" vln-text="item"></li>
 </ul>
 ```
 
-The syntax is `vln-loop:variableName="vln.arrayExpression"`.
+The syntax is `vln-loop:varName="arrayExpression"`.
 
 ### Event Handlers: `vln-on:event`
 
 Responds to DOM events:
 
 ```html
-<button vln-on:click="vln.count++">Increment</button>
+<button vln-on:click="count++">Increment</button>
 
-<form vln-on:submit="vln.handleSubmit()">
+<form vln-on:submit="handleSubmit()">
   <!-- form fields -->
 </form>
 
-<input vln-on:keyup="vln.handleKeyPress($event)" />
+<input vln-on:keypress="handleKeyPress($event)" />
 ```
 
 ### Attributes: `vln-attr:name`
@@ -181,9 +181,9 @@ Responds to DOM events:
 Sets HTML attributes dynamically:
 
 ```html
-<img vln-attr:src="vln.imageUrl" vln-attr:alt="vln.imageAlt" />
-<button vln-attr:disabled="!vln.isValid">Submit</button>
-<a vln-attr:href="vln.link">Click here</a>
+<img vln-attr:src="imageUrl" vln-attr:alt="imageAlt" />
+<button vln-attr:disabled="!isValid">Submit</button>
+<a vln-attr:href="link">Click here</a>
 ```
 
 ### Classes: `vln-class`
@@ -192,13 +192,13 @@ Adds CSS classes dynamically:
 
 ```html
 <!-- Single class name -->
-<div vln-class="vln.theme"></div>
+<div vln-class="theme"></div>
 
 <!-- Object of class names and booleans -->
-<div vln-class="{ active: vln.isActive, disabled: !vln.isEnabled }"></div>
+<div vln-class="{ active: isActive, disabled: !isEnabled }"></div>
 
 <!-- Conditional expression -->
-<div vln-class="vln.status === 'error' ? 'text-red' : 'text-green'"></div>
+<div vln-class="status === 'error' ? 'text-red' : 'text-green'"></div>
 ```
 
 ## Building a Todo App
@@ -209,7 +209,7 @@ Let's build a simple todo app to practice:
 <!DOCTYPE html>
 <html>
 <head>
-  <script src="https://unpkg.com/velin/dist/velin-all.min.js"></script>
+  <script src="https://unpkg.com/velin/dist/build/velin-all.min.js"></script>
   <style>
     .completed { text-decoration: line-through; opacity: 0.6; }
   </style>
@@ -218,21 +218,21 @@ Let's build a simple todo app to practice:
   <div id="app">
     <h1>Todo List</h1>
 
-    <form vln-on:submit="vln.addTodo()">
-      <input vln-input="vln.newTodo" placeholder="What needs to be done?" />
+    <form vln-on:submit="addTodo()">
+      <input vln-input="newTodo" placeholder="What needs to be done?" />
       <button type="submit">Add</button>
     </form>
 
     <ul>
-      <li vln-loop:todo="vln.todos" vln-class="{ completed: vln.todo.done }">
-        <input type="checkbox" vln-input="vln.todo.done" />
-        <span vln-text="vln.todo.text"></span>
-        <button vln-on:click="vln.removeTodo(vln.todo)">×</button>
+      <li vln-loop:todo="todos" vln-class="{ completed: todo.done }">
+        <input type="checkbox" vln-input="todo.done" />
+        <span vln-text="todo.text"></span>
+        <button vln-on:click="removeTodo(todo)">×</button>
       </li>
     </ul>
 
     <div>
-      <strong vln-text="vln.remaining"></strong> items left
+      <strong vln-text="remaining"></strong> items left
     </div>
   </div>
 
@@ -277,10 +277,10 @@ const vln = Velin.bind(root, {
   user: { name: 'Alice' }
 });
 
-// This automatically updates any elements using vln.count
+// This automatically updates any elements using count
 vln.count++;
 
-// This automatically updates any elements using vln.user.name
+// This automatically updates any elements using user.name
 vln.user.name = 'Bob';
 
 // Array methods work too
@@ -304,7 +304,7 @@ const vln = Velin.bind(root, {
 ```
 
 ```html
-<div vln-text="vln.fullName"></div>
+<div vln-text="fullName"></div>
 ```
 
 Now changing either `firstName` or `lastName` will update `fullName` automatically.
@@ -340,13 +340,13 @@ const vln = Velin.bind(form, {
 ```
 
 ```html
-<input vln-input="vln.email" />
-<div vln-if="!vln.isEmailValid && vln.email">Invalid email</div>
+<input vln-input="email" />
+<div vln-if="!isEmailValid && email">Invalid email</div>
 
-<input vln-input="vln.password" type="password" />
-<div vln-if="!vln.isPasswordValid && vln.password">Password too short</div>
+<input vln-input="password" type="password" />
+<div vln-if="!isPasswordValid && password">Password too short</div>
 
-<button vln-attr:disabled="!vln.canSubmit">Submit</button>
+<button vln-attr:disabled="!canSubmit">Submit</button>
 ```
 
 ### Loading States
@@ -369,13 +369,13 @@ const vln = Velin.bind(root, {
 ```
 
 ```html
-<button vln-on:click="vln.loadData()" vln-attr:disabled="vln.loading">
-  <span vln-if="!vln.loading">Load Data</span>
-  <span vln-if="vln.loading">Loading...</span>
+<button vln-on:click="loadData()" vln-attr:disabled="loading">
+  <span vln-if="!loading">Load Data</span>
+  <span vln-if="loading">Loading...</span>
 </button>
 
-<div vln-if="vln.data">
-  <pre vln-text="JSON.stringify(vln.data, null, 2)"></pre>
+<div vln-if="data">
+  <pre vln-text="JSON.stringify(data, null, 2)"></pre>
 </div>
 ```
 
@@ -395,9 +395,9 @@ const vln = Velin.bind(root, {
 ```
 
 ```html
-<input vln-input="vln.search" placeholder="Search..." />
+<input vln-input="search" placeholder="Search..." />
 
 <ul>
-  <li vln-loop:item="vln.filteredItems" vln-text="vln.item"></li>
+  <li vln-loop:item="filteredItems" vln-text="item"></li>
 </ul>
 ```
