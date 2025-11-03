@@ -171,7 +171,7 @@ Managing a list with create, read, update, delete:
 
   <!-- Read / Update / Delete -->
   <ul>
-    <li vln-loop:[^=]+="tasks">
+    <li vln-loop:task="tasks">
       <div vln-if="editingId !== task.id">
         <input type="checkbox" vln-input="task.done" />
         <span vln-text="task.text"></span>
@@ -251,7 +251,7 @@ Real-time search with filtering:
   </div>
 
   <ul>
-    <li vln-loop:[^=]+="filteredUsers">
+    <li vln-loop:user="filteredUsers">
       <strong vln-text="user.name"></strong>
       - <span vln-text="user.email"></span>
     </li>
@@ -416,7 +416,7 @@ Expandable/collapsible sections:
 
 ```html
 <div id="app">
-  <div vln-loop:[^=]+="items" class="accordion-item">
+  <div vln-loop:item="items" class="accordion-item">
     <button
       vln-on:click="toggle(item.id)"
       class="accordion-header">
@@ -488,7 +488,7 @@ Search with debouncing to reduce API calls:
   <div vln-if="loading">Searching...</div>
 
   <ul vln-if="!loading && results.length">
-    <li vln-loop:[^=]+="results" vln-text="result.name"></li>
+    <li vln-loop:result="results" vln-text="result.name"></li>
   </ul>
 
   <div vln-if="!loading && query && !results.length">
@@ -552,7 +552,7 @@ Product listing with cart:
   <h1>Shop</h1>
 
   <div class="products">
-    <div vln-loop:[^=]+="products" class="product">
+    <div vln-loop:product="products" class="product">
       <h3 vln-text="product.name"></h3>
       <p vln-text="'$' + product.price"></p>
       <button vln-on:click="addToCart(product)">Add to Cart</button>
@@ -563,7 +563,7 @@ Product listing with cart:
     <h2>Cart (<span vln-text="cart.length"></span>)</h2>
 
     <div vln-if="cart.length">
-      <div vln-loop:[^=]+="cart">
+      <div vln-loop:item="cart">
         <span vln-text="item.name"></span>
         - $<span vln-text="item.price"></span>
         <button vln-on:click="removeFromCart(item)">Remove</button>
