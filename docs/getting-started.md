@@ -313,7 +313,7 @@ Now changing either `firstName` or `lastName` will update `fullName` automatical
 
 - Read the [Directives Guide](./directives.md) for detailed information on each directive
 - Check out the [API Reference](./api-reference.md) for advanced features
-- Explore [Examples & Patterns](./examples.md) for common use cases
+- Explore [Interactive Examples](../playground/examples.html) for common use cases
 - Learn about [Creating Plugins](./plugins.md) to extend Velin
 
 ## Common Patterns
