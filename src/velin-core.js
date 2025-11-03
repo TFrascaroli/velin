@@ -1236,7 +1236,9 @@ function processNode(node, reactiveState) {
  * This is the main entry point for using Velin. Call it once per app/component
  * with your root element and initial state. Returns a reactive proxy of your state.
  *
- * @type {Bind}
+ * @param {Element | DocumentFragment} [root] - The root element to make reactive
+ * @param {object} [initialState] - Initial state object
+ * @returns {object} Reactive proxy of the state
  *
  * @example
  * // Basic usage
@@ -1278,7 +1280,7 @@ function processNode(node, reactiveState) {
  */
 function bind(root, initialState) {
   if (root === undefined) root = document.body;
-  if (initialState === undefined) initialState = /** @type {*} */ ({});
+  if (initialState === undefined) initialState = {};
   const reactiveState = setupState(initialState);
   processNode(root, reactiveState);
   boundState.root = reactiveState;
