@@ -397,7 +397,7 @@ Velin.plugins.registerPlugin({
     Velin.plugins.processPlugin(
       textPlugin,
       reactiveState,
-      'vln.message',
+      'message',
       node,
       'vln-text'
     );
