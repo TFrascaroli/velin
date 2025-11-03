@@ -2,9 +2,11 @@
 
 Complete API documentation for Velin.
 
-## Global Object: `Velin`
+---
 
-The global `Velin` object is available when you include the Velin script.
+## Basic APIs
+
+For everyday use when building applications with Velin.
 
 ### `Velin.bind(root, initialState)`
 
@@ -28,96 +30,107 @@ vln.count++;
 vln.name = 'Bob';
 ```
 
-### `Velin.evaluate(reactiveState, expr, allowMutations)`
+### Reactive State
 
-Evaluates a JavaScript expression in the context of the reactive state.
+The object returned by `Velin.bind()` is a reactive proxy. Any property access or modification is tracked.
 
-**Parameters:**
-- `reactiveState` (ReactiveState): Internal reactive state object
-- `expr` (string): JavaScript expression to evaluate
-- `allowMutations` (boolean, optional): If true, allows function calls to mutate state. Defaults to false for read-only evaluation.
+#### Supported Operations
 
-**Returns:** Result of the expression
-
-**Example:**
+**Reading:**
 ```javascript
-// Read-only evaluation (default)
-const result = Velin.evaluate(reactiveState, 'count + 10');
-
-// Allow mutations (for event handlers)
-Velin.evaluate(reactiveState, 'increment()', true);
+const value = vln.property;
+const nested = vln.user.name;
+const item = vln.items[0];
 ```
 
-**Note:** This is an advanced API. Most users won't need to call this directly. Display directives use read-only mode, while event handlers (`vln-on`) use mutation mode.
-
-### `Velin.getSetter(reactiveState, expr)`
-
-Returns a setter function for a property expression.
-
-**Parameters:**
-- `reactiveState` (ReactiveState): Internal reactive state object
-- `expr` (string): Property path expression (e.g., `'user.name'`)
-
-**Returns:** Function that sets the value
-
-**Example:**
+**Writing:**
 ```javascript
-const setName = Velin.getSetter(reactiveState, 'user.name');
-setName('Charlie'); // equivalent to: user.name = 'Charlie'
+vln.property = 'new value';
+vln.user.name = 'Alice';
+vln.items[0] = 'updated';
 ```
 
-**Note:** This is used internally by plugins like `vln-input`. Most users won't need this.
-
-### `Velin.composeState(reactiveState, interpolations)`
-
-Creates a child reactive state with additional interpolations (variable mappings).
-
-**Parameters:**
-- `reactiveState` (ReactiveState): Parent reactive state
-- `interpolations` (Map<string, string>): Map of variable names to expressions
-
-**Returns:** New child reactive state
-
-**Example:**
+**Arrays:**
 ```javascript
-const innerState = Velin.composeState(
-  reactiveState,
-  new Map([['item', 'items[0]']])
-);
+vln.items.push('new');
+vln.items.pop();
+vln.items.splice(0, 1);
+vln.items.sort();
+vln.items.reverse();
 ```
 
-**Note:** Used internally by `vln-loop` and `vln-fragment` for scoped variables.
-
-### `Velin.cleanupState(parentState, innerState)`
-
-Cleans up a child reactive state, removing bindings and finalizers.
-
-**Parameters:**
-- `parentState` (ReactiveState): Parent reactive state
-- `innerState` (ReactiveState): Child state to clean up
-
-**Returns:** void
-
-**Note:** Used internally for cleanup when elements are removed.
-
-### `Velin.processNode(node, reactiveState)`
-
-Processes a DOM node, applying all applicable Velin directives.
-
-**Parameters:**
-- `node` (Node): DOM node to process
-- `reactiveState` (ReactiveState): Reactive state to bind to
-
-**Returns:** void
-
-**Example:**
+**Objects:**
 ```javascript
-// Add a new element and make it reactive
-const newDiv = document.createElement('div');
-newDiv.setAttribute('vln-text', 'message');
-document.body.appendChild(newDiv);
-Velin.processNode(newDiv, Velin.ø__internal.boundState.root);
+vln.user = { name: 'Bob', age: 30 };
+delete vln.config.someKey;
 ```
+
+#### Computed Properties
+
+Use JavaScript getters for computed values:
+
+```javascript
+const vln = Velin.bind(root, {
+  firstName: 'John',
+  lastName: 'Doe',
+
+  get fullName() {
+    return this.firstName + ' ' + this.lastName;
+  }
+});
+```
+
+Computed properties automatically track their dependencies and update when dependencies change.
+
+#### Methods
+
+Regular methods work as expected:
+
+```javascript
+const vln = Velin.bind(root, {
+  count: 0,
+
+  increment() {
+    this.count++;
+  },
+
+  reset() {
+    this.count = 0;
+  }
+});
+```
+
+```html
+<button vln-on:click="increment()">+</button>
+<button vln-on:click="reset()">Reset</button>
+```
+
+#### Async Methods
+
+Async/await works naturally:
+
+```javascript
+const vln = Velin.bind(root, {
+  data: null,
+  loading: false,
+
+  async fetchData() {
+    this.loading = true;
+    try {
+      const response = await fetch('/api/data');
+      this.data = await response.json();
+    } finally {
+      this.loading = false;
+    }
+  }
+});
+```
+
+---
+
+## Advanced APIs
+
+For creating custom plugins and directives.
 
 ### `Velin.plugins`
 
@@ -147,12 +160,6 @@ Velin.plugins.registerPlugin({
 ```
 
 See [Creating Plugins](./plugins.md) for detailed information.
-
-#### `Velin.plugins.processPlugin(plugin, reactiveState, expr, node, attributeName, subkey)`
-
-Processes a plugin on a node.
-
-**Note:** Internal API, rarely needed by users.
 
 #### `Velin.plugins.get(name)`
 
@@ -215,105 +222,112 @@ Velin.plugins.registerPlugin({
 });
 ```
 
-## Reactive State
+### `Velin.evaluate(reactiveState, expr, allowMutations)`
 
-The object returned by `Velin.bind()` is a reactive proxy. Any property access or modification is tracked.
+Evaluates a JavaScript expression in the context of the reactive state.
 
-### Supported Operations
+**Parameters:**
+- `reactiveState` (ReactiveState): Internal reactive state object
+- `expr` (string): JavaScript expression to evaluate
+- `allowMutations` (boolean, optional): If true, allows function calls to mutate state. Defaults to false for read-only evaluation.
 
-**Reading:**
+**Returns:** Result of the expression
+
+**Example:**
 ```javascript
-const value = vln.property;
-const nested = vln.user.name;
-const item = vln.items[0];
+// Read-only evaluation (default)
+const result = Velin.evaluate(reactiveState, 'count + 10');
+
+// Allow mutations (for event handlers)
+Velin.evaluate(reactiveState, 'increment()', true);
 ```
 
-**Writing:**
+Display directives use read-only mode, while event handlers (`vln-on`) use mutation mode.
+
+### `Velin.getSetter(reactiveState, expr)`
+
+Returns a setter function for a property expression.
+
+**Parameters:**
+- `reactiveState` (ReactiveState): Internal reactive state object
+- `expr` (string): Property path expression (e.g., `'user.name'`)
+
+**Returns:** Function that sets the value
+
+**Example:**
 ```javascript
-vln.property = 'new value';
-vln.user.name = 'Alice';
-vln.items[0] = 'updated';
+const setName = Velin.getSetter(reactiveState, 'user.name');
+setName('Charlie'); // equivalent to: user.name = 'Charlie'
 ```
 
-**Arrays:**
+### `Velin.processNode(node, reactiveState)`
+
+Processes a DOM node, applying all applicable Velin directives.
+
+**Parameters:**
+- `node` (Node): DOM node to process
+- `reactiveState` (ReactiveState): Reactive state to bind to
+
+**Returns:** void
+
+**Example:**
 ```javascript
-vln.items.push('new');
-vln.items.pop();
-vln.items.splice(0, 1);
-vln.items.sort();
-vln.items.reverse();
+// Add a new element and make it reactive
+const newDiv = document.createElement('div');
+newDiv.setAttribute('vln-text', 'message');
+document.body.appendChild(newDiv);
+Velin.processNode(newDiv, Velin.ø__internal.boundState.root);
 ```
 
-**Objects:**
-```javascript
-vln.user = { name: 'Bob', age: 30 };
-delete vln.config.someKey;
-```
-
-### Computed Properties
-
-Use JavaScript getters for computed values:
-
-```javascript
-const vln = Velin.bind(root, {
-  firstName: 'John',
-  lastName: 'Doe',
-
-  get fullName() {
-    return this.firstName + ' ' + this.lastName;
-  }
-});
-```
-
-Computed properties automatically track their dependencies and update when dependencies change.
-
-### Methods
-
-Regular methods work as expected:
-
-```javascript
-const vln = Velin.bind(root, {
-  count: 0,
-
-  increment() {
-    this.count++;
-  },
-
-  reset() {
-    this.count = 0;
-  }
-});
-```
-
-```html
-<button vln-on:click="increment()">+</button>
-<button vln-on:click="reset()">Reset</button>
-```
-
-### Async Methods
-
-Async/await works naturally:
-
-```javascript
-const vln = Velin.bind(root, {
-  data: null,
-  loading: false,
-
-  async fetchData() {
-    this.loading = true;
-    try {
-      const response = await fetch('/api/data');
-      this.data = await response.json();
-    } finally {
-      this.loading = false;
-    }
-  }
-});
-```
+---
 
 ## Internal APIs
 
-These are exposed but typically only used by advanced users or plugin authors.
+For structure-altering plugins like `vln-loop` or `vln-fragment` that create scoped child states.
+
+### `Velin.plugins.processPlugin(plugin, reactiveState, expr, node, attributeName, subkey)`
+
+Processes a plugin on a node.
+
+**Parameters:**
+- `plugin` (Object): Plugin definition
+- `reactiveState` (ReactiveState): Reactive state object
+- `expr` (string): Expression to evaluate
+- `node` (Node): DOM node
+- `attributeName` (string): Full attribute name
+- `subkey` (string, optional): Subkey from attribute (e.g., `click` in `vln-on:click`)
+
+**Returns:** void
+
+### `Velin.composeState(reactiveState, interpolations)`
+
+Creates a child reactive state with additional interpolations (variable mappings).
+
+**Parameters:**
+- `reactiveState` (ReactiveState): Parent reactive state
+- `interpolations` (Map<string, string>): Map of variable names to expressions
+
+**Returns:** New child reactive state
+
+**Example:**
+```javascript
+const innerState = Velin.composeState(
+  reactiveState,
+  new Map([['item', 'items[0]']])
+);
+```
+
+Used by `vln-loop` and `vln-fragment` for scoped variables.
+
+### `Velin.cleanupState(parentState, innerState)`
+
+Cleans up a child reactive state, removing bindings and finalizers.
+
+**Parameters:**
+- `parentState` (ReactiveState): Parent reactive state
+- `innerState` (ReactiveState): Child state to clean up
+
+**Returns:** void
 
 ### `Velin.ø__internal`
 
@@ -326,6 +340,8 @@ Object containing internal state and utilities.
 - `triggerEffects` (Function): Manually triggers reactive updates
 
 **Warning:** These APIs are subject to change. Use at your own risk.
+
+---
 
 ## Error Codes
 
