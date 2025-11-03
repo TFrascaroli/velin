@@ -338,8 +338,8 @@ Velin.plugins.registerPlugin({
 
 Usage:
 ```html
-<button vln-on:[^=]+="handleClick()">Click</button>
-<form vln-on:[^=]+="handleSubmit()">Submit</form>
+<button vln-on:click="handleClick()">Click</button>
+<form vln-on:click="handleSubmit()">Submit</form>
 ```
 
 ## Plugin State

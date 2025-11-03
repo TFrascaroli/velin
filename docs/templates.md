@@ -44,7 +44,7 @@ Use `vln-vars="var1, var2"` on the `<template>` tag to declare required variable
   <div class="product">
     <h3 vln-text="product.name"></h3>
     <p vln-text="'$' + product.price"></p>
-    <button vln-on:[^=]+="onAddToCart(product)">Add to Cart</button>
+    <button vln-on:click="onAddToCart(product)">Add to Cart</button>
   </div>
 </template>
 ```
@@ -110,7 +110,7 @@ Common pattern: using templates to render list items:
   <li class="todo">
     <input type="checkbox" vln-input="todo.done" />
     <span vln-text="todo.text"></span>
-    <button vln-on:[^=]+="actions.delete()">×</button>
+    <button vln-on:click="actions.delete()">×</button>
   </li>
 </template>
 
@@ -147,9 +147,9 @@ You can use templates with factory functions to create a component-like pattern:
 ```html
 <template id="counter" vln-vars="state">
   <div class="counter">
-    <button vln-on:[^=]+="state.decrement()">−</button>
+    <button vln-on:click="state.decrement()">−</button>
     <span vln-text="state.count"></span>
-    <button vln-on:[^=]+="state.increment()">+</button>
+    <button vln-on:click="state.increment()">+</button>
   </div>
 </template>
 
@@ -275,8 +275,8 @@ Here's a complete example of a user management interface using templates:
     <div class="user-card">
       <h3 vln-text="user.name"></h3>
       <p vln-text="user.email"></p>
-      <button vln-on:[^=]+="actions.edit()">Edit</button>
-      <button vln-on:[^=]+="actions.delete()">Delete</button>
+      <button vln-on:click="actions.edit()">Edit</button>
+      <button vln-on:click="actions.delete()">Delete</button>
     </div>
   </template>
 
@@ -408,7 +408,7 @@ Here's a complete example of a user management interface using templates:
 **Good:**
 ```html
 <template id="card" vln-vars="item, actions">
-  <button vln-on:[^=]+="actions.delete()">Delete</button>
+  <button vln-on:click="actions.delete()">Delete</button>
 </template>
 
 vln-var:actions="createActions(item)"
