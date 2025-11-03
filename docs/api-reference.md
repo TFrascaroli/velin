@@ -184,47 +184,61 @@ Standard plugin priority constants:
 
 ### `Velin.trackers`
 
-Helper functions for common tracking patterns.
+Helper functions for dependency tracking in custom plugins. These are the most commonly used tracking patterns.
 
 #### `Velin.trackers.expressionTracker({ reactiveState, expr })`
 
-Tracks dependencies by evaluating an expression.
+Evaluates an expression and automatically tracks all reactive dependencies. This is used by most display directives like `vln-text`, `vln-if`, `vln-class`, and `vln-attr`.
+
+**Parameters:**
+- `reactiveState` (ReactiveState): The reactive state object
+- `expr` (string): Expression to evaluate and track
 
 **Returns:** Result of the expression
 
-**Example:**
+**How it works:** When the tracked expression is evaluated, Velin records which state properties it accessed. When any of those properties change, the plugin's `render` function is automatically called again with the new `tracked` value.
+
+**Real example from `vln-text` plugin:**
 ```javascript
 Velin.plugins.registerPlugin({
-  name: 'myPlugin',
+  name: 'text',
   track: Velin.trackers.expressionTracker,
-  render: ({ tracked }) => {
-    // 'tracked' contains the evaluated expression result
+  render: ({ node, tracked }) => {
+    node.textContent = tracked ?? '';
   }
 });
 ```
+
+**Real example from `vln-if` plugin:**
+```javascript
+Velin.plugins.registerPlugin({
+  name: 'if',
+  track: Velin.trackers.expressionTracker,
+  render: ({ node, tracked }) => {
+    if (node instanceof HTMLElement)
+      node.style.display = tracked ? '' : 'none';
+  }
+});
+```
+
+When you use `<div vln-text="firstName + ' ' + lastName"></div>`, the plugin will:
+1. Evaluate the expression and track dependencies on `firstName` and `lastName`
+2. Call `render` with the result
+3. Automatically re-render whenever `firstName` or `lastName` changes
 
 #### `Velin.trackers.setterTracker({ reactiveState, expr })`
 
-Returns a setter function for an expression.
+Returns a setter function for an expression instead of evaluating it. This is rarely used - most plugins use `getSetter()` directly.
+
+**Parameters:**
+- `reactiveState` (ReactiveState): The reactive state object
+- `expr` (string): Property path expression
 
 **Returns:** Setter function
 
-**Example:**
-```javascript
-Velin.plugins.registerPlugin({
-  name: 'myInput',
-  track: Velin.trackers.setterTracker,
-  render: ({ node, tracked: setter }) => {
-    node.addEventListener('input', (e) => {
-      setter(e.target.value);
-    });
-  }
-});
-```
-
 ### `Velin.evaluate(reactiveState, expr, allowMutations)`
 
-Evaluates a JavaScript expression in the context of the reactive state.
+Evaluates a JavaScript expression in the context of the reactive state without tracking dependencies. This is used when you need to evaluate expressions that should trigger side effects, like event handlers or lifecycle hooks.
 
 **Parameters:**
 - `reactiveState` (ReactiveState): Internal reactive state object
@@ -233,36 +247,90 @@ Evaluates a JavaScript expression in the context of the reactive state.
 
 **Returns:** Result of the expression
 
-**Example:**
-```javascript
-// Read-only evaluation (default)
-const result = Velin.evaluate(reactiveState, 'count + 10');
+**Key difference from trackers:** `evaluate()` doesn't set up dependency tracking or re-rendering. It's a one-time evaluation.
 
-// Allow mutations (for event handlers)
-Velin.evaluate(reactiveState, 'increment()', true);
+**Real example from `vln-on` plugin:**
+```javascript
+Velin.plugins.registerPlugin({
+  name: 'on',
+  render: ({ reactiveState, expr, node, subkey }) => {
+    const handler = () => Velin.evaluate(reactiveState, expr, true);
+    node.addEventListener(subkey, handler);
+    return { state: { handler } };
+  }
+});
 ```
 
-Display directives use read-only mode, while event handlers (`vln-on`) use mutation mode.
+This allows `<button vln-on:click="count++">` to modify state when clicked.
+
+**Real example from template lifecycle hooks:**
+```javascript
+// Execute onMount hook after template is inserted
+if (lifecycle.onMount) {
+  try {
+    Velin.evaluate(innerState, lifecycle.onMount);
+  } catch (err) {
+    console.error('Error in onMount hook:', err);
+  }
+}
+```
+
+**When to use:**
+- Event handlers that need to modify state
+- Lifecycle hooks (onMount, onUnmount)
+- One-time expression evaluation
+- Side effects that shouldn't trigger re-renders
 
 ### `Velin.getSetter(reactiveState, expr)`
 
-Returns a setter function for a property expression.
+Returns a setter function for a property expression, bypassing the read-only evaluation restriction. This is essential for two-way binding plugins like `vln-input` that need to update state in response to user input.
 
 **Parameters:**
 - `reactiveState` (ReactiveState): Internal reactive state object
-- `expr` (string): Property path expression (e.g., `'user.name'`)
+- `expr` (string): Property path expression (e.g., `'user.name'`, `'items[0]'`)
 
-**Returns:** Function that sets the value
+**Returns:** Function `(value) => void` that sets the property to the given value
 
-**Example:**
+**Why it exists:** During expression evaluation, Velin prevents direct property assignment to catch bugs. Setters provide a controlled way to update state from event handlers.
+
+**Real example from `vln-input` plugin:**
 ```javascript
-const setName = Velin.getSetter(reactiveState, 'user.name');
-setName('Charlie'); // equivalent to: user.name = 'Charlie'
+Velin.plugins.registerPlugin({
+  name: 'input',
+  track: Velin.trackers.expressionTracker,
+  render: ({ node, tracked, expr, reactiveState, pluginState = {} }) => {
+    const setter = Velin.getSetter(reactiveState, expr);
+
+    if (!pluginState.initialized) {
+      // Set up event listener on first render
+      node.addEventListener('input', (e) => {
+        switch (e.target.type) {
+          case 'checkbox':
+            setter(e.target.checked);
+            break;
+          default:
+            setter(e.target.value);
+        }
+      });
+    }
+
+    // Update DOM when state changes
+    if (node.value !== tracked) {
+      node.value = tracked;
+    }
+
+    return { state: { initialized: true } };
+  }
+});
 ```
+
+Now `<input vln-input="email">` creates true two-way binding:
+- Typing in the input calls `setter(e.target.value)` to update `state.email`
+- Changing `state.email` in code triggers re-render to update the input's value
 
 ### `Velin.processNode(node, reactiveState)`
 
-Processes a DOM node, applying all applicable Velin directives.
+Processes a DOM node and all its children, applying all applicable Velin directives. This is used internally when initializing a Velin app, and in plugins that dynamically create new DOM elements.
 
 **Parameters:**
 - `node` (Node): DOM node to process
@@ -270,7 +338,13 @@ Processes a DOM node, applying all applicable Velin directives.
 
 **Returns:** void
 
-**Example:**
+**How it works:**
+1. Scans the node for all `vln-*` attributes
+2. Finds matching registered plugins
+3. Calls each plugin's `track` and `render` functions
+4. Recursively processes all child nodes (unless a plugin returns `halt: true`)
+
+**Example - Dynamically adding reactive elements:**
 ```javascript
 // Add a new element and make it reactive
 const newDiv = document.createElement('div');
@@ -279,55 +353,197 @@ document.body.appendChild(newDiv);
 Velin.processNode(newDiv, Velin.ø__internal.boundState.root);
 ```
 
+**Real example from `vln-loop` plugin:**
+```javascript
+// After cloning template for each array item
+for (let i = 0; i < tracked.length; i++) {
+  const clone = template.cloneNode(true);
+  const substate = Velin.composeState(reactiveState, interpolations);
+
+  placeholder.parentNode.insertBefore(clone, lastInserted.nextSibling);
+  Velin.processNode(clone, substate);  // Make the clone reactive
+}
+```
+
+**Real example from `vln-fragment` plugin:**
+```javascript
+// After inserting template content
+const innerState = Velin.composeState(reactiveState, interpolations);
+Array.from(clone.childNodes).forEach(child => {
+  node.appendChild(child);
+  Velin.processNode(child, innerState);  // Process each child with scoped state
+});
+```
+
+**Common use cases:**
+- Plugins that clone templates (`vln-loop`, `vln-fragment`)
+- Dynamically creating reactive elements in JavaScript
+- Lazy-loading content that needs reactivity
+
 ---
 
 ## Danger Zone
 
-For structure-altering plugins like `vln-loop` or `vln-fragment` that create scoped child states.
-
-### `Velin.plugins.processPlugin(plugin, reactiveState, expr, node, attributeName, subkey)`
-
-Processes a plugin on a node.
-
-**Parameters:**
-- `plugin` (Object): Plugin definition
-- `reactiveState` (ReactiveState): Reactive state object
-- `expr` (string): Expression to evaluate
-- `node` (Node): DOM node
-- `attributeName` (string): Full attribute name
-- `subkey` (string, optional): Subkey from attribute (e.g., `click` in `vln-on:click`)
-
-**Returns:** void
+For structure-altering plugins like `vln-loop` or `vln-fragment` that create scoped child states. These APIs manage the parent-child state hierarchy and are critical for preventing memory leaks.
 
 ### `Velin.composeState(reactiveState, interpolations)`
 
-Creates a child reactive state with additional interpolations (variable mappings).
+Creates a child reactive state that inherits from a parent state but adds new scoped variables (interpolations). This is how `vln-loop` creates the `item` variable and how `vln-fragment` creates template parameters.
 
 **Parameters:**
-- `reactiveState` (ReactiveState): Parent reactive state
+- `reactiveState` (ReactiveState): Parent reactive state to inherit from
 - `interpolations` (Map<string, string>): Map of variable names to expressions
+  - Key: variable name (e.g., `'item'`, `'$index'`)
+  - Value: expression in parent scope (e.g., `'items[0]'`, `'0'`)
 
-**Returns:** New child reactive state
+**Returns:** New child reactive state with combined scope
 
-**Example:**
+**How it works:**
+1. Creates a new reactive state that links to the parent
+2. Adds interpolation mappings so expressions can access scoped variables
+3. Tracks the parent-child relationship for cleanup
+4. Child can access both its interpolations and parent's state
+
+**Real example from `vln-loop` plugin:**
 ```javascript
-const innerState = Velin.composeState(
-  reactiveState,
-  new Map([['item', 'items[0]']])
-);
+// For each item in the array
+for (let i = 0; i < tracked.length; i++) {
+  const clone = template.cloneNode(true);
+
+  // Create scoped state with 'item' and '$index' variables
+  const interpolations = new Map();
+  interpolations.set(subkey, `${expr}[${i}]`);     // item = todos[0]
+  interpolations.set('$index', `${i}`);             // $index = 0
+
+  const substate = Velin.composeState(reactiveState, interpolations);
+
+  // Now expressions in this scope can use 'item' and '$index'
+  placeholder.parentNode.insertBefore(clone, lastInserted.nextSibling);
+  Velin.processNode(clone, substate);
+}
 ```
 
-Used by `vln-loop` and `vln-fragment` for scoped variables.
+When you write:
+```html
+<li vln-loop:todo="todos">
+  <span vln-text="todo.text"></span>
+  <span vln-text="$index + 1"></span>
+</li>
+```
+
+Each `<li>` gets its own substate where:
+- `todo` maps to `todos[0]`, `todos[1]`, etc.
+- `$index` maps to `'0'`, `'1'`, etc.
+
+**Real example from `vln-fragment` plugin:**
+```javascript
+// Build interpolations from vln-var:* attributes
+const interpolations = new Map();
+for (const [varName, varExpr] of Object.entries(tracked.varValues)) {
+  interpolations.set(varName, varExpr);
+}
+
+// Create scoped state for template
+const innerState = Velin.composeState(reactiveState, interpolations);
+
+// Process template with scoped variables
+Array.from(clone.childNodes).forEach(child => {
+  node.appendChild(child);
+  Velin.processNode(child, innerState);
+});
+```
 
 ### `Velin.cleanupState(parentState, innerState)`
 
-Cleans up a child reactive state, removing bindings and finalizers.
+Cleans up a child reactive state, removing all reactive bindings, calling finalizers, and breaking the parent-child link. **Critical for preventing memory leaks** when removing elements.
 
 **Parameters:**
 - `parentState` (ReactiveState): Parent reactive state
 - `innerState` (ReactiveState): Child state to clean up
 
 **Returns:** void
+
+**What it cleans:**
+1. Clears all interpolation mappings
+2. Removes all dependency bindings (so property changes stop triggering re-renders)
+3. Calls all registered finalizers (cleanup functions)
+4. Recursively cleans up any nested child states
+5. Removes the child from parent's tracking
+
+**Real example from `vln-loop` destroy hook:**
+```javascript
+destroy: ({ pluginState, reactiveState }) => {
+  const parent = pluginState?.placeholder?.parentNode;
+  if (parent && pluginState) {
+    // Clean up all child states
+    if (pluginState.substates) {
+      pluginState.substates.forEach((substate) => {
+        if (substate) {
+          Velin.cleanupState(reactiveState, substate);
+        }
+      });
+    }
+
+    // Remove DOM nodes
+    if (pluginState.children) {
+      pluginState.children.forEach((child) => parent.removeChild(child));
+    }
+  }
+}
+```
+
+**Real example from `vln-fragment` destroy hook:**
+```javascript
+destroy: ({ node, pluginState, reactiveState }) => {
+  // Call lifecycle hook before cleanup
+  if (pluginState?.lifecycle?.onUnmount) {
+    try {
+      Velin.evaluate(pluginState.innerState, pluginState.lifecycle.onUnmount);
+    } catch (err) {
+      console.error('[Velin Templates] Error in onUnmount hook:', err);
+    }
+  }
+
+  // Clean up inner state
+  if (pluginState?.innerState) {
+    Velin.cleanupState(reactiveState, pluginState.innerState);
+  }
+}
+```
+
+**Why it matters:** Without proper cleanup, removed elements would continue to hold references to reactive state, causing memory leaks and potentially triggering re-renders on elements that no longer exist in the DOM.
+
+### `Velin.plugins.processPlugin(plugin, reactiveState, expr, node, attributeName, subkey)`
+
+Manually runs a plugin on a node. This is rarely needed, but can be useful for plugins that delegate to other plugins.
+
+**Parameters:**
+- `plugin` (Object): Plugin definition (from `Velin.plugins.get()`)
+- `reactiveState` (ReactiveState): Reactive state object
+- `expr` (string): Expression to evaluate
+- `node` (Node): DOM node
+- `attributeName` (string): Full attribute name (e.g., `'vln-text'`)
+- `subkey` (string, optional): Subkey from attribute (e.g., `'click'` from `'vln-on:click'`)
+
+**Returns:** void
+
+**Real example - delegating between plugins:**
+```javascript
+// The 'vln-use' plugin is just an alias that delegates to 'vln-fragment'
+Velin.plugins.registerPlugin({
+  name: 'use',
+  destroy: ({ node, pluginState, reactiveState, subkey }) => {
+    const fragmentPlugin = Velin.plugins.get('fragment');
+    if (fragmentPlugin?.destroy) {
+      fragmentPlugin.destroy({ node, pluginState, reactiveState, subkey });
+    }
+  },
+  render: (args) => {
+    const fragmentPlugin = Velin.plugins.get('fragment');
+    return fragmentPlugin.render(args);
+  }
+});
+```
 
 ### `Velin.ø__internal`
 
