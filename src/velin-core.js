@@ -148,8 +148,8 @@ const trackers = {
    *   }
    * });
    *
-   * @see {@link https://github.com/yourusername/velin/blob/main/docs/plugins.md|Creating Plugins Guide}
-   * @see {@link https://github.com/yourusername/velin/blob/main/docs/api-reference.md#velintrackersexpressiontracker|API Reference}
+   * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/plugins.md|Creating Plugins Guide}
+   * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/api-reference.md#velintrackersexpressiontracker|API Reference}
    */
   expressionTracker: ({ reactiveState, expr }) => evaluate(reactiveState, expr),
 
@@ -174,8 +174,8 @@ const trackers = {
    *   }
    * });
    *
-   * @see {@link https://github.com/yourusername/velin/blob/main/docs/plugins.md|Creating Plugins Guide}
-   * @see {@link https://github.com/yourusername/velin/blob/main/docs/api-reference.md#velintrackerssettertracker|API Reference}
+   * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/plugins.md|Creating Plugins Guide}
+   * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/api-reference.md#velintrackerssettertracker|API Reference}
    */
   setterTracker: ({ reactiveState, expr }) => getSetter(reactiveState, expr),
 };
@@ -220,8 +220,8 @@ const trackers = {
  *   }
  * });
  *
- * @see {@link https://github.com/yourusername/velin/blob/main/docs/plugins.md|Creating Plugins Guide}
- * @see {@link https://github.com/yourusername/velin/blob/main/docs/api-reference.md#velinpluginsregisterplugin|API Reference}
+ * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/plugins.md|Creating Plugins Guide}
+ * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/api-reference.md#velinpluginsregisterplugin|API Reference}
  */
 function registerPlugin(def) {
   plugins.set(def.name, {
@@ -261,8 +261,8 @@ function registerPlugin(def) {
  *   }
  * });
  *
- * @see {@link https://github.com/yourusername/velin/blob/main/docs/api-reference.md#velinpluginsprocessplugin|API Reference}
- * @see {@link https://github.com/yourusername/velin/blob/main/docs/plugins.md#accessing-other-plugins|Creating Plugins: Accessing Other Plugins}
+ * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/api-reference.md#velinpluginsprocessplugin|API Reference}
+ * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/plugins.md#accessing-other-plugins|Creating Plugins: Accessing Other Plugins}
  */
 function processPlugin(plugin, reactiveState, expr, node, attributeName, subkey = null) {
   /** @type {DepCapture} */
@@ -714,8 +714,8 @@ function evalAst(ast, context) {
  *   Velin.evaluate(innerState, lifecycle.onMount);
  * }
  *
- * @see {@link https://github.com/yourusername/velin/blob/main/docs/api-reference.md#velintrackersevaluate|API Reference}
- * @see {@link https://github.com/yourusername/velin/blob/main/docs/getting-started.md#expressions-are-javascript|Getting Started: Expressions}
+ * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/api-reference.md#velintrackersevaluate|API Reference}
+ * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/getting-started.md#expressions-are-javascript|Getting Started: Expressions}
  */
 function evaluate(reactiveState, expr) {
   reactiveState.ø__control.evaluating = true;
@@ -782,8 +782,8 @@ function evaluate(reactiveState, expr) {
  *   setter(e.target.checked); // Set boolean value
  * });
  *
- * @see {@link https://github.com/yourusername/velin/blob/main/docs/api-reference.md#velingetsetter|API Reference}
- * @see {@link https://github.com/yourusername/velin/blob/main/docs/directives.md#vln-input|Directives: vln-input}
+ * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/api-reference.md#velingetsetter|API Reference}
+ * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/directives.md#vln-input|Directives: vln-input}
  */
 function getSetter(reactiveState, expr) {
   const inter = reactiveState.interpolations;
@@ -1016,9 +1016,9 @@ function setupState(obj) {
  * ]);
  * const innerState = Velin.composeState(reactiveState, interpolations);
  *
- * @see {@link https://github.com/yourusername/velin/blob/main/docs/api-reference.md#velincomposestate|API Reference}
+ * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/api-reference.md#velincomposestate|API Reference}
  * @see {@link cleanupState} for cleanup when scope is no longer needed
- * @see {@link https://github.com/yourusername/velin/blob/main/docs/plugins.md|Creating Plugins Guide}
+ * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/plugins.md|Creating Plugins Guide}
  */
 function composeState(reactiveState, interpolations) {
   /** @type {ReactiveState} */
@@ -1078,9 +1078,9 @@ function composeState(reactiveState, interpolations) {
  *   Velin.cleanupState(reactiveState, oldSubstates[i]); // Prevent memory leak
  * }
  *
- * @see {@link https://github.com/yourusername/velin/blob/main/docs/api-reference.md#velincleanupstate|API Reference}
+ * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/api-reference.md#velincleanupstate|API Reference}
  * @see {@link composeState} for creating scoped states
- * @see {@link https://github.com/yourusername/velin/blob/main/docs/plugins.md|Creating Plugins Guide}
+ * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/plugins.md|Creating Plugins Guide}
  */
 function cleanupState(parentState, innerState) {
   if (parentState === innerState) return;
@@ -1161,8 +1161,8 @@ function consumeAttribute(node, attr, expr) {
  * document.body.appendChild(newElement);
  * Velin.processNode(newElement, reactiveState); // Apply Velin to new element
  *
- * @see {@link https://github.com/yourusername/velin/blob/main/docs/api-reference.md#velinprocessnode|API Reference}
- * @see {@link https://github.com/yourusername/velin/blob/main/docs/plugins.md|Creating Plugins Guide}
+ * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/api-reference.md#velinprocessnode|API Reference}
+ * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/plugins.md|Creating Plugins Guide}
  */
 function processNode(node, reactiveState) {
   if (!(node instanceof HTMLElement)) return;
@@ -1273,8 +1273,8 @@ function processNode(node, reactiveState) {
  *   name: 'Alice'
  * });
  *
- * @see {@link https://github.com/yourusername/velin/blob/main/docs/api-reference.md#velinbind|API Reference}
- * @see {@link https://github.com/yourusername/velin/blob/main/docs/getting-started.md|Getting Started Guide}
+ * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/api-reference.md#velinbind|API Reference}
+ * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/getting-started.md|Getting Started Guide}
  */
 function bind(root = document.body, initialState = {}) {
   const reactiveState = setupState(initialState);

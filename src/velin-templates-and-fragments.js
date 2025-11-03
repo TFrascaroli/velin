@@ -40,9 +40,9 @@ function setupTemplatesAndFragments(vln) {
    * Will error if required variables (from vln-vars) are not provided.
    * Lifecycle hooks (onMount, onUnmount) are optional and don't need declaration.
    *
-   * @see {@link https://github.com/yourusername/velin/blob/main/docs/templates.md|Templates & Fragments Guide}
-   * @see {@link https://github.com/yourusername/velin/blob/main/docs/directives.md|Directives Guide}
-   * @see {@link https://github.com/yourusername/velin/blob/main/playground/examples.html|Interactive Examples}
+   * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/templates.md|Templates & Fragments Guide}
+   * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/directives.md|Directives Guide}
+   * @see {@link https://github.com/TFrascaroli/velin/blob/main/playground/examples.html|Interactive Examples}
    */
   vln.plugins.registerPlugin({
     name: "fragment",
@@ -207,7 +207,7 @@ function setupTemplatesAndFragments(vln) {
    * <div vln-fragment="'userCard'" vln-var:user="currentUser"></div>
    * <div vln-use="'userCard'" vln-var:user="currentUser"></div>
    *
-   * @see {@link https://github.com/yourusername/velin/blob/main/docs/templates.md#alternative-vln-use|Templates Guide: vln-use}
+   * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/templates.md#alternative-vln-use|Templates Guide: vln-use}
    */
   vln.plugins.registerPlugin({
     name: "use",

@@ -15,7 +15,7 @@ function setupVelinStd(vln) {
    * <p vln-text="'Hello, ' + name"></p>
    * <span vln-text="count * 2"></span>
    *
-   * @see {@link https://github.com/yourusername/velin/blob/main/docs/directives.md#vln-text|Directives Guide: vln-text}
+   * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/directives.md#vln-text|Directives Guide: vln-text}
    */
   vln.plugins.registerPlugin({
     name: "text",
@@ -34,7 +34,7 @@ function setupVelinStd(vln) {
    * <div vln-if="count > 0">You have items</div>
    * <p vln-if="!loading && !error">Content</p>
    *
-   * @see {@link https://github.com/yourusername/velin/blob/main/docs/directives.md#vln-if|Directives Guide: vln-if}
+   * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/directives.md#vln-if|Directives Guide: vln-if}
    */
   vln.plugins.registerPlugin({
     name: "if",
@@ -55,7 +55,7 @@ function setupVelinStd(vln) {
    * <a vln-attr:href="'/user/' + userId">Profile</a>
    * <div vln-attr:data-id="itemId"></div>
    *
-   * @see {@link https://github.com/yourusername/velin/blob/main/docs/directives.md#vln-attrname|Directives Guide: vln-attr}
+   * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/directives.md#vln-attrname|Directives Guide: vln-attr}
    */
   vln.plugins.registerPlugin({
     name: "attr",
@@ -93,7 +93,7 @@ function setupVelinStd(vln) {
    * // Conditional expression
    * <div vln-class="status === 'error' ? 'text-red' : 'text-green'"></div>
    *
-   * @see {@link https://github.com/yourusername/velin/blob/main/docs/directives.md#vln-class|Directives Guide: vln-class}
+   * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/directives.md#vln-class|Directives Guide: vln-class}
    */
   vln.plugins.registerPlugin({
     name: "class",
@@ -169,7 +169,7 @@ function setupVelinStd(vln) {
    * <div vln-on:mouseenter="isHovering = true"
    *      vln-on:mouseleave="isHovering = false">Hover</div>
    *
-   * @see {@link https://github.com/yourusername/velin/blob/main/docs/directives.md#vln-onevent|Directives Guide: vln-on}
+   * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/directives.md#vln-onevent|Directives Guide: vln-on}
    */
   vln.plugins.registerPlugin({
     name: "on",
@@ -220,8 +220,8 @@ function setupVelinStd(vln) {
    * // ContentEditable
    * <div contenteditable vln-input="content"></div>
    *
-   * @see {@link https://github.com/yourusername/velin/blob/main/docs/directives.md#vln-input|Directives Guide: vln-input}
-   * @see {@link https://github.com/yourusername/velin/blob/main/docs/getting-started.md#two-way-binding-vln-input|Getting Started: Two-Way Binding}
+   * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/directives.md#vln-input|Directives Guide: vln-input}
+   * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/getting-started.md#two-way-binding-vln-input|Getting Started: Two-Way Binding}
    */
   vln.plugins.registerPlugin({
     name: "input",
@@ -319,8 +319,8 @@ function setupVelinStd(vln) {
    *   Remove <span vln-text="item"></span>
    * </button>
    *
-   * @see {@link https://github.com/yourusername/velin/blob/main/docs/directives.md#vln-loop|Directives Guide: vln-loop}
-   * @see {@link https://github.com/yourusername/velin/blob/main/docs/getting-started.md#lists-vln-loop|Getting Started: Lists}
+   * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/directives.md#vln-loop|Directives Guide: vln-loop}
+   * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/getting-started.md#lists-vln-loop|Getting Started: Lists}
    */
   vln.plugins.registerPlugin({
     name: "loop",
