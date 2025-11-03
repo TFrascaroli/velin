@@ -95,7 +95,7 @@ Since `vln-fragment` values are JavaScript expressions, you can dynamically sele
 </template>
 
 <!-- Dynamically pick template based on role -->
-<div vln-loop:[^=]+="users"
+<div vln-loop:user="users"
      vln-fragment="user.role + 'Card'"
      vln-var:user="user">
 </div>
@@ -115,7 +115,7 @@ Common pattern: using templates to render list items:
 </template>
 
 <ul>
-  <li vln-loop:[^=]+="todos"
+  <li vln-loop:todo="todos"
       vln-fragment="'todoItem'"
       vln-var:todo="todo"
       vln-var:actions="createActions(todo)">
@@ -284,7 +284,7 @@ Here's a complete example of a user management interface using templates:
   <div id="app">
     <h1>Users</h1>
 
-    <div vln-loop:[^=]+="users"
+    <div vln-loop:user="users"
          vln-fragment="'userCard'"
          vln-var:user="user"
          vln-var:actions="createUserActions(user)">
@@ -355,7 +355,7 @@ Here's a complete example of a user management interface using templates:
 ❌ **Simple repeated items**
 ```html
 <!-- Just use vln-loop directly -->
-<li vln-loop:[^=]+="items" vln-text="item.name"></li>
+<li vln-loop:item="items" vln-text="item.name"></li>
 ```
 
 ❌ **Server-rendered pages**
