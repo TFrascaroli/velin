@@ -281,7 +281,7 @@ Velin.processNode(newDiv, Velin.ø__internal.boundState.root);
 
 ---
 
-## Internal APIs
+## Danger Zone
 
 For structure-altering plugins like `vln-loop` or `vln-fragment` that create scoped child states.
 
