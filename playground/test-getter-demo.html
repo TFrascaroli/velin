@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Getter Demo</title>
+  <script src="velin.js"></script>
+  <style>
+    body { font-family: monospace; padding: 20px; }
+    input { margin: 5px 0; padding: 5px; }
+    .result { margin: 10px 0; padding: 10px; background: #f0f0f0; }
+  </style>
+</head>
+<body>
+  <h1>Getter 'this' Binding Demo</h1>
+
+  <div id="app">
+    <div>
+      <label>First Name:</label>
+      <input vln-input="firstName" />
+    </div>
+
+    <div>
+      <label>Last Name:</label>
+      <input vln-input="lastName" />
+    </div>
+
+    <div class="result">
+      <strong>Full Name (from getter):</strong>
+      <span vln-text="fullName"></span>
+    </div>
+
+    <div class="result">
+      <strong>Greeting (from method):</strong>
+      <span vln-text="greeting"></span>
+    </div>
+  </div>
+
+  <script>
+    const state = Velin.bind(document.getElementById('app'), {
+      firstName: 'John',
+      lastName: 'Doe',
+
+      // Getter using 'this' to access reactive properties
+      get fullName() {
+        console.log('fullName getter called, this:', this);
+        return this.firstName + ' ' + this.lastName;
+      },
+
+      // Getter calling another method via 'this'
+      get greeting() {
+        return this.formatGreeting();
+      },
+
+      // Method that can be called via 'this'
+      formatGreeting() {
+        return `Hello, ${this.fullName}!`;
+      }
+    });
+
+    // Verify in console
+    console.log('state.fullName:', state.fullName);
+    console.log('state.greeting:', state.greeting);
+  </script>
+</body>
+</html>

@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Method 'this' Demo</title>
+  <script src="velin.js"></script>
+  <style>
+    body { font-family: monospace; padding: 20px; }
+    button { margin: 5px; padding: 10px 20px; cursor: pointer; }
+    .result { margin: 10px 0; padding: 10px; background: #f0f0f0; }
+  </style>
+</head>
+<body>
+  <h1>Method 'this' Binding Demo</h1>
+
+  <div id="app">
+    <div class="result">
+      <strong>Count:</strong> <span vln-text="count"></span>
+    </div>
+
+    <button vln-on:click="increment()">Increment</button>
+    <button vln-on:click="decrement()">Decrement</button>
+    <button vln-on:click="reset()">Reset</button>
+
+    <div class="result">
+      <strong>Full Name:</strong> <span vln-text="fullName"></span>
+    </div>
+
+    <button vln-on:click="changeName()">Change Name</button>
+
+    <div class="result">
+      <strong>Message:</strong> <span vln-text="message"></span>
+    </div>
+
+    <button vln-on:click="loadData()">
+      <span vln-if="!loading">Load Data</span>
+      <span vln-if="loading">Loading...</span>
+    </button>
+  </div>
+
+  <script>
+    const state = Velin.bind(document.getElementById('app'), {
+      count: 0,
+      firstName: 'John',
+      lastName: 'Doe',
+      message: 'Click "Load Data" to test async methods',
+      loading: false,
+
+      // Regular methods with 'this' accessing reactive properties
+      increment() {
+        console.log('increment called, this:', this);
+        this.count++;
+      },
+
+      decrement() {
+        this.count--;
+      },
+
+      reset() {
+        this.count = 0;
+      },
+
+      // Getter using 'this'
+      get fullName() {
+        return this.firstName + ' ' + this.lastName;
+      },
+
+      // Method calling another method via 'this'
+      changeName() {
+        this.firstName = this.firstName === 'John' ? 'Jane' : 'John';
+        this.lastName = this.lastName === 'Doe' ? 'Smith' : 'Doe';
+      },
+
+      // Async method with 'this'
+      async loadData() {
+        console.log('loadData called, this:', this);
+        this.loading = true;
+        this.message = 'Loading...';
+
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        this.message = 'Data loaded at ' + new Date().toLocaleTimeString();
+        this.loading = false;
+      }
+    });
+
+    // Verify in console
+    console.log('Initial state:', {
+      count: state.count,
+      fullName: state.fullName
+    });
+  </script>
+</body>
+</html>
