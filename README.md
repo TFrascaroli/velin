@@ -105,12 +105,12 @@ Toggles `display: none` based on expression truthiness.
 
 ### `vln-loop:varname` — Render arrays
 
-Repeats the element for each item in an array. The variable name after the colon is scoped to the element and its children.
+Repeats the element for each item in an array. The variable name after the colon is scoped to the element and its children. Inside loops, you can access the special `$index` variable (0-based).
 
 ```html
 <ul>
   <li vln-loop:item="items">
-    <span vln-text="item.name"></span>
+    <span vln-text="($index + 1) + '. ' + item.name"></span>
     <button vln-on:click="removeItem(item)">Remove</button>
   </li>
 </ul>
