@@ -45,7 +45,7 @@ Complete form with validation, error messages, and submission:
         <input
           vln-input="email"
           vln-class="{ invalid: touched.email && !isEmailValid }"
-          vln-on:[^=]+="touched.email = true"
+          vln-on:blur="touched.email = true"
           type="email"
         />
         <div vln-if="touched.email && !isEmailValid" class="error">
@@ -58,7 +58,7 @@ Complete form with validation, error messages, and submission:
         <input
           vln-input="password"
           vln-class="{ invalid: touched.password && !isPasswordValid }"
-          vln-on:[^=]+="touched.password = true"
+          vln-on:blur="touched.password = true"
           type="password"
         />
         <div vln-if="touched.password && !isPasswordValid" class="error">
@@ -175,14 +175,14 @@ Managing a list with create, read, update, delete:
       <div vln-if="editingId !== task.id">
         <input type="checkbox" vln-input="task.done" />
         <span vln-text="task.text"></span>
-        <button vln-on:[^=]+="startEdit(task)">Edit</button>
-        <button vln-on:[^=]+="deleteTask(task.id)">Delete</button>
+        <button vln-on:click="startEdit(task)">Edit</button>
+        <button vln-on:click="deleteTask(task.id)">Delete</button>
       </div>
 
       <div vln-if="editingId === task.id">
         <input vln-input="editText" />
-        <button vln-on:[^=]+="saveEdit(task)">Save</button>
-        <button vln-on:[^=]+="cancelEdit()">Cancel</button>
+        <button vln-on:click="saveEdit(task)">Save</button>
+        <button vln-on:click="cancelEdit()">Cancel</button>
       </div>
     </li>
   </ul>
@@ -289,16 +289,16 @@ Reusable modal pattern:
 
 ```html
 <div id="app">
-  <button vln-on:[^=]+="openModal()">Open Modal</button>
+  <button vln-on:click="openModal()">Open Modal</button>
 
   <div
     vln-if="isModalOpen"
     class="modal-overlay"
-    vln-on:[^=]+="closeModal()">
+    vln-on:click="closeModal()">
     <div class="modal-content" vln-on:click="event.stopPropagation()">
       <h2>Modal Title</h2>
       <p vln-text="modalMessage"></p>
-      <button vln-on:[^=]+="closeModal()">Close</button>
+      <button vln-on:click="closeModal()">Close</button>
     </div>
   </div>
 </div>
@@ -352,10 +352,10 @@ Tab navigation component:
 <div id="app">
   <div class="tabs">
     <button
-      vln-loop:[^=]+="tabs"
+      vln-loop:tab="tabs"
       vln-text="tab"
       vln-class="{ active: activeTab === tab }"
-      vln-on:[^=]+="activeTab = vln.tab">
+      vln-on:click="activeTab = tab">
     </button>
   </div>
 
@@ -418,7 +418,7 @@ Expandable/collapsible sections:
 <div id="app">
   <div vln-loop:[^=]+="items" class="accordion-item">
     <button
-      vln-on:[^=]+="toggle(item.id)"
+      vln-on:click="toggle(item.id)"
       class="accordion-header">
       <span vln-text="item.title"></span>
       <span vln-text="isOpen(item.id) ? '−' : '+'"></span>
@@ -555,7 +555,7 @@ Product listing with cart:
     <div vln-loop:[^=]+="products" class="product">
       <h3 vln-text="product.name"></h3>
       <p vln-text="'$' + product.price"></p>
-      <button vln-on:[^=]+="addToCart(product)">Add to Cart</button>
+      <button vln-on:click="addToCart(product)">Add to Cart</button>
     </div>
   </div>
 
@@ -566,7 +566,7 @@ Product listing with cart:
       <div vln-loop:[^=]+="cart">
         <span vln-text="item.name"></span>
         - $<span vln-text="item.price"></span>
-        <button vln-on:[^=]+="removeFromCart(item)">Remove</button>
+        <button vln-on:click="removeFromCart(item)">Remove</button>
       </div>
 
       <div>
