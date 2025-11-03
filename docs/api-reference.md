@@ -119,33 +119,6 @@ document.body.appendChild(newDiv);
 Velin.processNode(newDiv, Velin.ø__internal.boundState.root);
 ```
 
-### `Velin.on(event, callback, options)`
-
-Subscribe to Velin internal events.
-
-**Parameters:**
-- `event` (string): Event name (e.g., `'afterProcessNode'`)
-- `callback` (Function): Callback function
-- `options` (Object, optional): Filter options
-  - `selector` (string): CSS selector to filter nodes
-  - `plugin` (string): Plugin name to filter
-  - `parentSelector` (string): Parent selector to filter
-
-**Returns:** Unsubscribe function
-
-**Example:**
-```javascript
-const unsubscribe = Velin.on('afterProcessNode', ({ node, plugin }) => {
-  console.log('Processed node:', node, 'with plugin:', plugin);
-}, { plugin: 'text' });
-
-// Later, unsubscribe
-unsubscribe();
-```
-
-**Available Events:**
-- `afterProcessNode`: Fired after a node is processed by a plugin
-
 ### `Velin.plugins`
 
 Plugin manager object.
