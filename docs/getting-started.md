@@ -83,7 +83,7 @@ Directives are HTML attributes that start with `vln-`:
 ```html
 <div vln-text="message"></div>
 <input vln-input="email" />
-<button vln-on:[^=]+="handleClick()">Click me</button>
+<button vln-on:click="handleClick()">Click me</button>
 ```
 
 ### 3. Expressions are JavaScript
@@ -167,13 +167,13 @@ The syntax is `vln-loop:[^=]+="arrayExpression"`.
 Responds to DOM events:
 
 ```html
-<button vln-on:[^=]+="count++">Increment</button>
+<button vln-on:click="count++">Increment</button>
 
-<form vln-on:[^=]+="handleSubmit()">
+<form vln-on:submit="handleSubmit()">
   <!-- form fields -->
 </form>
 
-<input vln-on:[^=]+="handleKeyPress($event)" />
+<input vln-on:keypress="handleKeyPress($event)" />
 ```
 
 ### Attributes: `vln-attr:name`
@@ -218,16 +218,16 @@ Let's build a simple todo app to practice:
   <div id="app">
     <h1>Todo List</h1>
 
-    <form vln-on:[^=]+="addTodo()">
+    <form vln-on:submit="addTodo()">
       <input vln-input="newTodo" placeholder="What needs to be done?" />
       <button type="submit">Add</button>
     </form>
 
     <ul>
-      <li vln-loop:[^=]+="todos" vln-class="{ completed: todo.done }">
+      <li vln-loop:todo="todos" vln-class="{ completed: todo.done }">
         <input type="checkbox" vln-input="todo.done" />
         <span vln-text="todo.text"></span>
-        <button vln-on:[^=]+="removeTodo(todo)">×</button>
+        <button vln-on:click="removeTodo(todo)">×</button>
       </li>
     </ul>
 
@@ -369,7 +369,7 @@ const vln = Velin.bind(root, {
 ```
 
 ```html
-<button vln-on:[^=]+="loadData()" vln-attr:disabled="loading">
+<button vln-on:click="loadData()" vln-attr:disabled="loading">
   <span vln-if="!loading">Load Data</span>
   <span vln-if="loading">Loading...</span>
 </button>
