@@ -79,7 +79,7 @@ const DefaultPluginPriorities = {
 
 /** @typedef {(reactiveState: ReactiveState, interpolations: Map<string, any>) => ReactiveState} ComposeState */
 /** @typedef {(parentState: ReactiveState, innerState: ReactiveState) => void} CleanupState */
-/** @typedef {(root?: Element | DocumentFragment, initialState?: Object) => Object} Bind */
+/** @typedef {<T extends object>(root?: Element | DocumentFragment, initialState?: T) => T} Bind */
 
 /** @typedef {(args: { reactiveState: ReactiveState, expr: string }) => any} ExpressionTracker */
 /** @typedef {(args: { reactiveState: ReactiveState, expr: string }) => (value: any) => void} SetterTracker */
@@ -1236,7 +1236,10 @@ function processNode(node, reactiveState) {
  * This is the main entry point for using Velin. Call it once per app/component
  * with your root element and initial state. Returns a reactive proxy of your state.
  *
- * @type {Bind}
+ * @template {object} T
+ * @param {Element | DocumentFragment} [root=document.body] - The root element to make reactive
+ * @param {T} [initialState={}] - Initial state object
+ * @returns {T} Reactive proxy of the state
  *
  * @example
  * // Basic usage
@@ -1276,7 +1279,7 @@ function processNode(node, reactiveState) {
  * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/api-reference.md#velinbind|API Reference}
  * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/getting-started.md|Getting Started Guide}
  */
-function bind(root = document.body, initialState = {}) {
+function bind(root = document.body, initialState = /** @type {any} */ ({})) {
   const reactiveState = setupState(initialState);
   processNode(root, reactiveState);
   boundState.root = reactiveState;
