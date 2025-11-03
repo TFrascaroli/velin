@@ -157,12 +157,12 @@ Shows or hides an element based on a condition.
 
 Repeats an element for each item in an array.
 
-**Syntax:** `vln-loop:[^=]+="arrayExpression"`
+**Syntax:** `vln-loop:varName="arrayExpression"`
 
 **Basic Example:**
 ```html
 <ul>
-  <li vln-loop:[^=]+="items" vln-text="item"></li>
+  <li vln-loop:item="items" vln-text="item"></li>
 </ul>
 ```
 
@@ -177,7 +177,7 @@ const vln = Velin.bind(root, {
 });
 </script>
 
-<div vln-loop:[^=]+="users">
+<div vln-loop:user="users">
   <h3 vln-text="user.name"></h3>
   <p vln-text="user.email"></p>
 </div>
@@ -187,11 +187,11 @@ const vln = Velin.bind(root, {
 ```html
 <table>
   <tbody>
-    <tr vln-loop:[^=]+="products">
+    <tr vln-loop:product="products">
       <td vln-text="product.name"></td>
       <td vln-text="'$' + product.price"></td>
       <td>
-        <button vln-on:[^=]+="addToCart(product)">Add to Cart</button>
+        <button vln-on:click="addToCart(product)">Add to Cart</button>
       </td>
     </tr>
   </tbody>
@@ -200,35 +200,45 @@ const vln = Velin.bind(root, {
 
 **Nested Loops:**
 ```html
-<div vln-loop:[^=]+="categories">
+<div vln-loop:category="categories">
   <h2 vln-text="category.name"></h2>
   <ul>
-    <li vln-loop:[^=]+="category.items" vln-text="item.name"></li>
+    <li vln-loop:item="category.items" vln-text="item.name"></li>
   </ul>
 </div>
 ```
 
-**With Index (using array methods):**
+**With Index:**
+
+Inside a loop, you can access the special `$index` variable which contains the current iteration index (0-based):
+
 ```html
-<script>
-const vln = Velin.bind(root, {
-  items: ['Apple', 'Banana', 'Cherry'],
+<ul>
+  <li vln-loop:item="items">
+    <span vln-text="$index + 1"></span>: <span vln-text="item"></span>
+  </li>
+</ul>
+```
 
-  get itemsWithIndex() {
-    return this.items.map((item, index) => ({ item, index }));
-  }
-});
-</script>
+**Using Index in Event Handlers:**
+```html
+<button vln-loop:item="items" vln-on:click="removeAt($index)">
+  Remove <span vln-text="item"></span>
+</button>
+```
 
-<div vln-loop:[^=]+="itemsWithIndex">
-  <span vln-text="obj.index + 1"></span>: <span vln-text="obj.item"></span>
+**Using Index for Styling:**
+```html
+<div vln-loop:item="items" vln-class="$index % 2 === 0 ? 'even' : 'odd'">
+  <span vln-text="item"></span>
 </div>
 ```
 
 **Notes:**
 - Variable name can be anything: `vln-loop:item`, `vln-loop:user`, `vln-loop:todo`, etc.
-- Array must be accessed via `vln.` prefix
 - The loop variable is scoped to that element and its children
+- `$index` is automatically available in all loop iterations (0-based)
+- Each nested loop has its own `$index` variable
 - Reactive: adding/removing array items updates the DOM automatically
 
 ## Event Handling
@@ -503,17 +513,5 @@ get filteredItems() {
 ```
 
 ```html
-<div vln-loop:[^=]+="filteredItems">...</div>
-```
-
-### 4. Prefix all state access with `vln.`
-
-**Good:**
-```html
-<div vln-text="name"></div>
-```
-
-**Wrong:**
-```html
-<div vln-text="name"></div> <!-- Will throw error -->
+<div vln-loop:item="filteredItems">...</div>
 ```
