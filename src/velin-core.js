@@ -715,9 +715,13 @@ function setupState(obj) {
         return result;
       },
     });
-    Object.keys(obj).forEach(
-      (prop) => (state[prop] = wrap(state[prop], path + "." + prop.toString()))
-    );
+    Object.keys(obj).forEach((prop) => {
+      const descriptor = Object.getOwnPropertyDescriptor(obj, prop);
+      // Skip accessor properties (getters/setters) - they don't need wrapping
+      if (descriptor && !descriptor.get && !descriptor.set) {
+        state[prop] = wrap(state[prop], path + "." + prop.toString());
+      }
+    });
     return state;
   }
 
