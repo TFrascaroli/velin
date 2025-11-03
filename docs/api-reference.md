@@ -28,22 +28,27 @@ vln.count++;
 vln.name = 'Bob';
 ```
 
-### `Velin.evaluate(reactiveState, expr)`
+### `Velin.evaluate(reactiveState, expr, allowMutations)`
 
 Evaluates a JavaScript expression in the context of the reactive state.
 
 **Parameters:**
 - `reactiveState` (ReactiveState): Internal reactive state object
 - `expr` (string): JavaScript expression to evaluate
+- `allowMutations` (boolean, optional): If true, allows function calls to mutate state. Defaults to false for read-only evaluation.
 
 **Returns:** Result of the expression
 
 **Example:**
 ```javascript
-const result = Velin.evaluate(reactiveState, 'vln.count + 10');
+// Read-only evaluation (default)
+const result = Velin.evaluate(reactiveState, 'count + 10');
+
+// Allow mutations (for event handlers)
+Velin.evaluate(reactiveState, 'increment()', true);
 ```
 
-**Note:** This is an advanced API. Most users won't need to call this directly.
+**Note:** This is an advanced API. Most users won't need to call this directly. Display directives use read-only mode, while event handlers (`vln-on`) use mutation mode.
 
 ### `Velin.getSetter(reactiveState, expr)`
 
@@ -51,14 +56,14 @@ Returns a setter function for a property expression.
 
 **Parameters:**
 - `reactiveState` (ReactiveState): Internal reactive state object
-- `expr` (string): Property path expression (e.g., `'vln.user.name'`)
+- `expr` (string): Property path expression (e.g., `'user.name'`)
 
 **Returns:** Function that sets the value
 
 **Example:**
 ```javascript
-const setName = Velin.getSetter(reactiveState, 'vln.user.name');
-setName('Charlie'); // equivalent to: vln.user.name = 'Charlie'
+const setName = Velin.getSetter(reactiveState, 'user.name');
+setName('Charlie'); // equivalent to: user.name = 'Charlie'
 ```
 
 **Note:** This is used internally by plugins like `vln-input`. Most users won't need this.
@@ -77,7 +82,7 @@ Creates a child reactive state with additional interpolations (variable mappings
 ```javascript
 const innerState = Velin.composeState(
   reactiveState,
-  new Map([['item', 'vln.items[0]']])
+  new Map([['item', 'items[0]']])
 );
 ```
 
@@ -109,7 +114,7 @@ Processes a DOM node, applying all applicable Velin directives.
 ```javascript
 // Add a new element and make it reactive
 const newDiv = document.createElement('div');
-newDiv.setAttribute('vln-text', 'vln.message');
+newDiv.setAttribute('vln-text', 'message');
 document.body.appendChild(newDiv);
 Velin.processNode(newDiv, Velin.ø__internal.boundState.root);
 ```
@@ -308,8 +313,8 @@ const vln = Velin.bind(root, {
 ```
 
 ```html
-<button vln-on:click="vln.increment()">+</button>
-<button vln-on:click="vln.reset()">Reset</button>
+<button vln-on:click="increment()">+</button>
+<button vln-on:click="reset()">Reset</button>
 ```
 
 ### Async Methods

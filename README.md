@@ -1,161 +1,186 @@
 # Velin
 
-**Velin** is a lightweight, runtime-only frontend reactivity engine designed for maximum flexibility and zero compilation. It enables expressive, declarative UIs directly in HTML using custom `vln-*` directives, and integrates seamlessly with vanilla JavaScript.
+A lightweight reactive JavaScript library for building interactive UIs with plain HTML and JavaScript. No build step, no compilation, no new syntax to learn.
 
 > ⚠️ Alpha software — experimental and subject to change.
 
-## Why Velin?
+## What is Velin?
 
-- ✅ **Runtime-only** — no build step, no compilation, no bundler required
-- ✅ **Lightweight** — core + standard plugins under 5KB gzipped
-- ✅ **Flat learning curve** — if you know HTML and JavaScript, you know Velin
-- ✅ **Fully reactive** — automatic dependency tracking and updates
-- ✅ **Plugin-friendly** — extensible architecture for custom directives
-- ✅ **Server-first friendly** — perfect for progressive enhancement of server-rendered pages
-
-## Perfect For
-
-- 🎯 Forms and CRUD interfaces
-- 🎯 Adding reactivity to server-rendered apps (Django, Rails, Laravel, Express)
-- 🎯 Internal tools and admin panels
-- 🎯 Progressive enhancement of static HTML
-- 🎯 Lightweight SPAs with mostly static content
-- 🎯 Developers who want modern reactivity without modern complexity
-
-## Quick Start
-
-### Installation
-
-Just include the script in your HTML:
+Velin adds reactivity to your HTML using custom `vln-*` attributes. Changes to your JavaScript state automatically update the DOM through fine-grained dependency tracking.
 
 ```html
-<script src="https://unpkg.com/velin/dist/velin-all.min.js"></script>
+<input vln-input="name" placeholder="Enter your name" />
+<h1 vln-text="'Hello ' + name"></h1>
+
+<script src="velin.js"></script>
+<script>
+  const state = Velin.bind(document.body, {
+    name: "World"
+  });
+</script>
 ```
 
-Or install via npm:
+That's it. No JSX, no virtual DOM, no build tools. Your state is a plain JavaScript object with Proxy-based reactivity.
 
+## Installation
+
+CDN:
+```html
+<script src="https://unpkg.com/velin/dist/build/velin-all.min.js"></script>
+```
+
+NPM:
 ```bash
 npm install velin
 ```
 
-### Hello World
+## Core Features
 
-```html
-<!DOCTYPE html>
-<html>
-<head>
-  <script src="velin.js"></script>
-</head>
-<body>
-  <input vln-input="vln.name" placeholder="Enter your name" />
-  <h1 vln-text="'Hello ' + vln.name"></h1>
+### Scoped Reactive State
 
-  <script>
-    const vln = Velin.bind(document.body, {
-      name: "World"
-    });
-  </script>
-</body>
-</html>
-```
-
-That's it! No build step, no JSX, no configuration.
-
-## Core Concepts
-
-### Reactive State
+Each call to `Velin.bind()` creates an isolated reactive scope. You can have multiple independent reactive regions on the same page.
 
 ```javascript
-const vln = Velin.bind(document.body, {
-  count: 0,
-  message: "Hello",
-  user: {
-    name: "Alice",
-    email: "alice@example.com"
-  }
+// Widget 1
+const widget1 = Velin.bind(document.querySelector('#widget1'), {
+  count: 0
 });
 
-// Changes automatically update the DOM
-vln.count++;
-vln.user.name = "Bob";
+// Widget 2 - completely independent
+const widget2 = Velin.bind(document.querySelector('#widget2'), {
+  items: []
+});
 ```
 
-### Standard Directives
+### Fine-Grained Dependency Tracking
 
-#### `vln-text` — Set text content
+Velin tracks exactly which properties each directive depends on. Updates only trigger for directives that actually use the changed property.
 
 ```html
-<span vln-text="vln.username"></span>
-<h1 vln-text="'Hello ' + vln.name"></h1>
+<span vln-text="user.name"></span>  <!-- Only updates when user.name changes -->
+<span vln-text="user.email"></span> <!-- Only updates when user.email changes -->
 ```
 
-#### `vln-input` — Two-way binding
+### Direct Property Access
+
+The state object returned by `Velin.bind()` is a reactive proxy. Modify it directly:
+
+```javascript
+const state = Velin.bind(element, { count: 0 });
+
+state.count++;                    // Updates DOM automatically
+state.user = { name: 'Alice' };   // Nested objects are reactive too
+```
+
+## Directives
+
+### `vln-text` — Set text content
 
 ```html
-<input vln-input="vln.email" type="email" />
-<input vln-input="vln.agreed" type="checkbox" />
-<select vln-input="vln.country">
+<span vln-text="username"></span>
+<h1 vln-text="'Hello ' + name"></h1>
+```
+
+### `vln-input` — Two-way binding
+
+Supports text inputs, checkboxes, radios, selects, and contenteditable elements.
+
+```html
+<input vln-input="email" type="email" />
+<input vln-input="agreed" type="checkbox" />
+<select vln-input="country">
   <option value="us">United States</option>
   <option value="uk">United Kingdom</option>
 </select>
 ```
 
-#### `vln-if` — Conditional visibility
+### `vln-if` — Conditional visibility
+
+Toggles `display: none` based on expression truthiness.
 
 ```html
-<div vln-if="vln.isLoggedIn">
-  Welcome back!
-</div>
-<div vln-if="!vln.isLoggedIn">
-  Please log in.
-</div>
+<div vln-if="isLoggedIn">Welcome back!</div>
+<div vln-if="!isLoggedIn">Please log in.</div>
 ```
 
-#### `vln-loop` — Loop over arrays
+### `vln-loop:varname` — Render arrays
+
+Repeats the element for each item in an array. The variable name after the colon is scoped to the element and its children. Inside loops, you can access the special `$index` variable (0-based).
 
 ```html
 <ul>
-  <li vln-loop:item="vln.items" vln-text="vln.item.name"></li>
+  <li vln-loop:item="items">
+    <span vln-text="($index + 1) + '. ' + item.name"></span>
+    <button vln-on:click="removeItem(item)">Remove</button>
+  </li>
 </ul>
 ```
 
-#### `vln-on:event` — Event handlers
+### `vln-on:event` — Event handlers
+
+Executes JavaScript expressions on events.
 
 ```html
-<button vln-on:click="vln.count++">
-  Clicked <span vln-text="vln.count"></span> times
+<button vln-on:click="count++">
+  Clicked <span vln-text="count"></span> times
 </button>
 
-<form vln-on:submit="vln.handleSubmit()">
-  <input vln-input="vln.email" />
+<form vln-on:submit="handleSubmit()">
+  <input vln-input="email" />
   <button type="submit">Submit</button>
 </form>
 ```
 
-#### `vln-attr:name` — Set attributes
+### `vln-attr:name` — Set attributes
 
 ```html
-<a vln-attr:href="'mailto:' + vln.email" vln-text="vln.email"></a>
-<img vln-attr:src="vln.imageUrl" vln-attr:alt="vln.imageAlt" />
-<input vln-attr:disabled="!vln.isValid" />
+<a vln-attr:href="'mailto:' + email"></a>
+<img vln-attr:src="imageUrl" vln-attr:alt="imageAlt" />
+<button vln-attr:disabled="!isValid">Submit</button>
 ```
 
-#### `vln-class` — Dynamic classes
+### `vln-class` — Dynamic classes
+
+Accepts strings, objects, or expressions.
 
 ```html
 <!-- String -->
-<div vln-class="vln.theme"></div>
+<div vln-class="theme"></div>
 
-<!-- Object -->
-<div vln-class="{ active: vln.isActive, disabled: !vln.isEnabled }"></div>
+<!-- Object (keys with truthy values become classes) -->
+<div vln-class="{ active: isActive, disabled: !isEnabled }"></div>
 
 <!-- Expression -->
-<div vln-class="vln.isActive ? 'on' : 'off'"></div>
+<div vln-class="isActive ? 'on' : 'off'"></div>
+
+<!-- Space-separated strings work -->
+<div vln-class="'btn ' + (isPrimary ? 'btn-primary' : 'btn-secondary')"></div>
 ```
 
-## Real-World Example
+## How It Works
 
-### Interactive Form with Validation
+### 1. Reactive State
+
+When you call `Velin.bind()`, your state object is wrapped in a Proxy that intercepts property access and modifications. The proxy recursively wraps nested objects and arrays.
+
+### 2. Dependency Tracking
+
+When a directive evaluates an expression like `"user.name"`, Velin records that this directive depends on the `user.name` property.
+
+### 3. Updates
+
+When you modify `state.user.name = "Bob"`, Velin:
+1. Detects the change via the Proxy setter
+2. Looks up all directives that depend on `user.name`
+3. Re-evaluates only those directives
+
+This is fine-grained reactivity - only affected parts of the DOM update.
+
+### 4. Expression Evaluation
+
+Velin uses a custom JavaScript parser that converts expressions into an AST (Abstract Syntax Tree) and evaluates them safely. This allows inline expressions without `eval()` or `Function()`, maintaining Content Security Policy compliance.
+
+## Complete Example
 
 ```html
 <!DOCTYPE html>
@@ -168,46 +193,46 @@ vln.user.name = "Bob";
   </style>
 </head>
 <body>
-  <form vln-on:submit="vln.handleSubmit()">
+  <form vln-on:submit="handleSubmit()">
     <div>
       <label>Email:</label>
-      <input vln-input="vln.email" type="email" />
-      <div vln-if="!vln.isEmailValid" class="error">
+      <input vln-input="email" type="email" />
+      <div vln-if="email && !isEmailValid" class="error">
         Please enter a valid email
       </div>
     </div>
 
     <div>
       <label>Password:</label>
-      <input vln-input="vln.password" type="password" />
-      <div vln-if="!vln.isPasswordValid" class="error">
+      <input vln-input="password" type="password" />
+      <div vln-if="password && !isPasswordValid" class="error">
         Password must be at least 8 characters
       </div>
     </div>
 
-    <button type="submit" vln-attr:disabled="!vln.canSubmit">
-      <span vln-if="!vln.loading">Sign Up</span>
-      <span vln-if="vln.loading">Signing up...</span>
+    <button type="submit" vln-attr:disabled="!canSubmit">
+      <span vln-if="!loading">Sign Up</span>
+      <span vln-if="loading">Signing up...</span>
     </button>
 
-    <div vln-if="vln.success" class="success">
+    <div vln-if="success" class="success">
       Account created successfully!
     </div>
   </form>
 
   <script>
-    const vln = Velin.bind(document.querySelector('form'), {
+    const state = Velin.bind(document.querySelector('form'), {
       email: '',
       password: '',
       loading: false,
       success: false,
 
       get isEmailValid() {
-        return !this.email || this.email.includes('@');
+        return this.email.includes('@');
       },
 
       get isPasswordValid() {
-        return !this.password || this.password.length >= 8;
+        return this.password.length >= 8;
       },
 
       get canSubmit() {
@@ -218,29 +243,29 @@ vln.user.name = "Bob";
                !this.loading;
       },
 
-      handleSubmit: async () => {
-        vln.loading = true;
-        vln.success = false;
+      async handleSubmit() {
+        this.loading = true;
+        this.success = false;
 
         try {
           const response = await fetch('/api/signup', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              email: vln.email,
-              password: vln.password
+              email: this.email,
+              password: this.password
             })
           });
 
           if (response.ok) {
-            vln.success = true;
-            vln.email = '';
-            vln.password = '';
+            this.success = true;
+            this.email = '';
+            this.password = '';
           }
         } catch (error) {
           console.error('Signup failed:', error);
         } finally {
-          vln.loading = false;
+          this.loading = false;
         }
       }
     });
@@ -249,91 +274,150 @@ vln.user.name = "Bob";
 </html>
 ```
 
-## Modular Architecture
+## Modular Build
 
-Velin is split into modules you can mix and match:
+Velin is split into modules:
 
-### `velin-core.js` (~3KB)
-Core reactivity engine, plugin system, and state management.
+### `velin-core.js` (~3KB gzipped)
+Core reactivity engine, plugin system, expression evaluator, and state management.
 
-```html
-<script src="velin-core.js"></script>
-```
+### `velin-std.js` (~2KB gzipped)
+Standard directives: `text`, `if`, `loop`, `input`, `on`, `attr`, `class`
 
-### `velin-std.js` (~2KB)
-Standard directives: `vln-text`, `vln-if`, `vln-loop`, `vln-input`, `vln-on`, `vln-attr`, `vln-class`
+### `velin-templates-and-fragments.js` (~1KB gzipped)
+Optional directives for templates and fragments.
 
-```html
-<script src="velin-core.js"></script>
-<script src="velin-std.js"></script>
-```
-
-### `velin-templates-and-fragments.js` (~1KB)
-Optional template/fragment system for reusable components.
+### `velin-all.js` (~6KB gzipped)
+Everything bundled together. This is what most users want.
 
 ```html
+<!-- Use individual modules -->
 <script src="velin-core.js"></script>
 <script src="velin-std.js"></script>
-<script src="velin-templates-and-fragments.js"></script>
-```
 
-### `velin-all.js` (~6KB)
-Everything bundled together.
-
-```html
+<!-- Or use the complete bundle -->
 <script src="velin-all.js"></script>
+```
+
+## Advanced Usage
+
+### Computed Properties
+
+Use getters for derived state:
+
+```javascript
+const state = Velin.bind(element, {
+  firstName: 'Alice',
+  lastName: 'Smith',
+
+  get fullName() {
+    return this.firstName + ' ' + this.lastName;
+  }
+});
+
+// fullName automatically updates when firstName or lastName change
+```
+
+### Methods
+
+Define methods on your state object:
+
+```javascript
+const state = Velin.bind(element, {
+  items: [],
+
+  addItem(name) {
+    this.items.push({ name, id: Date.now() });
+  },
+
+  removeItem(id) {
+    this.items = this.items.filter(item => item.id !== id);
+  }
+});
+```
+
+Then call them from directives:
+
+```html
+<button vln-on:click="addItem('New Item')">Add</button>
+<button vln-loop:item="items" vln-on:click="removeItem(item.id)">
+  Remove <span vln-text="item.name"></span>
+</button>
+```
+
+### Multiple Scopes
+
+You can bind multiple independent scopes on the same page:
+
+```javascript
+// Header widget
+Velin.bind(document.querySelector('#header'), {
+  user: { name: 'Alice' },
+  isLoggedIn: true
+});
+
+// Search widget
+Velin.bind(document.querySelector('#search'), {
+  query: '',
+  results: []
+});
+
+// Cart widget
+Velin.bind(document.querySelector('#cart'), {
+  items: [],
+  total: 0
+});
+```
+
+Each scope is completely isolated with its own state and reactivity.
+
+## Plugin System
+
+Velin's plugin system lets you create custom directives. See [docs/plugins.md](./docs/plugins.md) for details.
+
+Example custom directive:
+
+```javascript
+Velin.plugins.registerPlugin({
+  name: "focus",
+  render: ({ node, tracked }) => {
+    if (tracked && node instanceof HTMLElement) {
+      node.focus();
+    }
+  },
+  track: Velin.trackers.expressionTracker
+});
+```
+
+Usage:
+
+```html
+<input vln-focus="shouldFocus" />
 ```
 
 ## Documentation
 
-- [Getting Started](./docs/getting-started.md)
-- [API Reference](./docs/api-reference.md)
-- [Directives Guide](./docs/directives.md)
-- [Creating Plugins](./docs/plugins.md)
-- [Templates & Fragments](./docs/templates.md)
-- [Examples & Patterns](./docs/examples.md)
+- [Getting Started](./docs/getting-started.md) - Installation and basic usage
+- [Directives Guide](./docs/directives.md) - Complete directive reference
+- [API Reference](./docs/api-reference.md) - JavaScript API documentation
+- [Creating Plugins](./docs/plugins.md) - Build custom directives
+- [Templates & Fragments](./docs/templates.md) - Advanced template features
+- [Examples & Patterns](./docs/examples.md) - Real-world examples
 
-## Benchmarks
+## Performance
 
-The `benchmarks/` folder contains real-world implementations comparing:
-- React
-- Angular
-- Alpine.js
-- Velin
+Velin is fast:
+- **Small bundle**: 6KB gzipped (2.5× smaller than Alpine.js)
+- **Fast initialization**: Scoped binding means only your component is processed, not the entire document
+- **Efficient updates**: Fine-grained dependency tracking means minimal re-rendering
 
-To run benchmarks:
-
-```bash
-npm run prepare:benchmarks
-npm run serve:benchmarks
-```
-
-## Testing
-
-Velin uses [Vitest](https://vitest.dev/) for unit testing and JSDOM for DOM simulation.
-
-```bash
-npm test
-```
-
-## Building
-
-```bash
-npm run build
-```
-
-This generates:
-- `dist/build/velin-core.min.js`
-- `dist/build/velin-std.min.js`
-- `dist/build/velin-templates-and-fragments.min.js`
-- `dist/build/velin-all.min.js`
+See [benchmarks/init-perf/](./benchmarks/init-perf/) for detailed performance comparisons.
 
 ## Browser Support
 
-Velin uses modern JavaScript features:
+Velin requires modern JavaScript features:
 - Proxy
-- WeakMap
-- Set/Map
+- WeakMap / Map / Set
 - Template literals
 - Arrow functions
 
@@ -343,39 +427,45 @@ Velin uses modern JavaScript features:
 - Safari 10+
 - Edge 12+
 
-No IE11 support (by design).
+No Internet Explorer support.
 
-## Philosophy
+## Development
 
-Velin is built on these principles:
+### Testing
 
-1. **HTML-first** — Your markup should be readable and declarative
-2. **JavaScript-native** — No new syntax to learn, just JavaScript expressions
-3. **Progressive enhancement** — Works with server-rendered HTML
-4. **Zero magic** — Explicit behavior, no hidden compilation or transformations
-5. **Pay for what you use** — Modular architecture means small bundles
+```bash
+npm test
+```
 
-## Comparison
+Uses Vitest for unit tests with JSDOM for DOM simulation.
 
-| Feature | jQuery | Alpine.js | Velin | Vue | React |
-|---------|--------|-----------|-------|-----|-------|
-| File size (min+gzip) | 30KB | 15KB | ~6KB | 50KB | 140KB |
-| Build step required | No | No | No | Optional | Yes |
-| Reactivity | Manual | Reactive | Reactive | Reactive | Reactive |
-| Learning curve | Flat | Gentle | Flat | Moderate | Steep |
-| Template syntax | None | HTML attrs | HTML attrs | HTML/JSX | JSX |
-| Best for | DOM manipulation | Simple UIs | Forms/CRUD | SPAs | Complex SPAs |
+### Building
+
+```bash
+npm run build
+```
+
+Generates minified builds in `dist/build/`:
+- `velin-core.min.js`
+- `velin-std.min.js`
+- `velin-templates-and-fragments.min.js`
+- `velin-all.min.js`
+
+### Benchmarks
+
+```bash
+npm run prepare:benchmarks
+npm run serve:benchmarks
+```
+
+Compare Velin with React, Angular, and Alpine.js.
 
 ## Contributing
 
-This is alpha software and primarily a personal experiment. Feel free to open issues if something is **really important**, but please don't send pull requests at this time.
+This is alpha software and primarily a personal experiment. Feel free to open issues for bugs or important missing features, but please don't send pull requests at this time.
 
 ## License
 
 [Apache 2.0](./LICENSE)
 
 © 2025 Timoteo Frascaroli ([@tfrascaroli](https://github.com/tfrascaroli))
-
-## Acknowledgments
-
-Inspired by Alpine.js, Vue.js, and the simplicity of vanilla JavaScript.

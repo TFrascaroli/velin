@@ -19,26 +19,26 @@ Sets the text content of an element.
 **Examples:**
 ```html
 <!-- Simple variable -->
-<span vln-text="vln.username"></span>
+<span vln-text="username"></span>
 
 <!-- String literal -->
 <h1 vln-text="'Hello World'"></h1>
 
 <!-- String concatenation -->
-<p vln-text="'Hello, ' + vln.name + '!'"></p>
+<p vln-text="'Hello, ' + name + '!'"></p>
 
 <!-- Template literal -->
-<div vln-text="`Welcome ${vln.name}`"></div>
+<div vln-text="`Welcome ${name}`"></div>
 
 <!-- Expressions -->
-<div vln-text="vln.count * 2"></div>
-<div vln-text="vln.items.length + ' items'"></div>
+<div vln-text="count * 2"></div>
+<div vln-text="items.length + ' items'"></div>
 
 <!-- Ternary operator -->
-<span vln-text="vln.isActive ? 'Active' : 'Inactive'"></span>
+<span vln-text="isActive ? 'Active' : 'Inactive'"></span>
 
 <!-- Function calls -->
-<time vln-text="vln.formatDate(vln.timestamp)"></time>
+<time vln-text="formatDate(timestamp)"></time>
 ```
 
 **Notes:**
@@ -52,29 +52,29 @@ Sets the text content of an element.
 
 Creates two-way data binding with form elements.
 
-**Syntax:** `vln-input="vln.propertyPath"`
+**Syntax:** `vln-input="propertyPath"`
 
 **Text Inputs:**
 ```html
-<input vln-input="vln.name" />
-<input vln-input="vln.email" type="email" />
-<textarea vln-input="vln.message"></textarea>
+<input vln-input="name" />
+<input vln-input="email" type="email" />
+<textarea vln-input="message"></textarea>
 ```
 
 **Checkboxes:**
 ```html
 <!-- Single checkbox (boolean) -->
-<input type="checkbox" vln-input="vln.agreed" />
+<input type="checkbox" vln-input="agreed" />
 
 <!-- Radio buttons -->
-<input type="radio" name="size" value="small" vln-input="vln.size" />
-<input type="radio" name="size" value="medium" vln-input="vln.size" />
-<input type="radio" name="size" value="large" vln-input="vln.size" />
+<input type="radio" name="size" value="small" vln-input="size" />
+<input type="radio" name="size" value="medium" vln-input="size" />
+<input type="radio" name="size" value="large" vln-input="size" />
 ```
 
 **Select Dropdowns:**
 ```html
-<select vln-input="vln.country">
+<select vln-input="country">
   <option value="us">United States</option>
   <option value="uk">United Kingdom</option>
   <option value="ca">Canada</option>
@@ -83,7 +83,7 @@ Creates two-way data binding with form elements.
 
 **ContentEditable:**
 ```html
-<div contenteditable vln-input="vln.content"></div>
+<div contenteditable vln-input="content"></div>
 ```
 
 **Complete Example:**
@@ -98,14 +98,14 @@ const vln = Velin.bind(root, {
 });
 </script>
 
-<input vln-input="vln.name" placeholder="Name" />
-<p>Hello, <span vln-text="vln.name"></span>!</p>
+<input vln-input="name" placeholder="Name" />
+<p>Hello, <span vln-text="name"></span>!</p>
 
 <label>
-  <input type="checkbox" vln-input="vln.agreed" />
+  <input type="checkbox" vln-input="agreed" />
   I agree to terms
 </label>
-<p vln-text="vln.agreed ? 'Thank you!' : 'Please agree to continue'"></p>
+<p vln-text="agreed ? 'Thank you!' : 'Please agree to continue'"></p>
 ```
 
 ## Conditional Rendering
@@ -119,21 +119,21 @@ Shows or hides an element based on a condition.
 **Examples:**
 ```html
 <!-- Simple boolean -->
-<div vln-if="vln.isLoggedIn">Welcome back!</div>
+<div vln-if="isLoggedIn">Welcome back!</div>
 
 <!-- Negation -->
-<div vln-if="!vln.isLoggedIn">Please log in</div>
+<div vln-if="!isLoggedIn">Please log in</div>
 
 <!-- Comparison -->
-<div vln-if="vln.count > 0">You have items</div>
-<div vln-if="vln.status === 'error'">An error occurred</div>
+<div vln-if="count > 0">You have items</div>
+<div vln-if="status === 'error'">An error occurred</div>
 
 <!-- Logical operators -->
-<div vln-if="vln.isAdmin && vln.canEdit">Edit mode</div>
-<div vln-if="vln.isLoading || vln.isSaving">Please wait...</div>
+<div vln-if="isAdmin && canEdit">Edit mode</div>
+<div vln-if="isLoading || isSaving">Please wait...</div>
 
 <!-- Truthy/falsy -->
-<div vln-if="vln.errorMessage">Error: <span vln-text="vln.errorMessage"></span></div>
+<div vln-if="errorMessage">Error: <span vln-text="errorMessage"></span></div>
 ```
 
 **How it works:**
@@ -143,10 +143,10 @@ Shows or hides an element based on a condition.
 
 **Else Pattern:**
 ```html
-<div vln-if="vln.isLoggedIn">
+<div vln-if="isLoggedIn">
   Logged in content
 </div>
-<div vln-if="!vln.isLoggedIn">
+<div vln-if="!isLoggedIn">
   Logged out content
 </div>
 ```
@@ -157,12 +157,12 @@ Shows or hides an element based on a condition.
 
 Repeats an element for each item in an array.
 
-**Syntax:** `vln-loop:variableName="vln.arrayExpression"`
+**Syntax:** `vln-loop:varName="arrayExpression"`
 
 **Basic Example:**
 ```html
 <ul>
-  <li vln-loop:item="vln.items" vln-text="vln.item"></li>
+  <li vln-loop:item="items" vln-text="item"></li>
 </ul>
 ```
 
@@ -177,9 +177,9 @@ const vln = Velin.bind(root, {
 });
 </script>
 
-<div vln-loop:user="vln.users">
-  <h3 vln-text="vln.user.name"></h3>
-  <p vln-text="vln.user.email"></p>
+<div vln-loop:user="users">
+  <h3 vln-text="user.name"></h3>
+  <p vln-text="user.email"></p>
 </div>
 ```
 
@@ -187,11 +187,11 @@ const vln = Velin.bind(root, {
 ```html
 <table>
   <tbody>
-    <tr vln-loop:product="vln.products">
-      <td vln-text="vln.product.name"></td>
-      <td vln-text="'$' + vln.product.price"></td>
+    <tr vln-loop:product="products">
+      <td vln-text="product.name"></td>
+      <td vln-text="'$' + product.price"></td>
       <td>
-        <button vln-on:click="vln.addToCart(vln.product)">Add to Cart</button>
+        <button vln-on:click="addToCart(product)">Add to Cart</button>
       </td>
     </tr>
   </tbody>
@@ -200,35 +200,45 @@ const vln = Velin.bind(root, {
 
 **Nested Loops:**
 ```html
-<div vln-loop:category="vln.categories">
-  <h2 vln-text="vln.category.name"></h2>
+<div vln-loop:category="categories">
+  <h2 vln-text="category.name"></h2>
   <ul>
-    <li vln-loop:item="vln.category.items" vln-text="vln.item.name"></li>
+    <li vln-loop:item="category.items" vln-text="item.name"></li>
   </ul>
 </div>
 ```
 
-**With Index (using array methods):**
+**With Index:**
+
+Inside a loop, you can access the special `$index` variable which contains the current iteration index (0-based):
+
 ```html
-<script>
-const vln = Velin.bind(root, {
-  items: ['Apple', 'Banana', 'Cherry'],
+<ul>
+  <li vln-loop:item="items">
+    <span vln-text="$index + 1"></span>: <span vln-text="item"></span>
+  </li>
+</ul>
+```
 
-  get itemsWithIndex() {
-    return this.items.map((item, index) => ({ item, index }));
-  }
-});
-</script>
+**Using Index in Event Handlers:**
+```html
+<button vln-loop:item="items" vln-on:click="removeAt($index)">
+  Remove <span vln-text="item"></span>
+</button>
+```
 
-<div vln-loop:obj="vln.itemsWithIndex">
-  <span vln-text="vln.obj.index + 1"></span>: <span vln-text="vln.obj.item"></span>
+**Using Index for Styling:**
+```html
+<div vln-loop:item="items" vln-class="$index % 2 === 0 ? 'even' : 'odd'">
+  <span vln-text="item"></span>
 </div>
 ```
 
 **Notes:**
 - Variable name can be anything: `vln-loop:item`, `vln-loop:user`, `vln-loop:todo`, etc.
-- Array must be accessed via `vln.` prefix
 - The loop variable is scoped to that element and its children
+- `$index` is automatically available in all loop iterations (0-based)
+- Each nested loop has its own `$index` variable
 - Reactive: adding/removing array items updates the DOM automatically
 
 ## Event Handling
@@ -242,50 +252,50 @@ Attaches event listeners to elements.
 **Common Events:**
 ```html
 <!-- Click -->
-<button vln-on:click="vln.handleClick()">Click me</button>
+<button vln-on:click="handleClick()">Click me</button>
 
 <!-- Submit -->
-<form vln-on:submit="vln.handleSubmit()">
+<form vln-on:submit="handleSubmit()">
   <button type="submit">Submit</button>
 </form>
 
 <!-- Input/Change -->
-<input vln-on:input="vln.handleInput()" />
-<select vln-on:change="vln.handleChange()"></select>
+<input vln-on:input="handleInput()" />
+<select vln-on:change="handleChange()"></select>
 
 <!-- Keyboard -->
-<input vln-on:keyup="vln.handleKeyUp()" />
-<input vln-on:keydown="vln.handleKeyDown()" />
+<input vln-on:keyup="handleKeyUp()" />
+<input vln-on:keydown="handleKeyDown()" />
 
 <!-- Mouse -->
-<div vln-on:mouseenter="vln.isHovering = true"
-     vln-on:mouseleave="vln.isHovering = false">
+<div vln-on:mouseenter="isHovering = true"
+     vln-on:mouseleave="isHovering = false">
   Hover me
 </div>
 
 <!-- Focus -->
-<input vln-on:focus="vln.isFocused = true"
-       vln-on:blur="vln.isFocused = false" />
+<input vln-on:focus="isFocused = true"
+       vln-on:blur="isFocused = false" />
 ```
 
 **Inline Expressions:**
 ```html
 <!-- Increment counter -->
-<button vln-on:click="vln.count++">Increment</button>
+<button vln-on:click="count++">Increment</button>
 
 <!-- Set value -->
-<button vln-on:click="vln.status = 'active'">Activate</button>
+<button vln-on:click="status = 'active'">Activate</button>
 
 <!-- Call method -->
-<button vln-on:click="vln.save()">Save</button>
+<button vln-on:click="save()">Save</button>
 
 <!-- Multiple statements -->
-<button vln-on:click="vln.save(); vln.close()">Save & Close</button>
+<button vln-on:click="save(); close()">Save & Close</button>
 ```
 
 **Prevent Default:**
 ```html
-<form vln-on:submit="event.preventDefault(); vln.handleSubmit()">
+<form vln-on:submit="event.preventDefault(); handleSubmit()">
   <!-- form fields -->
   <button type="submit">Submit</button>
 </form>
@@ -303,8 +313,8 @@ const vln = Velin.bind(root, {
 
 **Accessing Event Object:**
 ```html
-<input vln-on:keyup="vln.lastKey = event.key" />
-<div vln-text="'Last key: ' + vln.lastKey"></div>
+<input vln-on:keydown="lastKey = event.key" />
+<div vln-text="'Last key: ' + lastKey"></div>
 ```
 
 ## Attributes
@@ -318,41 +328,41 @@ Sets HTML attributes dynamically.
 **Examples:**
 ```html
 <!-- href -->
-<a vln-attr:href="'/users/' + vln.userId">View Profile</a>
-<a vln-attr:href="'mailto:' + vln.email" vln-text="vln.email"></a>
+<a vln-attr:href="'/users/' + userId">View Profile</a>
+<a vln-attr:href="'mailto:' + email" vln-text="email"></a>
 
 <!-- src -->
-<img vln-attr:src="vln.imageUrl" vln-attr:alt="vln.imageDescription" />
+<img vln-attr:src="imageUrl" vln-attr:alt="imageDescription" />
 
 <!-- disabled -->
-<button vln-attr:disabled="!vln.isValid">Submit</button>
-<input vln-attr:disabled="vln.isLoading" />
+<button vln-attr:disabled="!isValid">Submit</button>
+<input vln-attr:disabled="isLoading" />
 
 <!-- title (tooltip) -->
-<span vln-attr:title="vln.helpText">❓</span>
+<span vln-attr:title="helpText">❓</span>
 
 <!-- data attributes -->
-<div vln-attr:data-id="vln.userId" vln-attr:data-role="vln.role"></div>
+<div vln-attr:data-id="userId" vln-attr:data-role="role"></div>
 
 <!-- Multiple attributes -->
 <input
-  vln-attr:placeholder="vln.placeholderText"
-  vln-attr:maxlength="vln.maxLength"
-  vln-attr:required="vln.isRequired" />
+  vln-attr:placeholder="placeholderText"
+  vln-attr:maxlength="maxLength"
+  vln-attr:required="isRequired" />
 ```
 
 **Boolean Attributes:**
 ```html
 <!-- For boolean attributes, use truthy/falsy -->
-<input vln-attr:disabled="vln.isDisabled" />
-<input vln-attr:readonly="vln.isReadonly" />
-<details vln-attr:open="vln.isOpen"></details>
+<input vln-attr:disabled="isDisabled" />
+<input vln-attr:readonly="isReadonly" />
+<details vln-attr:open="isOpen"></details>
 ```
 
 **Removing Attributes:**
 ```html
 <!-- Set to null or undefined to remove -->
-<div vln-attr:title="vln.tooltip || null"></div>
+<div vln-attr:title="tooltip || null"></div>
 ```
 
 ## Styling
@@ -365,13 +375,13 @@ Dynamically adds/removes CSS classes.
 
 **String (single class):**
 ```html
-<div vln-class="vln.theme"></div>
+<div vln-class="theme"></div>
 <!-- If vln.theme = 'dark', adds class="dark" -->
 ```
 
 **Object (multiple conditional classes):**
 ```html
-<div vln-class="{ active: vln.isActive, disabled: !vln.isEnabled, error: vln.hasError }"></div>
+<div vln-class="{ active: isActive, disabled: !isEnabled, error: hasError }"></div>
 
 <!-- If isActive=true, isEnabled=false, hasError=true, renders:
      class="active disabled error"
@@ -381,10 +391,10 @@ Dynamically adds/removes CSS classes.
 **Expression:**
 ```html
 <!-- Ternary -->
-<div vln-class="vln.isActive ? 'text-green' : 'text-red'"></div>
+<div vln-class="isActive ? 'text-green' : 'text-red'"></div>
 
 <!-- Computed -->
-<div vln-class="vln.status === 'error' ? 'alert-danger' : 'alert-success'"></div>
+<div vln-class="status === 'error' ? 'alert-danger' : 'alert-success'"></div>
 ```
 
 **Complete Example:**
@@ -403,7 +413,7 @@ const vln = Velin.bind(root, {
 });
 </script>
 
-<div vln-class="{ active: vln.isActive, disabled: !vln.isEnabled, error: vln.hasError }"
+<div vln-class="{ active: isActive, disabled: !isEnabled, error: hasError }"
      class="base-class">
   Status indicator
 </div>
@@ -412,7 +422,7 @@ const vln = Velin.bind(root, {
 **Combining with static classes:**
 ```html
 <!-- Static classes stay, reactive classes are added/removed -->
-<div class="container" vln-class="{ 'dark-mode': vln.isDark }"></div>
+<div class="container" vln-class="{ 'dark-mode': isDark }"></div>
 ```
 
 ## Advanced Usage
@@ -423,10 +433,10 @@ You can use multiple directives on the same element:
 
 ```html
 <button
-  vln-text="vln.loading ? 'Loading...' : 'Submit'"
-  vln-attr:disabled="vln.loading"
-  vln-class="{ 'btn-primary': !vln.loading, 'btn-disabled': vln.loading }"
-  vln-on:click="vln.handleSubmit()">
+  vln-text="loading ? 'Loading...' : 'Submit'"
+  vln-attr:disabled="loading"
+  vln-class="{ 'btn-primary': !loading, 'btn-disabled': loading }"
+  vln-on:click="handleSubmit()">
 </button>
 ```
 
@@ -434,16 +444,16 @@ You can use multiple directives on the same element:
 
 ```html
 <!-- Array methods -->
-<div vln-text="vln.items.filter(i => i.active).length + ' active'"></div>
+<div vln-text="items.filter(i => i.active).length + ' active'"></div>
 
 <!-- Object methods -->
-<div vln-text="Object.keys(vln.data).join(', ')"></div>
+<div vln-text="Object.keys(data).join(', ')"></div>
 
 <!-- Inline functions -->
-<div vln-text="((x) => x * 2)(vln.count)"></div>
+<div vln-text="((x) => x * 2)(count)"></div>
 
 <!-- JSON -->
-<pre vln-text="JSON.stringify(vln.data, null, 2)"></pre>
+<pre vln-text="JSON.stringify(data, null, 2)"></pre>
 ```
 
 ### Access Global Functions
@@ -452,13 +462,13 @@ You can access global functions and browser APIs:
 
 ```html
 <!-- Math -->
-<div vln-text="Math.round(vln.price * 1.15)"></div>
+<div vln-text="Math.round(price * 1.15)"></div>
 
 <!-- Date -->
 <div vln-text="new Date().toLocaleDateString()"></div>
 
 <!-- encodeURIComponent -->
-<a vln-attr:href="'/search?q=' + encodeURIComponent(vln.query)">Search</a>
+<a vln-attr:href="'/search?q=' + encodeURIComponent(query)">Search</a>
 ```
 
 ## Best Practices
@@ -467,7 +477,7 @@ You can access global functions and browser APIs:
 
 **Good:**
 ```html
-<div vln-text="vln.fullName"></div>
+<div vln-text="fullName"></div>
 ```
 
 ```javascript
@@ -478,19 +488,19 @@ get fullName() {
 
 **Avoid:**
 ```html
-<div vln-text="vln.firstName + ' ' + vln.lastName"></div>
+<div vln-text="firstName + ' ' + lastName"></div>
 ```
 
 ### 2. Use methods for complex logic
 
 **Good:**
 ```html
-<button vln-on:click="vln.handleSubmit()">Submit</button>
+<button vln-on:click="handleSubmit()">Submit</button>
 ```
 
 **Avoid:**
 ```html
-<button vln-on:click="vln.loading = true; fetch('/api').then(r => r.json()).then(d => { vln.data = d; vln.loading = false; })">
+<button vln-on:click="loading = true; fetch('/api').then(r => r.json()).then(d => { vln.data = d; vln.loading = false; })">
 ```
 
 ### 3. Use getters for computed values
@@ -503,17 +513,5 @@ get filteredItems() {
 ```
 
 ```html
-<div vln-loop:item="vln.filteredItems">...</div>
-```
-
-### 4. Prefix all state access with `vln.`
-
-**Good:**
-```html
-<div vln-text="vln.name"></div>
-```
-
-**Wrong:**
-```html
-<div vln-text="name"></div> <!-- Will throw error -->
+<div vln-loop:item="filteredItems">...</div>
 ```

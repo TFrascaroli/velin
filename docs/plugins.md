@@ -19,7 +19,7 @@ Velin.plugins.registerPlugin({
 Now you can use it:
 
 ```html
-<div vln-uppercase="vln.message"></div>
+<div vln-uppercase="message"></div>
 ```
 
 ## Plugin Structure
@@ -160,7 +160,7 @@ Velin.plugins.registerPlugin({
 
 Usage:
 ```html
-<div vln-uppercase="vln.message"></div>
+<div vln-uppercase="message"></div>
 ```
 
 ### 2. Tooltip Plugin
@@ -183,7 +183,7 @@ Velin.plugins.registerPlugin({
 
 Usage:
 ```html
-<span vln-tooltip="vln.helpText">❓</span>
+<span vln-tooltip="helpText">❓</span>
 ```
 
 ### 3. Auto-focus Plugin
@@ -203,7 +203,7 @@ Velin.plugins.registerPlugin({
 
 Usage:
 ```html
-<input vln-autofocus="vln.shouldFocus" />
+<input vln-autofocus="shouldFocus" />
 ```
 
 ### 4. Click Outside Plugin
@@ -238,7 +238,7 @@ Velin.plugins.registerPlugin({
 
 Usage:
 ```html
-<div vln-clickoutside="vln.closeMenu()">
+<div vln-clickoutside="closeMenu()">
   <!-- menu content -->
 </div>
 ```
@@ -282,10 +282,10 @@ Velin.plugins.registerPlugin({
 Usage:
 ```html
 <!-- Debounce for 300ms (default) -->
-<input vln-debounce="vln.search" />
+<input vln-debounce="search" />
 
 <!-- Debounce for 500ms -->
-<input vln-debounce:500="vln.search" />
+<input vln-debounce:500="search" />
 ```
 
 ### 6. Show/Hide with Animation
@@ -315,7 +315,7 @@ Velin.plugins.registerPlugin({
 
 Usage:
 ```html
-<div vln-show="vln.isVisible">Fades in/out</div>
+<div vln-show="isVisible">Fades in/out</div>
 ```
 
 ## Using Subkeys
@@ -338,8 +338,8 @@ Velin.plugins.registerPlugin({
 
 Usage:
 ```html
-<button vln-on:click="vln.handleClick()">Click</button>
-<form vln-on:submit="vln.handleSubmit()">Submit</form>
+<button vln-on:click="handleClick()">Click</button>
+<form vln-on:click="handleSubmit()">Submit</form>
 ```
 
 ## Plugin State
@@ -397,7 +397,7 @@ Velin.plugins.registerPlugin({
     Velin.plugins.processPlugin(
       textPlugin,
       reactiveState,
-      'vln.message',
+      'message',
       node,
       'vln-text'
     );
@@ -552,5 +552,5 @@ Velin.plugins.registerPlugin({
 
 Usage:
 ```html
-<textarea vln-autosize="vln.message" placeholder="Type something..."></textarea>
+<textarea vln-autosize="message" placeholder="Type something..."></textarea>
 ```
