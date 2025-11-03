@@ -252,45 +252,45 @@ Attaches event listeners to elements.
 **Common Events:**
 ```html
 <!-- Click -->
-<button vln-on:[^=]+="handleClick()">Click me</button>
+<button vln-on:click="handleClick()">Click me</button>
 
 <!-- Submit -->
-<form vln-on:[^=]+="handleSubmit()">
+<form vln-on:submit="handleSubmit()">
   <button type="submit">Submit</button>
 </form>
 
 <!-- Input/Change -->
-<input vln-on:[^=]+="handleInput()" />
-<select vln-on:[^=]+="handleChange()"></select>
+<input vln-on:input="handleInput()" />
+<select vln-on:change="handleChange()"></select>
 
 <!-- Keyboard -->
-<input vln-on:[^=]+="handleKeyUp()" />
-<input vln-on:[^=]+="handleKeyDown()" />
+<input vln-on:keyup="handleKeyUp()" />
+<input vln-on:keydown="handleKeyDown()" />
 
 <!-- Mouse -->
-<div vln-on:[^=]+="isHovering = true"
-     vln-on:[^=]+="isHovering = false">
+<div vln-on:mouseenter="isHovering = true"
+     vln-on:mouseleave="isHovering = false">
   Hover me
 </div>
 
 <!-- Focus -->
-<input vln-on:[^=]+="isFocused = true"
-       vln-on:[^=]+="isFocused = false" />
+<input vln-on:focus="isFocused = true"
+       vln-on:blur="isFocused = false" />
 ```
 
 **Inline Expressions:**
 ```html
 <!-- Increment counter -->
-<button vln-on:[^=]+="count++">Increment</button>
+<button vln-on:click="count++">Increment</button>
 
 <!-- Set value -->
-<button vln-on:[^=]+="status = 'active'">Activate</button>
+<button vln-on:click="status = 'active'">Activate</button>
 
 <!-- Call method -->
-<button vln-on:[^=]+="save()">Save</button>
+<button vln-on:click="save()">Save</button>
 
 <!-- Multiple statements -->
-<button vln-on:[^=]+="save(); close()">Save & Close</button>
+<button vln-on:click="save(); close()">Save & Close</button>
 ```
 
 **Prevent Default:**
@@ -313,7 +313,7 @@ const vln = Velin.bind(root, {
 
 **Accessing Event Object:**
 ```html
-<input vln-on:[^=]+="lastKey = event.key" />
+<input vln-on:keydown="lastKey = event.key" />
 <div vln-text="'Last key: ' + lastKey"></div>
 ```
 
@@ -436,7 +436,7 @@ You can use multiple directives on the same element:
   vln-text="loading ? 'Loading...' : 'Submit'"
   vln-attr:disabled="loading"
   vln-class="{ 'btn-primary': !loading, 'btn-disabled': loading }"
-  vln-on:[^=]+="handleSubmit()">
+  vln-on:click="handleSubmit()">
 </button>
 ```
 
@@ -495,12 +495,12 @@ get fullName() {
 
 **Good:**
 ```html
-<button vln-on:[^=]+="handleSubmit()">Submit</button>
+<button vln-on:click="handleSubmit()">Submit</button>
 ```
 
 **Avoid:**
 ```html
-<button vln-on:[^=]+="loading = true; fetch('/api').then(r => r.json()).then(d => { vln.data = d; vln.loading = false; })">
+<button vln-on:click="loading = true; fetch('/api').then(r => r.json()).then(d => { vln.data = d; vln.loading = false; })">
 ```
 
 ### 3. Use getters for computed values
