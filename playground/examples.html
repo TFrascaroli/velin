@@ -18,10 +18,12 @@
       <ul>
         <li
           vln-loop:example="examples"
+          class="px-6 py-3 cursor-pointer border-l-4 transition-all"
           vln-class="{
-            'px-6 py-3 cursor-pointer border-l-4 transition-all': true,
-            'bg-gray-700 border-blue-500': currentExample === example.id,
-            'border-transparent hover:bg-gray-700/50': currentExample !== example.id
+            'bg-gray-700': currentExample === example.id,
+            'border-blue-500': currentExample === example.id,
+            'border-transparent': currentExample !== example.id,
+            'hover:bg-gray-700/50': currentExample !== example.id
           }"
           vln-on:click="currentExample = example.id">
           <div class="font-medium mb-0.5" vln-text="example.title"></div>
@@ -88,6 +90,60 @@
         url: {
           markup: 'examples/form-validation.html',
           state: 'examples/form-validation.js'
+        }
+      },
+      {
+        id: 'crud-operations',
+        title: 'CRUD Operations',
+        description: 'Task manager with create, read, update, delete',
+        url: {
+          markup: 'examples/crud-operations.html',
+          state: 'examples/crud-operations.js'
+        }
+      },
+      {
+        id: 'search-filter',
+        title: 'Search & Filter',
+        description: 'Real-time search with computed properties',
+        url: {
+          markup: 'examples/search-filter.html',
+          state: 'examples/search-filter.js'
+        }
+      },
+      {
+        id: 'modal-dialog',
+        title: 'Modal Dialog',
+        description: 'Overlay modal with backdrop',
+        url: {
+          markup: 'examples/modal-dialog.html',
+          state: 'examples/modal-dialog.js'
+        }
+      },
+      {
+        id: 'tabs',
+        title: 'Tabs',
+        description: 'Tabbed interface with dynamic content',
+        url: {
+          markup: 'examples/tabs.html',
+          state: 'examples/tabs.js'
+        }
+      },
+      {
+        id: 'accordion',
+        title: 'Accordion',
+        description: 'Expandable sections with toggle',
+        url: {
+          markup: 'examples/accordion.html',
+          state: 'examples/accordion.js'
+        }
+      },
+      {
+        id: 'shopping-cart',
+        title: 'Shopping Cart',
+        description: 'Add/remove items with total calculation',
+        url: {
+          markup: 'examples/shopping-cart.html',
+          state: 'examples/shopping-cart.js'
         }
       }
     ];
