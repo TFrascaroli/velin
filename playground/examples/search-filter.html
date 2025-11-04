@@ -1,0 +1,24 @@
+<h1 class="text-3xl font-bold mb-6">Search & Filter</h1>
+
+<input
+  vln-input="search"
+  placeholder="Search users..."
+  type="search"
+  class="w-full px-4 py-2 border border-gray-300 rounded-md mb-4"
+/>
+
+<div class="mb-4 text-gray-600">
+  Showing <strong vln-text="filteredUsers.length" class="text-gray-900"></strong>
+  of <strong vln-text="users.length" class="text-gray-900"></strong> users
+</div>
+
+<ul class="space-y-2">
+  <li vln-loop:user="filteredUsers" class="p-4 bg-white border border-gray-200 rounded-md">
+    <div class="font-semibold text-gray-900" vln-text="user.name"></div>
+    <div class="text-gray-600" vln-text="user.email"></div>
+  </li>
+</ul>
+
+<div vln-if="!filteredUsers.length" class="text-gray-500 text-center py-8">
+  No users match your search.
+</div>

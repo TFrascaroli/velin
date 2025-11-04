@@ -1,0 +1,50 @@
+<h1 class="text-3xl font-bold mb-6">Shopping Cart</h1>
+
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+  <!-- Products -->
+  <div>
+    <h2 class="text-xl font-semibold mb-4">Products</h2>
+    <div class="space-y-2">
+      <div vln-loop:product="products" class="p-4 bg-white border border-gray-200 rounded-md flex items-center justify-between">
+        <div>
+          <h3 vln-text="product.name" class="font-medium"></h3>
+          <p vln-text="'$' + product.price" class="text-gray-600"></p>
+        </div>
+        <button
+          vln-on:click="addToCart(product)"
+          class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+          Add to Cart
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cart -->
+  <div>
+    <h2 class="text-xl font-semibold mb-4">
+      Cart (<span vln-text="cart.length"></span>)
+    </h2>
+
+    <div vln-if="cart.length" class="space-y-2">
+      <div vln-loop:item="cart" class="p-4 bg-white border border-gray-200 rounded-md flex items-center justify-between">
+        <div>
+          <span vln-text="item.name" class="font-medium"></span>
+          <span vln-text="' - $' + item.price" class="text-gray-600"></span>
+        </div>
+        <button
+          vln-on:click="removeFromCart(item)"
+          class="px-3 py-1 text-sm bg-red-500 text-white rounded hover:bg-red-600">
+          Remove
+        </button>
+      </div>
+
+      <div class="p-4 bg-gray-50 rounded-md font-semibold text-lg">
+        Total: $<span vln-text="total"></span>
+      </div>
+    </div>
+
+    <div vln-if="!cart.length" class="text-gray-500 text-center py-8 border-2 border-dashed border-gray-300 rounded-md">
+      Cart is empty
+    </div>
+  </div>
+</div>
