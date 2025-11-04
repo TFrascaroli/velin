@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <script src="velin.js"></script>
+</head>
+<body>
+  <div id="app">
+    <form vln-on:submit="(event.preventDefault(), handleSubmit())">
+      <input type="text" vln-input="inputValue" placeholder="Type something" />
+      <button type="submit">Submit (should not reload)</button>
+    </form>
+    <div vln-text="result"></div>
+  </div>
+
+  <script>
+    const state = Velin.bind(document.getElementById('app'), {
+      inputValue: '',
+      result: 'Not submitted',
+      handleSubmit() {
+        console.log('handleSubmit called');
+        this.result = 'Form submitted with: ' + this.inputValue;
+      }
+    });
+  </script>
+</body>
+</html>
