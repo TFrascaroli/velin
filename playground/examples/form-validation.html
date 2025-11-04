@@ -1,4 +1,6 @@
 <h1 class="text-3xl font-bold mb-6">Sign Up</h1>
+
+<!-- vln-on:submit - Handle form submission with event object -->
 <form vln-on:submit="event.preventDefault(); handleSubmit()">
   <div class="mb-4">
     <label class="block mb-2 font-medium">Email</label>
@@ -9,6 +11,7 @@
       vln-on:blur="touched.email = true"
       type="email"
     />
+    <!-- vln-if - Conditionally show validation errors -->
     <div vln-if="touched.email && !isEmailValid" class="text-red-600 text-sm mt-1">
       Please enter a valid email address
     </div>
@@ -38,6 +41,7 @@
     </div>
   </div>
 
+  <!-- vln-attr:disabled - Dynamically control button disabled state -->
   <button
     type="submit"
     vln-attr:disabled="!canSubmit || loading"

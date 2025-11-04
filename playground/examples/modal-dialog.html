@@ -4,10 +4,12 @@
   Open Modal
 </button>
 
+<!-- vln-if - Conditionally render entire modal overlay -->
 <div
   vln-if="isModalOpen"
   class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center"
   vln-on:click="closeModal()">
+  <!-- event.stopPropagation() - Prevent backdrop click from closing modal -->
   <div
     class="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4"
     vln-on:click="event.stopPropagation()">
