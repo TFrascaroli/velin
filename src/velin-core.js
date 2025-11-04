@@ -307,9 +307,11 @@ function tokenize(expr) {
     }
     if (matched) continue;
 
-    // Check for assignment (not supported)
+    // Single = for assignment
     if (char === '=') {
-      throw new Error('[VLN010] Setting values during evaluation is forbidden. Use Velin.getSetter');
+      tokens.push({ type: 'ASSIGNMENT', value: '=' });
+      i++;
+      continue;
     }
 
     // Single-char tokens
@@ -360,6 +362,31 @@ function parse(tokens) {
   // Precedence table for binary operators
   const prec = [[['||']], [['&&']], [['===', '!==', '==', '!=']], [['>', '<', '>=', '<=']], [['+', '-']], [['*', '/', '%']]];
 
+  function parseSequence() {
+    let expressions = [parseAssignment()];
+
+    while (match('PUNCTUATION', ',')) {
+      next();
+      expressions.push(parseAssignment());
+    }
+
+    return expressions.length === 1
+      ? expressions[0]
+      : { type: 'Sequence', expressions };
+  }
+
+  function parseAssignment() {
+    let node = parseTernary();
+
+    if (match('ASSIGNMENT', '=')) {
+      next();
+      const right = parseAssignment(); // Right-associative
+      return { type: 'Assignment', left: node, right };
+    }
+
+    return node;
+  }
+
   function parseTernary() {
     let node = parseBinary(0);
 
@@ -407,7 +434,7 @@ function parse(tokens) {
       const args = [];
 
       while (!match('PUNCTUATION', ')')) {
-        args.push(parseTernary());
+        args.push(parseAssignment());
         if (match('PUNCTUATION', ',')) next();
       }
 
@@ -428,7 +455,7 @@ function parse(tokens) {
         node = { type: 'Member', object: node, property: property.value, computed: false };
       } else if (match('PUNCTUATION', '[')) {
         next();
-        const property = parseTernary();
+        const property = parseAssignment();
         expect('PUNCTUATION', ']');
         node = { type: 'Member', object: node, property, computed: true };
       } else {
@@ -458,7 +485,7 @@ function parse(tokens) {
 
     if (match('PUNCTUATION', '(')) {
       next();
-      const node = parseTernary();
+      const node = parseSequence();
       expect('PUNCTUATION', ')');
       return node;
     }
@@ -491,7 +518,7 @@ function parse(tokens) {
         } else {
           // Regular syntax: expect colon and value
           expect('PUNCTUATION', ':');
-          value = parseTernary();
+          value = parseAssignment();
         }
 
         properties.push({ key, value });
@@ -506,7 +533,7 @@ function parse(tokens) {
     throw new Error(`Unexpected: ${token.type}`);
   }
 
-  return parseTernary();
+  return parseSequence();
 }
 
 /**
@@ -514,9 +541,8 @@ function parse(tokens) {
  * @param {Object} ast - The AST node
  * @param {Object} context - The context object (reactive proxy)
  * @param {ReactiveState|null} reactiveState - The reactive state (for mutation control)
- * @param {boolean} allowMutations - Whether to allow mutations during function calls
  */
-function evalAst(ast, context, reactiveState = null, allowMutations = false) {
+function evalAst(ast, context, reactiveState = null) {
   switch (ast.type) {
     case 'Literal':
       return ast.value;
@@ -525,47 +551,33 @@ function evalAst(ast, context, reactiveState = null, allowMutations = false) {
       return context[ast.name];
 
     case 'Member': {
-      const obj = evalAst(ast.object, context, reactiveState, allowMutations);
+      const obj = evalAst(ast.object, context, reactiveState);
       if (obj == null) return undefined;
       if (ast.computed) {
-        const prop = evalAst(ast.property, context, reactiveState, allowMutations);
+        const prop = evalAst(ast.property, context, reactiveState);
         return obj[prop];
       } else {
         return obj[ast.property];
       }
     }
     case 'Call': {
-      const callee = evalAst(ast.callee, context, reactiveState, allowMutations);
+      const callee = evalAst(ast.callee, context, reactiveState);
       if (typeof callee !== 'function') {
         throw new TypeError('Not a function');
       }
-      const args = ast.arguments.map(arg => evalAst(arg, context, reactiveState, allowMutations));
+      const args = ast.arguments.map(arg => evalAst(arg, context, reactiveState));
       // Get the object for 'this' binding
       let thisArg = context;
       if (ast.callee.type === 'Member') {
-        thisArg = evalAst(ast.callee.object, context, reactiveState, allowMutations);
+        thisArg = evalAst(ast.callee.object, context, reactiveState);
       }
 
-      // Temporarily disable evaluating flag if mutations are allowed (for event handlers)
-      const shouldAllowMutations = allowMutations && reactiveState;
-      const wasEvaluating = shouldAllowMutations ? reactiveState.ø__control.evaluating : false;
-
-      if (shouldAllowMutations) {
-        reactiveState.ø__control.evaluating = false;
-      }
-
-      try {
-        return callee.apply(thisArg, args);
-      } finally {
-        if (shouldAllowMutations) {
-          reactiveState.ø__control.evaluating = wasEvaluating;
-        }
-      }
+      return callee.apply(thisArg, args);
     }
 
     case 'Binary': {
-      const left = evalAst(ast.left, context, reactiveState, allowMutations);
-      const right = evalAst(ast.right, context, reactiveState, allowMutations);
+      const left = evalAst(ast.left, context, reactiveState);
+      const right = evalAst(ast.right, context, reactiveState);
       const ops = {
         '+':  (a, b) => a + b,
         '-':  (a, b) => a - b,
@@ -589,7 +601,7 @@ function evalAst(ast, context, reactiveState = null, allowMutations = false) {
     }
 
     case 'Unary': {
-      const arg = evalAst(ast.argument, context, reactiveState, allowMutations);
+      const arg = evalAst(ast.argument, context, reactiveState);
       const ops = {
         '!':  (a) => !a,
         '-':  (a) => -a,
@@ -599,17 +611,51 @@ function evalAst(ast, context, reactiveState = null, allowMutations = false) {
     }
 
     case 'Ternary': {
-      const test = evalAst(ast.test, context, reactiveState, allowMutations);
-      return test ? evalAst(ast.consequent, context, reactiveState, allowMutations) : evalAst(ast.alternate, context, reactiveState, allowMutations);
+      const test = evalAst(ast.test, context, reactiveState);
+      return test ? evalAst(ast.consequent, context, reactiveState) : evalAst(ast.alternate, context, reactiveState);
     }
 
     case 'ObjectLiteral': {
       const result = {};
       for (const prop of ast.properties) {
-        result[prop.key] = evalAst(prop.value, context, reactiveState, allowMutations);
+        result[prop.key] = evalAst(prop.value, context, reactiveState);
       }
       return result;
     }
+
+    case 'Assignment': {
+      const value = evalAst(ast.right, context, reactiveState);
+
+      if (ast.left.type === 'Identifier') {
+        // Simple assignment: x = value
+        context[ast.left.name] = value;
+      } else if (ast.left.type === 'Member') {
+        // Member assignment: obj.prop = value or obj[key] = value
+        const obj = evalAst(ast.left.object, context, reactiveState);
+        if (obj == null) {
+          throw new TypeError('Cannot set property on null or undefined');
+        }
+        if (ast.left.computed) {
+          const prop = evalAst(ast.left.property, context, reactiveState);
+          obj[prop] = value;
+        } else {
+          obj[ast.left.property] = value;
+        }
+      } else {
+        throw new Error('Invalid assignment target');
+      }
+
+      return value;
+    }
+
+    case 'Sequence': {
+      let result;
+      for (const expr of ast.expressions) {
+        result = evalAst(expr, context, reactiveState);
+      }
+      return result;
+    }
+
     default:
       throw new Error(`Bad AST: ${ast.type}`);
   }
@@ -625,7 +671,7 @@ function evalAst(ast, context, reactiveState = null, allowMutations = false) {
  * @returns {any} Result of evaluation
  */
 function evaluate(reactiveState, expr, allowMutations = false) {
-  reactiveState.ø__control.evaluating = true;
+  reactiveState.ø__control.evaluating = !allowMutations;
   try {
     const inter = reactiveState.interpolations;
     const contextualizedProxy = new Proxy(reactiveState.state, {
@@ -633,7 +679,11 @@ function evaluate(reactiveState, expr, allowMutations = false) {
         const propStr = String(prop);
         if (inter?.has(propStr)) {
           const interp = inter.get(propStr);
-          return evaluate(reactiveState, interp, allowMutations);
+          // If interpolation is a string, evaluate it as an expression
+          // Otherwise, return the value directly (e.g., event objects)
+          return typeof interp === 'string'
+            ? evaluate(reactiveState, interp, allowMutations)
+            : interp;
         }
         return Reflect.get(target, prop, receiver);
       },
@@ -650,8 +700,7 @@ function evaluate(reactiveState, expr, allowMutations = false) {
     const tokens = tokenize(expr);
     const ast = parse(tokens);
 
-    // Pass allowMutations through to evalAst
-    return evalAst(ast, contextualizedProxy, reactiveState, allowMutations);
+    return evalAst(ast, contextualizedProxy, reactiveState);
   } catch (err) {
     console.error(
       `Velin evaluate() error in expression "${expr}".`

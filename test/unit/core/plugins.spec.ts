@@ -1,6 +1,6 @@
 // import Velin from '../../src/velin-core';
 import { describe, it, expect, vitest, beforeEach } from "vitest";
-import Velin from "../../src/velin-all";
+import Velin from "../../../src/velin-all";
 
 describe("Velin Public API", () => {
   let node: HTMLElement;
