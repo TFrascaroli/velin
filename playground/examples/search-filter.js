@@ -10,6 +10,7 @@ export default function() {
       { name: 'Frank Miller', email: 'frank@example.com' }
     ],
 
+    // Computed property - recalculates when 'search' changes
     get filteredUsers() {
       const query = this.search.toLowerCase().trim();
       if (!query) return this.users;

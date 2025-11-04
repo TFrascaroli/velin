@@ -1,5 +1,6 @@
 <h1 class="text-3xl font-bold mb-6">Tabs Component</h1>
 
+<!-- Loop over tabs array, vln-class applies conditional styles -->
 <div class="flex gap-1 border-b border-gray-300 mb-6">
   <button
     vln-loop:tab="tabs"
@@ -10,6 +11,7 @@
   </button>
 </div>
 
+<!-- Each tab panel controlled by vln-if -->
 <div class="tab-content">
   <div vln-if="activeTab === 'Home'" class="p-6 bg-white rounded-lg border border-gray-200">
     <h2 class="text-2xl font-semibold mb-3">Home</h2>
