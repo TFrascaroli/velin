@@ -460,26 +460,6 @@ render: ({ node, tracked }) => {
 }
 ```
 
-## Plugin Events
-
-Listen to plugin events using `Velin.on()`:
-
-```javascript
-Velin.on('afterProcessNode', ({ node, plugin, reactiveState }) => {
-  console.log(`Processed ${node.tagName} with ${plugin}`);
-});
-
-// Filter by plugin
-Velin.on('afterProcessNode', ({ node }) => {
-  console.log('Text plugin processed:', node);
-}, { plugin: 'text' });
-
-// Filter by selector
-Velin.on('afterProcessNode', ({ node }) => {
-  console.log('Button processed:', node);
-}, { selector: 'button' });
-```
-
 ## Complete Plugin Example
 
 Here's a complete, production-ready plugin with all features:
