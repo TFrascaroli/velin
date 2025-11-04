@@ -38,7 +38,7 @@ export function registerHighlightPlugin(Velin) {
 
       // Case-insensitive search and highlight
       const regex = new RegExp(`(${escapeRegex(query)})`, 'gi');
-      const highlighted = text.replace(regex, '<mark class="bg-yellow-200 px-1 rounded">$1</mark>');
+      const highlighted = text.replace(regex, '<mark class="bg-yellow-200 rounded">$1</mark>');
 
       node.innerHTML = highlighted;
       return { halt: true };
