@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <script src="velin.js"></script>
+</head>
+<body>
+  <div id="app">
+    <button vln-on:click="handleClick(event)">Test Event</button>
+    <div vln-text="result"></div>
+  </div>
+
+  <script>
+    const state = Velin.bind(document.getElementById('app'), {
+      result: 'Not clicked',
+      handleClick(evt) {
+        console.log('Event object:', evt);
+        console.log('Event type:', evt && evt.type);
+        console.log('Event target:', evt && evt.target);
+        this.result = 'Clicked! Event type: ' + (evt && evt.type || 'undefined');
+      }
+    });
+  </script>
+</body>
+</html>

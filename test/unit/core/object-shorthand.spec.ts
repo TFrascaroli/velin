@@ -1,5 +1,5 @@
-import Velin from "../../src/velin-core";
-import setupVelinStd from "../../src/velin-std.js";
+import Velin from "../../../src/velin-core";
+import setupVelinStd from "../../../src/velin-std.js";
 import { describe, it, expect, beforeEach } from "vitest";
 
 setupVelinStd(Velin);

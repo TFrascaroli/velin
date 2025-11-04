@@ -35,10 +35,26 @@ function setupVelinStd(vln) {
         console.warn("[VLN002] No attribute to set, expected 'attr:name'");
         return;
       }
-      if (tracked === null || tracked === undefined) {
-        node.removeAttribute(subkey);
+
+      // Boolean attributes: disabled, checked, readonly, required, etc.
+      // For these, the presence of the attribute makes them true (regardless of value)
+      const booleanAttrs = ['disabled', 'checked', 'readonly', 'required', 'autofocus', 'autoplay', 'controls', 'loop', 'muted', 'open', 'selected'];
+      const isBooleanAttr = booleanAttrs.includes(subkey.toLowerCase());
+
+      if (isBooleanAttr) {
+        // For boolean attributes, remove if falsy, set if truthy
+        if (tracked) {
+          node.setAttribute(subkey, '');
+        } else {
+          node.removeAttribute(subkey);
+        }
       } else {
-        node.setAttribute(subkey, tracked);
+        // For regular attributes, remove if null/undefined, otherwise set value
+        if (tracked === null || tracked === undefined) {
+          node.removeAttribute(subkey);
+        } else {
+          node.setAttribute(subkey, tracked);
+        }
       }
     },
   });
@@ -85,14 +101,6 @@ function setupVelinStd(vln) {
       } else if (tracked && typeof tracked === "object") {
         // Object mode: keys are class names (can contain spaces), values are boolean
         for (const [classKey, active] of Object.entries(tracked)) {
-          if (classKey.includes(" ")) {
-            // Warn about potentially ambiguous space-separated keys in object syntax
-            console.warn(
-              `[VLN003.1] Class key "${classKey}" contains spaces and will be split. ` +
-              `Consider using separate keys or string syntax instead.`
-            );
-          }
-
           if (active) {
             activateClasses(classKey, current, managedClasses);
           }
@@ -120,7 +128,20 @@ function setupVelinStd(vln) {
         console.warn("[VLN005] Expected event name 'on:event'");
         return;
       }
-      const handler = () => vln.evaluate(reactiveState, expr);
+      // Pass true for allowMutations - event handlers should be able to mutate state
+      const handler = (event) => {
+        // Build interpolations map with event object directly
+        const interpolations = new Map();
+        interpolations.set('event', event);
+
+        const substate = vln.composeState(reactiveState, interpolations);
+
+        try {
+          vln.evaluate(substate, expr, true);
+        } finally {
+          vln.cleanupState(reactiveState, substate);
+        }
+      };
       node.addEventListener(subkey, handler);
       return { state: { handler } };
     },

@@ -1,4 +1,4 @@
-import Velin, { ReactiveState } from "../../src/velin-core";
+import Velin, { ReactiveState } from "../../../src/velin-core";
 import { describe, it, expect, vitest, beforeEach } from "vitest";
 
 describe("Velin Public API", () => {
