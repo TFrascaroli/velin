@@ -20,9 +20,16 @@ export default function() {
     },
 
     get canSubmit() {
-      return this.isEmailValid &&
-             this.isPasswordValid &&
-             this.agreed;
+      // IMPORTANT: To ensure reactive tracking works correctly with getters,
+      // access all dependencies BEFORE using them in logical expressions.
+      // This prevents JavaScript short-circuit evaluation from skipping
+      // property accesses, which would prevent those properties from being
+      // tracked as dependencies.
+      const emailValid = this.isEmailValid;
+      const passwordValid = this.isPasswordValid;
+      const hasAgreed = this.agreed;
+
+      return emailValid && passwordValid && hasAgreed;
     },
 
     async handleSubmit() {
