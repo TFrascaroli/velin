@@ -831,8 +831,14 @@ function setupState(obj) {
         if (prop === "ø__velinObj") return true;
         const value = Reflect.get(target, prop, receiver);
         const depCapture = peek(reactiveState.ø__depCaptures);
-        if (depCapture?.capturingDeps)
-          depCapture.deps.add(path + "[" + prop.toString() + "]");
+        if (depCapture?.capturingDeps) {
+          // For .length and other properties that depend on array mutations, track the array itself
+          if (prop === "length" || typeof value === "function") {
+            depCapture.deps.add(path);
+          } else {
+            depCapture.deps.add(path + "[" + prop.toString() + "]");
+          }
+        }
 
         if (
           typeof value === "function" &&

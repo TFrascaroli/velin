@@ -1,7 +1,7 @@
 <h1 class="text-3xl font-bold mb-6">Shopping Cart</h1>
 
 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-  <!-- Products -->
+  <!-- Products list with add to cart actions -->
   <div>
     <h2 class="text-xl font-semibold mb-4">Products</h2>
     <div class="space-y-2">
@@ -19,12 +19,13 @@
     </div>
   </div>
 
-  <!-- Cart -->
+  <!-- Cart - displays items and computed total -->
   <div>
     <h2 class="text-xl font-semibold mb-4">
       Cart (<span vln-text="cart.length"></span>)
     </h2>
 
+    <!-- vln-if with truthy check on array length -->
     <div vln-if="cart.length" class="space-y-2">
       <div vln-loop:item="cart" class="p-4 bg-white border border-gray-200 rounded-md flex items-center justify-between">
         <div>
@@ -38,6 +39,7 @@
         </button>
       </div>
 
+      <!-- Computed getter - recalculates automatically when cart changes -->
       <div class="p-4 bg-gray-50 rounded-md font-semibold text-lg">
         Total: $<span vln-text="total"></span>
       </div>

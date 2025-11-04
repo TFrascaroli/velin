@@ -1,0 +1,241 @@
+<div id="theme-switcher-demo">
+  <div class="mb-6 p-4 bg-gray-50 rounded-lg">
+    <h3 class="text-lg font-semibold mb-3">Theme Selector</h3>
+
+    <!-- Radio buttons with vln-attr:checked and vln-on:change -->
+    <div class="space-y-2">
+      <label class="flex items-center space-x-3 cursor-pointer">
+        <input type="radio" name="theme" value="modern"
+               vln-attr:checked="currentTheme === 'modern'"
+               vln-on:change="currentTheme = 'modern'"
+               class="w-4 h-4">
+        <span class="text-sm font-medium">Modern Cards - Clean card-based design with shadows</span>
+      </label>
+      <label class="flex items-center space-x-3 cursor-pointer">
+        <input type="radio" name="theme" value="classic"
+               vln-attr:checked="currentTheme === 'classic'"
+               vln-on:change="currentTheme = 'classic'"
+               class="w-4 h-4">
+        <span class="text-sm font-medium">Classic Newspaper - Traditional column layout</span>
+      </label>
+      <label class="flex items-center space-x-3 cursor-pointer">
+        <input type="radio" name="theme" value="minimal"
+               vln-attr:checked="currentTheme === 'minimal'"
+               vln-on:change="currentTheme = 'minimal'"
+               class="w-4 h-4">
+        <span class="text-sm font-medium">Minimal List - Simple, typography-focused</span>
+      </label>
+      <label class="flex items-center space-x-3 cursor-pointer">
+        <input type="radio" name="theme" value="magazine"
+               vln-attr:checked="currentTheme === 'magazine'"
+               vln-on:change="currentTheme = 'magazine'"
+               class="w-4 h-4">
+        <span class="text-sm font-medium">Magazine Grid - Bold, image-heavy layout</span>
+      </label>
+    </div>
+  </div>
+
+  <!-- vln-use - Dynamically renders template based on currentTheme value -->
+  <div vln-use="currentTheme"></div>
+
+  <!-- Templates below - each has id matching a theme name -->
+  <template id="modern">
+    <div class="space-y-6">
+      <nav class="bg-white rounded-lg shadow-md px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-8">
+          <span class="text-xl font-bold text-blue-600" vln-text="blog.title"></span>
+          <div class="hidden md:flex gap-6">
+            <a href="#" class="text-gray-600 hover:text-blue-600 font-medium">Home</a>
+            <!-- vln-loop generates links from computed categories -->
+            <a href="#" class="text-gray-600 hover:text-blue-600 font-medium" vln-loop:cat="blog.categories" vln-text="cat"></a>
+            <a href="#" class="text-gray-600 hover:text-blue-600 font-medium">About</a>
+          </div>
+        </div>
+        <div class="flex items-center gap-4">
+          <button class="text-gray-600 hover:text-blue-600">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+            </svg>
+          </button>
+          <button class="bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700">
+            Subscribe
+          </button>
+        </div>
+      </nav>
+
+      <header class="bg-gradient-to-r from-blue-600 to-blue-800 text-white p-8 rounded-lg shadow-lg">
+        <p class="text-blue-100 text-lg" vln-text="blog.tagline"></p>
+      </header>
+
+      <!-- Loop over posts array, each post becomes an article -->
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <article
+          vln-loop:post="blog.posts"
+          class="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-xl transition-shadow">
+          <div class="h-48 bg-gradient-to-br from-blue-400 to-purple-500"></div>
+          <div class="p-6">
+            <div class="flex items-center gap-2 text-sm text-gray-500 mb-2">
+              <span vln-text="post.date"></span>
+              <span>•</span>
+              <span vln-text="post.category"></span>
+            </div>
+            <h3 class="text-xl font-bold mb-2 text-gray-900" vln-text="post.title"></h3>
+            <p class="text-gray-600 mb-4" vln-text="post.excerpt"></p>
+            <div class="flex items-center justify-between">
+              <span class="text-sm text-gray-500" vln-text="post.author"></span>
+              <span class="text-sm font-medium text-blue-600" vln-text="post.readTime"></span>
+            </div>
+          </div>
+        </article>
+      </div>
+    </div>
+  </template>
+
+  <!-- Template: Classic Newspaper Theme -->
+  <template id="classic">
+    <div class="bg-white">
+      <!-- Newspaper Masthead -->
+      <header class="border-b-4 border-black pb-4 mb-6">
+        <div class="flex justify-between items-start text-xs text-gray-500 mb-3">
+          <div>
+            <div>Est. 2025</div>
+            <div class="mt-1">Daily Edition</div>
+          </div>
+          <div class="text-right">
+            <div>Monday, November 4, 2025</div>
+            <div class="mt-1">$2.50</div>
+          </div>
+        </div>
+
+        <h1 class="text-7xl font-serif font-bold text-center mb-3 tracking-tight" vln-text="blog.title"></h1>
+        <p class="text-center text-gray-600 italic text-lg mb-4" vln-text="blog.tagline"></p>
+
+        <!-- Navigation Bar -->
+        <nav class="border-t-2 border-b-2 border-black py-2 mt-4">
+          <div class="flex justify-center gap-8 text-sm font-bold uppercase tracking-wide">
+            <a href="#" class="hover:underline">Home</a>
+            <a href="#" class="hover:underline" vln-loop:cat="blog.categories" vln-text="cat"></a>
+            <a href="#" class="hover:underline">Opinion</a>
+          </div>
+        </nav>
+      </header>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <article
+          vln-loop:post="blog.posts"
+          class="border-b pb-6 mb-6 last:border-b-0">
+          <div class="mb-2">
+            <span class="inline-block bg-black text-white text-xs font-bold px-2 py-1 uppercase" vln-text="post.category"></span>
+          </div>
+          <h3 class="text-2xl font-serif font-bold mb-2 leading-tight" vln-text="post.title"></h3>
+          <p class="text-sm text-gray-500 mb-3">
+            <span>By </span><span vln-text="post.author"></span>
+            <span> | </span><span vln-text="post.date"></span>
+          </p>
+          <p class="text-gray-700 leading-relaxed" vln-text="post.excerpt"></p>
+        </article>
+      </div>
+    </div>
+  </template>
+
+  <!-- Template: Minimal List Theme -->
+  <template id="minimal">
+    <div class="flex gap-12">
+      <!-- Left Sidebar Navigation -->
+      <nav class="w-48 flex-shrink-0">
+        <div class="sticky top-8">
+          <div class="mb-8">
+            <h1 class="text-2xl font-light tracking-tight mb-2" vln-text="blog.title"></h1>
+            <p class="text-xs text-gray-400 uppercase tracking-wider">Journal</p>
+          </div>
+
+          <div class="space-y-3 text-sm">
+            <a href="#" class="block text-gray-900 hover:text-gray-600 transition-colors">Latest</a>
+            <a href="#" class="block text-gray-400 hover:text-gray-900 transition-colors" vln-loop:cat="blog.categories" vln-text="cat"></a>
+            <a href="#" class="block text-gray-400 hover:text-gray-900 transition-colors">About</a>
+          </div>
+
+          <div class="mt-8 pt-8 border-t border-gray-200">
+            <p class="text-xs text-gray-400 mb-3 uppercase tracking-wider">Subscribe</p>
+            <input type="email" placeholder="Email" class="w-full px-3 py-2 text-sm border border-gray-200 focus:border-gray-900 focus:outline-none">
+          </div>
+        </div>
+      </nav>
+
+      <!-- Main Content -->
+      <div class="flex-1 max-w-2xl">
+        <header class="mb-12">
+          <p class="text-gray-500 text-lg" vln-text="blog.tagline"></p>
+        </header>
+
+        <div class="space-y-12">
+        <article
+          vln-loop:post="blog.posts"
+          class="border-l-2 border-gray-200 pl-6 hover:border-gray-900 transition-colors">
+          <div class="flex items-baseline gap-4 mb-2">
+            <time class="text-sm text-gray-400 font-mono" vln-text="post.date"></time>
+            <span class="text-xs uppercase tracking-wider text-gray-400" vln-text="post.category"></span>
+          </div>
+          <h3 class="text-3xl font-light mb-3" vln-text="post.title"></h3>
+          <p class="text-gray-600 text-lg leading-relaxed mb-4" vln-text="post.excerpt"></p>
+          <div class="flex items-center justify-between text-sm">
+            <span class="text-gray-500" vln-text="post.author"></span>
+            <span class="text-gray-400" vln-text="post.readTime"></span>
+          </div>
+        </article>
+        </div>
+      </div>
+    </div>
+  </template>
+
+  <!-- Template: Magazine Grid Theme -->
+  <template id="magazine">
+    <div class="bg-black text-white">
+      <!-- Bold Top Header -->
+      <header class="bg-gradient-to-r from-purple-900 to-pink-900">
+        <nav class="flex items-center justify-between px-8 py-4 border-b border-purple-700">
+          <div class="flex items-center gap-8">
+            <h1 class="text-3xl font-black uppercase tracking-tighter" vln-text="blog.title"></h1>
+            <div class="hidden lg:flex gap-6 text-sm font-bold uppercase tracking-wide">
+              <a href="#" class="text-purple-200 hover:text-white transition-colors">Home</a>
+              <a href="#" class="text-purple-200 hover:text-white transition-colors" vln-loop:cat="blog.categories" vln-text="cat"></a>
+            </div>
+          </div>
+          <button class="bg-pink-500 text-white px-6 py-2 font-black uppercase text-sm hover:bg-pink-600 transition-colors">
+            Subscribe
+          </button>
+        </nav>
+        <div class="px-8 py-12">
+          <p class="text-2xl text-purple-200 font-light" vln-text="blog.tagline"></p>
+        </div>
+      </header>
+
+      <div class="p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
+        <article
+          vln-loop:post="blog.posts"
+          class="relative overflow-hidden group">
+          <div class="aspect-video bg-gradient-to-br from-purple-600 to-pink-600 mb-4"></div>
+          <div class="absolute inset-0 bg-gradient-to-t from-black via-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+            <div class="absolute bottom-0 left-0 right-0 p-6">
+              <span class="inline-block bg-pink-500 text-white text-xs font-bold px-3 py-1 uppercase mb-2" vln-text="post.category"></span>
+              <h3 class="text-2xl font-black uppercase mb-2" vln-text="post.title"></h3>
+              <p class="text-sm text-gray-300 mb-2" vln-text="post.excerpt"></p>
+              <div class="flex items-center justify-between text-xs">
+                <span vln-text="post.author"></span>
+                <span vln-text="post.readTime"></span>
+              </div>
+            </div>
+          </div>
+          <div class="group-hover:hidden">
+            <span class="inline-block bg-pink-500 text-white text-xs font-bold px-3 py-1 uppercase mb-2" vln-text="post.category"></span>
+            <h3 class="text-2xl font-black uppercase mb-2" vln-text="post.title"></h3>
+            <div class="flex items-center gap-4 text-sm text-gray-400">
+              <span vln-text="post.author"></span>
+              <span vln-text="post.date"></span>
+            </div>
+          </div>
+        </article>
+      </div>
+    </div>
+  </template>
+</div>
