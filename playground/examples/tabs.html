@@ -1,0 +1,28 @@
+<h1 class="text-3xl font-bold mb-6">Tabs Component</h1>
+
+<div class="flex gap-1 border-b border-gray-300 mb-6">
+  <button
+    vln-loop:tab="tabs"
+    vln-text="tab"
+    vln-class="{ 'border-b-2 border-blue-600 text-blue-600': activeTab === tab, 'text-gray-600 hover:text-gray-900': activeTab !== tab }"
+    vln-on:click="activeTab = tab"
+    class="px-4 py-2 font-medium transition-colors">
+  </button>
+</div>
+
+<div class="tab-content">
+  <div vln-if="activeTab === 'Home'" class="p-6 bg-white rounded-lg border border-gray-200">
+    <h2 class="text-2xl font-semibold mb-3">Home</h2>
+    <p class="text-gray-600">Welcome to the home tab! This is where you'd typically show an overview or dashboard.</p>
+  </div>
+
+  <div vln-if="activeTab === 'Profile'" class="p-6 bg-white rounded-lg border border-gray-200">
+    <h2 class="text-2xl font-semibold mb-3">Profile</h2>
+    <p class="text-gray-600">Your profile information goes here. This could include user details, settings, and preferences.</p>
+  </div>
+
+  <div vln-if="activeTab === 'Settings'" class="p-6 bg-white rounded-lg border border-gray-200">
+    <h2 class="text-2xl font-semibold mb-3">Settings</h2>
+    <p class="text-gray-600">Adjust your settings here. This is where users would configure their preferences and options.</p>
+  </div>
+</div>

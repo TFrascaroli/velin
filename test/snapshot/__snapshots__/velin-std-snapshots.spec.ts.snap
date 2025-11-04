@@ -9,7 +9,7 @@ exports[`attribute binding > binds attribute value 1`] = `
 
 exports[`attribute binding > binds multiple attributes 1`] = `
 <input
-  disabled="true"
+  disabled=""
   placeholder="Enter text"
   reflect-vln-attr:disabled="isDisabled"
   reflect-vln-attr:placeholder="hint"

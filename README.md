@@ -402,7 +402,7 @@ Usage:
 - [API Reference](./docs/api-reference.md) - JavaScript API documentation
 - [Creating Plugins](./docs/plugins.md) - Build custom directives
 - [Templates & Fragments](./docs/templates.md) - Advanced template features
-- [Examples & Patterns](./docs/examples.md) - Real-world examples
+- [Interactive Examples](./playground/examples.html) - Real-world examples
 
 ## Performance
 

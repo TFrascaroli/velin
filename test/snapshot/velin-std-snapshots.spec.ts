@@ -45,7 +45,7 @@ describe('loops', () => {
 
   it('renders loop with index', () => {
     const div = document.createElement('div')
-    div.innerHTML = '<span vln-loop="item, idx in items" vln-text="idx + \": \" + item"></span>'
+    div.innerHTML = '<span vln-loop="item, idx in items" vln-text="idx + ": " + item"></span>'
 
     Velin.bind(div, { items: ['first', 'second', 'third'] })
 
@@ -244,7 +244,7 @@ describe('complex expressions', () => {
 
     Velin.bind(div, {
       value: 3.14159,
-      format: (n, decimals) => n.toFixed(decimals)
+      format: (n: number, decimals: number) => n.toFixed(decimals)
     })
 
     expect(div).toMatchSnapshot()
