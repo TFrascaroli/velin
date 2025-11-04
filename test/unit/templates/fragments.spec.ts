@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import Velin from "../../src/velin-all";
+import Velin from "../../../src/velin-all";
 
 describe("Templates and Fragments", () => {
   let container: HTMLElement;
