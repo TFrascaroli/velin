@@ -313,7 +313,7 @@ Now changing either `firstName` or `lastName` will update `fullName` automatical
 
 - Read the [Directives Guide](./directives.md) for detailed information on each directive
 - Check out the [API Reference](./api-reference.md) for advanced features
-- Explore [Examples & Patterns](./examples.md) for common use cases
+- Explore [Interactive Examples](../playground/examples.html) for common use cases
 - Learn about [Creating Plugins](./plugins.md) to extend Velin
 
 ## Common Patterns
@@ -401,3 +401,74 @@ const vln = Velin.bind(root, {
   <li vln-loop:item="filteredItems" vln-text="item"></li>
 </ul>
 ```
+
+## Important: Reactive Tracking with Getters
+
+When using getters in your state, you need to be aware of how JavaScript's short-circuit evaluation interacts with Velin's dependency tracking system.
+
+### The Problem: Short-Circuit Evaluation
+
+Consider this common pattern:
+
+```javascript
+Velin.bind(container, {
+  isEmailValid: false,
+  isPasswordValid: false,
+  agreed: false,
+
+  get canSubmit() {
+    // ❌ PROBLEM: Dependencies might not be tracked!
+    return this.isEmailValid && this.isPasswordValid && this.agreed;
+  }
+});
+```
+
+**Why this doesn't work:** When `canSubmit` is first evaluated and `isEmailValid` is `false`, JavaScript's `&&` operator short-circuits and never evaluates `isPasswordValid` or `agreed`. This means Velin never "sees" those properties being accessed, so it doesn't track them as dependencies. When `isPasswordValid` or `agreed` change later, the UI won't update!
+
+### The Solution: Pre-access All Dependencies
+
+Access all properties BEFORE using them in logical expressions:
+
+```javascript
+get canSubmit() {
+  // ✅ CORRECT: Access all dependencies first
+  const emailValid = this.isEmailValid;
+  const passwordValid = this.isPasswordValid;
+  const hasAgreed = this.agreed;
+
+  // Now use them in logical expressions
+  return emailValid && passwordValid && hasAgreed;
+}
+```
+
+This ensures all properties are accessed (and thus tracked) on every evaluation, regardless of their values.
+
+### Alternative: Ternary Operators
+
+For simple cases, you can use ternary operators which always evaluate all branches:
+
+```javascript
+get canSubmit() {
+  // Both branches access all properties
+  return this.isEmailValid
+    ? (this.isPasswordValid ? this.agreed : false)
+    : false;
+}
+```
+
+However, the pre-access pattern is clearer and more maintainable.
+
+### Same Issue Applies To:
+
+- **Logical OR (`||`)**: `this.cachedValue || this.computedValue` - `computedValue` won't be tracked if `cachedValue` is truthy
+- **Nullish coalescing (`??`)**: `this.value ?? this.defaultValue` - `defaultValue` won't be tracked if `value` is not null/undefined
+- **Ternary conditions**: `this.condition ? this.a : this.b` - only the taken branch is tracked
+- **Optional chaining (`?.`)**: `this.user?.profile?.name` - properties after a null/undefined are never accessed
+
+### Note: This is a Common Pattern
+
+This isn't a Velin-specific limitation - other reactive systems like Vue 3 Composition API, Solid.js, and Angular Signals have the same behavior. It's a fundamental aspect of how JavaScript evaluation works with reactive dependency tracking.
+
+**Further Reading:**
+- [Vue 3: Computed Caveats](https://vuejs.org/guide/essentials/computed.html#computed-caveats)
+- [Angular Signals: Effect Dependencies](https://angular.io/guide/signals#effects-and-dependencies)

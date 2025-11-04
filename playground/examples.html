@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Velin Examples - Interactive Demo</title>
+  <script src="velin.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+</head>
+<body class="bg-gray-100 h-screen overflow-hidden">
+  <div class="flex h-full" id="app">
+    <!-- Sidebar -->
+    <div class="w-72 bg-gray-800 text-white overflow-y-auto flex-shrink-0">
+      <div class="p-6 border-b border-gray-700">
+        <h1 class="text-2xl font-bold mb-1">Velin Examples</h1>
+        <p class="text-sm text-gray-400">Interactive demos & patterns</p>
+      </div>
+      <ul>
+        <li
+          vln-loop:example="examples"
+          class="px-6 py-3 cursor-pointer border-l-4 transition-all"
+          vln-class="{
+            'bg-gray-700': currentExample === example.id,
+            'border-blue-500': currentExample === example.id,
+            'border-transparent': currentExample !== example.id,
+            'hover:bg-gray-700/50': currentExample !== example.id
+          }"
+          vln-on:click="currentExample = example.id">
+          <div class="font-medium mb-0.5" vln-text="example.title"></div>
+          <div class="text-xs text-gray-400" vln-text="example.description"></div>
+        </li>
+      </ul>
+    </div>
+
+    <!-- Main Content -->
+    <div class="flex-1 flex flex-col overflow-hidden">
+      <div class="bg-white border-b border-gray-300 px-6 py-4">
+        <h2 class="text-xl font-semibold text-gray-800" vln-text="activeExample.title"></h2>
+      </div>
+
+      <div class="flex-1 overflow-auto p-8 bg-white" vln-load="activeExample.url"></div>
+    </div>
+  </div>
+
+  <script>
+    // Register vln-load plugin
+    Velin.plugins.registerPlugin({
+      name: 'load',
+      track: Velin.trackers.expressionTracker,
+      render: ({ node, tracked }) => {
+        if (!tracked) return { halt: true };
+
+        // String input: just load HTML
+        if (typeof tracked === 'string') {
+          fetch(tracked)
+            .then(r => r.text())
+            .then(html => {
+              node.innerHTML = html;
+            });
+          return { halt: true };
+        }
+
+        // Object input: load markup + state, then bind
+        if (typeof tracked === 'object' && tracked.markup) {
+          Promise.all([
+            fetch(tracked.markup).then(r => r.text()),
+            tracked.state ? import('./' + tracked.state) : Promise.resolve(null)
+          ]).then(([html, module]) => {
+            node.innerHTML = html;
+
+            if (module) {
+              const state = typeof module.default === 'function'
+                ? module.default()
+                : module.default;
+              Velin.bind(node, state);
+            }
+          });
+          return { halt: true };
+        }
+
+        return { halt: true };
+      }
+    });
+
+    const examples = [
+      {
+        id: 'form-validation',
+        title: 'Form Validation',
+        description: 'Complete form with validation',
+        url: {
+          markup: 'examples/form-validation.html',
+          state: 'examples/form-validation.js'
+        }
+      },
+      {
+        id: 'crud-operations',
+        title: 'CRUD Operations',
+        description: 'Task manager with create, read, update, delete',
+        url: {
+          markup: 'examples/crud-operations.html',
+          state: 'examples/crud-operations.js'
+        }
+      },
+      {
+        id: 'search-filter',
+        title: 'Search & Filter',
+        description: 'Real-time search with computed properties',
+        url: {
+          markup: 'examples/search-filter.html',
+          state: 'examples/search-filter.js'
+        }
+      },
+      {
+        id: 'modal-dialog',
+        title: 'Modal Dialog',
+        description: 'Overlay modal with backdrop',
+        url: {
+          markup: 'examples/modal-dialog.html',
+          state: 'examples/modal-dialog.js'
+        }
+      },
+      {
+        id: 'tabs',
+        title: 'Tabs',
+        description: 'Tabbed interface with dynamic content',
+        url: {
+          markup: 'examples/tabs.html',
+          state: 'examples/tabs.js'
+        }
+      },
+      {
+        id: 'accordion',
+        title: 'Accordion',
+        description: 'Expandable sections with toggle',
+        url: {
+          markup: 'examples/accordion.html',
+          state: 'examples/accordion.js'
+        }
+      },
+      {
+        id: 'shopping-cart',
+        title: 'Shopping Cart',
+        description: 'Add/remove items with total calculation',
+        url: {
+          markup: 'examples/shopping-cart.html',
+          state: 'examples/shopping-cart.js'
+        }
+      }
+    ];
+
+    Velin.bind(document.getElementById('app'), {
+      examples: examples,
+      currentExample: 'form-validation',
+
+      get activeExample() {
+        return this.examples.find(ex => ex.id === this.currentExample) || this.examples[0];
+      }
+    });
+  </script>
+</body>
+</html>

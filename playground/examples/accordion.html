@@ -1,0 +1,16 @@
+<h1 class="text-3xl font-bold mb-6">Accordion</h1>
+
+<div class="space-y-2">
+  <div vln-loop:item="items" class="border border-gray-300 rounded-md overflow-hidden">
+    <button
+      vln-on:click="toggle(item.id)"
+      class="w-full px-4 py-3 bg-gray-50 hover:bg-gray-100 flex items-center justify-between text-left font-medium">
+      <span vln-text="item.title"></span>
+      <span vln-text="isOpen(item.id) ? '−' : '+'" class="text-xl text-gray-600"></span>
+    </button>
+
+    <div vln-if="isOpen(item.id)" class="px-4 py-3 bg-white">
+      <p vln-text="item.content" class="text-gray-600"></p>
+    </div>
+  </div>
+</div>
