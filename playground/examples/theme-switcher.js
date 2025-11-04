@@ -1,12 +1,12 @@
 export default {
-  currentTheme: 'modern',
+  currentTheme: 'modern', // Controls which template is displayed via vln-use
 
   blog: {
     title: 'The Design Chronicle',
     tagline: 'Exploring the intersection of design, technology, and creativity',
 
+    // Computed getter - dynamically generates unique categories from posts
     get categories() {
-      // Extract unique categories from posts
       const cats = [...new Set(this.posts.map(p => p.category))];
       return cats.sort();
     },

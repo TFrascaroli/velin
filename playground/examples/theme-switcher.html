@@ -2,7 +2,7 @@
   <div class="mb-6 p-4 bg-gray-50 rounded-lg">
     <h3 class="text-lg font-semibold mb-3">Theme Selector</h3>
 
-    <!-- Radio button theme selector -->
+    <!-- Radio buttons with vln-attr:checked and vln-on:change -->
     <div class="space-y-2">
       <label class="flex items-center space-x-3 cursor-pointer">
         <input type="radio" name="theme" value="modern"
@@ -33,28 +33,20 @@
         <span class="text-sm font-medium">Magazine Grid - Bold, image-heavy layout</span>
       </label>
     </div>
-
-    <!-- Alternative: Dropdown selector (commented out) -->
-    <!-- <select vln-input="currentTheme" class="w-full p-2 border rounded">
-      <option value="modern">Modern Cards</option>
-      <option value="classic">Classic Newspaper</option>
-      <option value="minimal">Minimal List</option>
-      <option value="magazine">Magazine Grid</option>
-    </select> -->
   </div>
 
-  <!-- Blog content will be rendered here via template -->
+  <!-- vln-use - Dynamically renders template based on currentTheme value -->
   <div vln-use="currentTheme"></div>
 
-  <!-- Template: Modern Card Theme -->
+  <!-- Templates below - each has id matching a theme name -->
   <template id="modern">
     <div class="space-y-6">
-      <!-- Top Navigation Bar -->
       <nav class="bg-white rounded-lg shadow-md px-6 py-4 flex items-center justify-between">
         <div class="flex items-center gap-8">
           <span class="text-xl font-bold text-blue-600" vln-text="blog.title"></span>
           <div class="hidden md:flex gap-6">
             <a href="#" class="text-gray-600 hover:text-blue-600 font-medium">Home</a>
+            <!-- vln-loop generates links from computed categories -->
             <a href="#" class="text-gray-600 hover:text-blue-600 font-medium" vln-loop:cat="blog.categories" vln-text="cat"></a>
             <a href="#" class="text-gray-600 hover:text-blue-600 font-medium">About</a>
           </div>
@@ -75,6 +67,7 @@
         <p class="text-blue-100 text-lg" vln-text="blog.tagline"></p>
       </header>
 
+      <!-- Loop over posts array, each post becomes an article -->
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <article
           vln-loop:post="blog.posts"

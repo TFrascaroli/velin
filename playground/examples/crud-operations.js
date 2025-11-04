@@ -7,6 +7,7 @@ export default function() {
     editingId: null,
     editText: '',
 
+    // Array mutations (push, splice, etc.) trigger reactivity automatically
     addTask() {
       if (this.newTask.trim()) {
         this.tasks.push({

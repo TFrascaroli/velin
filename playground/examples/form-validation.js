@@ -1,5 +1,6 @@
 export default function() {
   return {
+    // State - vln-input binds to these properties
     email: '',
     password: '',
     agreed: false,
@@ -11,6 +12,7 @@ export default function() {
       agreed: false
     },
 
+    // Computed properties - getters automatically track dependencies
     get isEmailValid() {
       return this.email.includes('@') && this.email.includes('.');
     },
@@ -20,11 +22,8 @@ export default function() {
     },
 
     get canSubmit() {
-      // IMPORTANT: To ensure reactive tracking works correctly with getters,
-      // access all dependencies BEFORE using them in logical expressions.
-      // This prevents JavaScript short-circuit evaluation from skipping
-      // property accesses, which would prevent those properties from being
-      // tracked as dependencies.
+      // Access all dependencies before using in logical expressions
+      // to ensure reactivity tracks them (avoids short-circuit skipping)
       const emailValid = this.isEmailValid;
       const passwordValid = this.isPasswordValid;
       const hasAgreed = this.agreed;

@@ -1,6 +1,6 @@
 export default function() {
   return {
-    openIds: [],
+    openIds: [], // Track which items are open by ID
     items: [
       {
         id: 1,

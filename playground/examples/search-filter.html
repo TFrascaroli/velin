@@ -1,5 +1,6 @@
 <h1 class="text-3xl font-bold mb-6">Search & Filter</h1>
 
+<!-- vln-input - Two-way binding with text input -->
 <input
   vln-input="search"
   placeholder="Search users..."
@@ -7,11 +8,13 @@
   class="w-full px-4 py-2 border border-gray-300 rounded-md mb-4"
 />
 
+<!-- vln-text - Display computed property values -->
 <div class="mb-4 text-gray-600">
   Showing <strong vln-text="filteredUsers.length" class="text-gray-900"></strong>
   of <strong vln-text="users.length" class="text-gray-900"></strong> users
 </div>
 
+<!-- Loop over computed getter - updates automatically when search changes -->
 <ul class="space-y-2">
   <li vln-loop:user="filteredUsers" class="p-4 bg-white border border-gray-200 rounded-md">
     <div class="font-semibold text-gray-900" vln-text="user.name"></div>

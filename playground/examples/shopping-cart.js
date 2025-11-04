@@ -8,6 +8,7 @@ export default function() {
     ],
     cart: [],
 
+    // Computed total - automatically updates when cart changes
     get total() {
       return this.cart.reduce((sum, item) => sum + item.price, 0).toFixed(2);
     },

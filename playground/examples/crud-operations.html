@@ -1,5 +1,6 @@
 <h1 class="text-3xl font-bold mb-6">Task Manager</h1>
 
+<!-- Comma operator - run multiple statements in event handler -->
 <form vln-on:submit="(event.preventDefault(), addTask())" class="mb-6">
   <div class="flex gap-2">
     <input
@@ -13,9 +14,11 @@
   </div>
 </form>
 
+<!-- vln-loop:task="tasks" - Loop over array, 'task' is the loop variable -->
 <ul class="space-y-2">
   <li vln-loop:task="tasks" class="p-3 bg-white border border-gray-200 rounded-md">
     <div vln-if="editingId !== task.id" class="flex items-center gap-3">
+      <!-- vln-input on nested object properties -->
       <input type="checkbox" vln-input="task.done" class="w-4 h-4" />
       <span vln-text="task.text" vln-class="{ 'line-through text-gray-500': task.done }" class="flex-1"></span>
       <button vln-on:click="startEdit(task)" class="px-3 py-1 text-sm bg-gray-200 rounded hover:bg-gray-300">
