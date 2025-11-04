@@ -1,3 +1,8 @@
+import { registerHighlightPlugin } from './search-filter-plugin.js';
+
+// Register the custom highlight plugin
+registerHighlightPlugin(window.Velin);
+
 export default function() {
   return {
     search: '',
