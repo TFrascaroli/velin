@@ -688,7 +688,14 @@ function evaluate(reactiveState, expr, allowMutations = false) {
         return Reflect.get(target, prop, receiver);
       },
       set(target, prop, value, receiver) {
-        if (reactiveState.ø__control.evaluating)
+        // TODO: This optional chaining is a hack to prevent crashes when async functions
+        // mutate state after their evaluation context has been cleaned up (e.g., event handlers
+        // with async operations). We should instead:
+        // 1. Detect null ø__control and throw a helpful error explaining the async issue
+        // 2. Add explicit async support via vln-on:event|async modifier
+        // 3. Await async results before cleanup OR use different cleanup strategy
+        // For now, this silently allows mutations that should probably be flagged.
+        if (reactiveState.ø__control?.evaluating)
           throw new Error(
             "[VLN010] Setting values during evaluation is forbidden. Use Velin.getSetter"
           );
