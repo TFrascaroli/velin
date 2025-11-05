@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Process Node Optimization Tests</title>
+  <style>
+    body {
+      font-family: monospace;
+      background: #0f172a;
+      color: #e2e8f0;
+      padding: 2rem;
+    }
+    pre {
+      background: #1e293b;
+      padding: 1rem;
+      border-radius: 4px;
+      overflow-x: auto;
+    }
+    .result { margin: 1rem 0; }
+    .fast { color: #34d399; }
+    .slow { color: #f87171; }
+  </style>
+</head>
+<body>
+  <h1>ProcessNode Optimization Candidates</h1>
+
+  <h2>Test: Array.from(node.attributes) vs Direct Iteration</h2>
+  <pre id="test1"></pre>
+
+  <h2>Test: Array.from(node.children) vs Direct Iteration</h2>
+  <pre id="test2"></pre>
+
+  <h2>Test: Sorting Overhead (when 0 or 1 plugins)</h2>
+  <pre id="test3"></pre>
+
+  <h2>Test: Early Exit Optimization</h2>
+  <pre id="test4"></pre>
+
+  <script>
+    // Create test DOM
+    function createTestDOM(size) {
+      const container = document.createElement('div');
+      for (let i = 0; i < size; i++) {
+        const div = document.createElement('div');
+        div.setAttribute('id', `item-${i}`);
+        div.setAttribute('class', 'test-item');
+        div.setAttribute('data-index', i);
+        container.appendChild(div);
+      }
+      return container;
+    }
+
+    // Test 1: Array.from(attributes) vs direct iteration
+    function test1() {
+      const container = createTestDOM(1000);
+      const elements = Array.from(container.querySelectorAll('*'));
+
+      // Method 1: Array.from
+      let start = performance.now();
+      for (const node of elements) {
+        for (const { name, value } of Array.from(node.attributes)) {
+          if (name.startsWith('vln-')) {
+            // do something
+          }
+        }
+      }
+      const arrayFromTime = performance.now() - start;
+
+      // Method 2: Direct iteration
+      start = performance.now();
+      for (const node of elements) {
+        const attrs = node.attributes;
+        for (let i = 0; i < attrs.length; i++) {
+          const attr = attrs[i];
+          if (attr.name.startsWith('vln-')) {
+            // do something
+          }
+        }
+      }
+      const directTime = performance.now() - start;
+
+      const speedup = arrayFromTime / directTime;
+      document.getElementById('test1').textContent =
+        `Array.from:      ${arrayFromTime.toFixed(3)}ms\n` +
+        `Direct iteration: ${directTime.toFixed(3)}ms\n` +
+        `Speedup: ${speedup.toFixed(2)}x`;
+    }
+
+    // Test 2: Array.from(children) vs direct iteration
+    function test2() {
+      const container = createTestDOM(1000);
+
+      // Method 1: Array.from
+      let count = 0;
+      let start = performance.now();
+      function walk1(node) {
+        count++;
+        for (const child of Array.from(node.children)) {
+          walk1(child);
+        }
+      }
+      walk1(container);
+      const arrayFromTime = performance.now() - start;
+
+      // Method 2: Direct iteration
+      count = 0;
+      start = performance.now();
+      function walk2(node) {
+        count++;
+        const children = node.children;
+        for (let i = 0; i < children.length; i++) {
+          walk2(children[i]);
+        }
+      }
+      walk2(container);
+      const directTime = performance.now() - start;
+
+      const speedup = arrayFromTime / directTime;
+      document.getElementById('test2').textContent =
+        `Array.from:      ${arrayFromTime.toFixed(3)}ms\n` +
+        `Direct iteration: ${directTime.toFixed(3)}ms\n` +
+        `Speedup: ${speedup.toFixed(2)}x`;
+    }
+
+    // Test 3: Sorting overhead
+    function test3() {
+      const iterations = 100000;
+
+      // With 0 items
+      let start = performance.now();
+      for (let i = 0; i < iterations; i++) {
+        const arr = [];
+        arr.sort((a, b) => (b.priority || 0) - (a.priority || 0));
+      }
+      const emptyTime = performance.now() - start;
+
+      // With 1 item
+      start = performance.now();
+      for (let i = 0; i < iterations; i++) {
+        const arr = [{ priority: 10 }];
+        arr.sort((a, b) => (b.priority || 0) - (a.priority || 0));
+      }
+      const oneTime = performance.now() - start;
+
+      // Skip sort when <= 1 item
+      start = performance.now();
+      for (let i = 0; i < iterations; i++) {
+        const arr = [{ priority: 10 }];
+        if (arr.length > 1) {
+          arr.sort((a, b) => (b.priority || 0) - (a.priority || 0));
+        }
+      }
+      const optimizedTime = performance.now() - start;
+
+      document.getElementById('test3').textContent =
+        `Always sort (0 items):  ${emptyTime.toFixed(3)}ms\n` +
+        `Always sort (1 item):   ${oneTime.toFixed(3)}ms\n` +
+        `Skip when <= 1:         ${optimizedTime.toFixed(3)}ms\n` +
+        `Savings: ${((oneTime - optimizedTime) / oneTime * 100).toFixed(1)}%`;
+    }
+
+    // Test 4: Early exit if no vln- attributes anywhere
+    function test4() {
+      const containerNoVln = createTestDOM(1000);
+      const containerWithVln = createTestDOM(1000);
+      containerWithVln.children[500].setAttribute('vln-text', 'test');
+
+      // No early exit
+      let start = performance.now();
+      function processNoEarlyExit(node) {
+        const applicable = [];
+        for (const { name, value } of Array.from(node.attributes)) {
+          if (name.startsWith("vln-")) {
+            applicable.push({ name, value });
+          }
+        }
+        // Process plugins...
+        for (const child of Array.from(node.children)) {
+          processNoEarlyExit(child);
+        }
+      }
+      processNoEarlyExit(containerNoVln);
+      const noEarlyExitTime = performance.now() - start;
+
+      // With early exit (check if subtree has any vln- first)
+      start = performance.now();
+      function processWithEarlyExit(node) {
+        // Check if this subtree has any vln- attributes
+        if (!node.querySelector('[vln-]')) {
+          return; // Skip entire subtree
+        }
+
+        const applicable = [];
+        for (const { name, value } of Array.from(node.attributes)) {
+          if (name.startsWith("vln-")) {
+            applicable.push({ name, value });
+          }
+        }
+        // Process plugins...
+        for (const child of Array.from(node.children)) {
+          processWithEarlyExit(child);
+        }
+      }
+      processWithEarlyExit(containerNoVln);
+      const earlyExitTime = performance.now() - start;
+
+      const speedup = noEarlyExitTime / earlyExitTime;
+      document.getElementById('test4').textContent =
+        `No early exit:     ${noEarlyExitTime.toFixed(3)}ms\n` +
+        `With early exit:   ${earlyExitTime.toFixed(3)}ms\n` +
+        `Result: ${speedup > 1 ? 'SLOWER' : 'FASTER'} (${speedup.toFixed(2)}x) - querySelector has overhead!`;
+    }
+
+    // Run all tests
+    setTimeout(() => {
+      test1();
+      test2();
+      test3();
+      test4();
+    }, 100);
+  </script>
+</body>
+</html>

@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Velin vs Alpine: Initialization Performance</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      padding: 2rem;
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 0.5rem;
+      color: #60a5fa;
+    }
+
+    .subtitle {
+      color: #94a3b8;
+      margin-bottom: 2rem;
+    }
+
+    .controls {
+      background: #1e293b;
+      padding: 1.5rem;
+      border-radius: 8px;
+      margin-bottom: 2rem;
+      border: 1px solid #334155;
+    }
+
+    .control-group {
+      margin-bottom: 1rem;
+    }
+
+    .control-group:last-child {
+      margin-bottom: 0;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 0.5rem;
+      color: #cbd5e1;
+      font-weight: 500;
+    }
+
+    input[type="number"],
+    select {
+      background: #0f172a;
+      color: #e2e8f0;
+      border: 1px solid #475569;
+      padding: 0.5rem;
+      border-radius: 4px;
+      font-size: 1rem;
+      width: 200px;
+    }
+
+    button {
+      background: #3b82f6;
+      color: white;
+      border: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 4px;
+      font-size: 1rem;
+      cursor: pointer;
+      font-weight: 500;
+      transition: background 0.2s;
+    }
+
+    button:hover {
+      background: #2563eb;
+    }
+
+    button:disabled {
+      background: #475569;
+      cursor: not-allowed;
+    }
+
+    .results {
+      background: #1e293b;
+      padding: 1.5rem;
+      border-radius: 8px;
+      border: 1px solid #334155;
+      margin-bottom: 2rem;
+    }
+
+    .results h2 {
+      margin-bottom: 1rem;
+      color: #60a5fa;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1rem;
+    }
+
+    th, td {
+      padding: 0.75rem;
+      text-align: left;
+      border-bottom: 1px solid #334155;
+    }
+
+    th {
+      background: #0f172a;
+      color: #cbd5e1;
+      font-weight: 600;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    .winner {
+      color: #34d399;
+      font-weight: 600;
+    }
+
+    .loser {
+      color: #f87171;
+    }
+
+    .speedup {
+      color: #60a5fa;
+      font-size: 0.875rem;
+    }
+
+    .info {
+      background: #1e293b;
+      padding: 1rem;
+      border-radius: 8px;
+      border-left: 4px solid #3b82f6;
+      margin-bottom: 2rem;
+      color: #cbd5e1;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 2rem;
+      color: #94a3b8;
+    }
+
+    .test-container {
+      display: none;
+    }
+
+    code {
+      background: #0f172a;
+      padding: 0.2rem 0.4rem;
+      border-radius: 3px;
+      font-family: 'Courier New', monospace;
+      color: #60a5fa;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Initialization Performance: Velin vs Alpine</h1>
+    <p class="subtitle">Comparing DOM initialization overhead with varying DOM sizes and reactive element density</p>
+
+    <div class="info">
+      <strong>Test Methodology:</strong> Creates a large DOM tree with a specified number of elements,
+      then measures how long it takes to initialize the framework. Velin uses scoped binding
+      (<code>Velin.bind()</code>) while Alpine performs global initialization (<code>Alpine.start()</code>).
+    </div>
+
+    <div class="controls">
+      <div class="control-group">
+        <label for="domSize">Total DOM Elements:</label>
+        <input type="number" id="domSize" value="1000" min="100" max="10000" step="100">
+      </div>
+
+      <div class="control-group">
+        <label for="density">Reactive Element Density:</label>
+        <select id="density">
+          <option value="0">0% (no reactive elements - overhead test)</option>
+          <option value="0.05">5% (50 per 1000)</option>
+          <option value="0.1" selected>10% (100 per 1000)</option>
+          <option value="0.25">25% (250 per 1000)</option>
+          <option value="0.5">50% (500 per 1000)</option>
+          <option value="1">100% (all reactive)</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <label for="iterations">Test Iterations (for averaging):</label>
+        <input type="number" id="iterations" value="5" min="1" max="20">
+      </div>
+
+      <button id="runTest">Run Benchmark</button>
+    </div>
+
+    <div class="results" id="results" style="display: none;">
+      <h2>Results</h2>
+      <table id="resultsTable">
+        <thead>
+          <tr>
+            <th>Framework</th>
+            <th>Avg Init Time</th>
+            <th>Min</th>
+            <th>Max</th>
+            <th>Std Dev</th>
+            <th>Comparison</th>
+          </tr>
+        </thead>
+        <tbody id="resultsBody">
+        </tbody>
+      </table>
+      <div id="analysis" style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #334155;"></div>
+    </div>
+
+    <div class="loading" id="loading" style="display: none;">
+      Running benchmark... <span id="progress"></span>
+    </div>
+  </div>
+
+  <!-- Test containers (hidden) -->
+  <div id="velin-container" class="test-container"></div>
+  <div id="alpine-container" class="test-container"></div>
+
+  <!-- Load frameworks -->
+  <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <script src="../../../dist/build/velin-all.min.js"></script>
+
+  <script>
+    // Wait for Alpine to be ready
+    document.addEventListener('alpine:init', () => {
+      console.log('Alpine initialized');
+    });
+
+    // Benchmark utilities
+    function calculateStats(measurements) {
+      const sorted = [...measurements].sort((a, b) => a - b);
+      const sum = measurements.reduce((a, b) => a + b, 0);
+      const avg = sum / measurements.length;
+      const variance = measurements.reduce((sum, val) => sum + Math.pow(val - avg, 2), 0) / measurements.length;
+      const stdDev = Math.sqrt(variance);
+
+      return {
+        avg,
+        min: sorted[0],
+        max: sorted[sorted.length - 1],
+        stdDev
+      };
+    }
+
+    function generateDOM(container, totalElements, density) {
+      container.innerHTML = '';
+      const numReactive = Math.floor(totalElements * density);
+      const numPlain = totalElements - numReactive;
+
+      // Create a mix of reactive and plain elements
+      const elements = [];
+
+      // Add reactive elements
+      for (let i = 0; i < numReactive; i++) {
+        elements.push({ reactive: true, id: i });
+      }
+
+      // Add plain elements
+      for (let i = 0; i < numPlain; i++) {
+        elements.push({ reactive: false, id: numReactive + i });
+      }
+
+      // Shuffle
+      for (let i = elements.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [elements[i], elements[j]] = [elements[j], elements[i]];
+      }
+
+      // Create DOM structure
+      const fragment = document.createDocumentFragment();
+      elements.forEach(el => {
+        const div = document.createElement('div');
+        div.className = 'test-item';
+        div.id = `item-${el.id}`;
+
+        if (el.reactive) {
+          div.innerHTML = `<span class="reactive-text">Item ${el.id}</span>`;
+        } else {
+          div.innerHTML = `<span>Plain ${el.id}</span>`;
+        }
+
+        fragment.appendChild(div);
+      });
+
+      container.appendChild(fragment);
+      return { numReactive, numPlain };
+    }
+
+    async function benchmarkVelin(totalElements, density, iterations) {
+      const measurements = [];
+
+      for (let i = 0; i < iterations; i++) {
+        const container = document.getElementById('velin-container');
+        const { numReactive } = generateDOM(container, totalElements, density);
+
+        // Add vln- attributes to reactive elements
+        const reactiveItems = container.querySelectorAll('.reactive-text');
+        reactiveItems.forEach((item, idx) => {
+          const parent = item.parentElement;
+          parent.setAttribute('vln-text', `'Item ${idx} - ' + count`);
+        });
+
+        // Force layout
+        container.offsetHeight;
+
+        // Measure initialization
+        const start = performance.now();
+        const state = Velin.bind(container, { count: 0 });
+        const end = performance.now();
+
+        measurements.push(end - start);
+
+        // Cleanup
+        container.innerHTML = '';
+
+        // Small delay between iterations
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+
+      return calculateStats(measurements);
+    }
+
+    async function benchmarkAlpine(totalElements, density, iterations) {
+      const measurements = [];
+
+      for (let i = 0; i < iterations; i++) {
+        // Need to reload the page or reinitialize Alpine for each test
+        // For now, we'll measure a single initialization
+        const container = document.getElementById('alpine-container');
+        const { numReactive } = generateDOM(container, totalElements, density);
+
+        // Add x-data and x-text attributes to reactive elements
+        const reactiveItems = container.querySelectorAll('.reactive-text');
+        reactiveItems.forEach((item, idx) => {
+          const parent = item.parentElement;
+          if (idx === 0) {
+            parent.setAttribute('x-data', '{ count: 0 }');
+          }
+          item.setAttribute('x-text', `'Item ${idx} - ' + count`);
+        });
+
+        // Force layout
+        container.offsetHeight;
+
+        // Measure initialization
+        const start = performance.now();
+
+        // Alpine.start() is global, but we can measure the effect on our subtree
+        // by watching when Alpine processes the nodes
+        await new Promise(resolve => {
+          if (window.Alpine) {
+            // Alpine already started, manually process this tree
+            // This is a limitation - Alpine doesn't expose a scoped bind
+            // We'll need to measure differently
+            Alpine.initTree(container);
+            resolve();
+          } else {
+            resolve();
+          }
+        });
+
+        const end = performance.now();
+
+        measurements.push(end - start);
+
+        // Cleanup
+        container.innerHTML = '';
+
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+
+      return calculateStats(measurements);
+    }
+
+    // Special Alpine test - global initialization
+    async function benchmarkAlpineGlobal(totalElements, density, iterations) {
+      // This is more realistic - Alpine scans the entire document
+      // We'll create the DOM in the Alpine container and measure
+      // how long Alpine takes to discover and initialize it
+
+      const measurements = [];
+
+      for (let i = 0; i < iterations; i++) {
+        const container = document.getElementById('alpine-container');
+        const { numReactive } = generateDOM(container, totalElements, density);
+
+        // Add Alpine attributes
+        const reactiveItems = container.querySelectorAll('.reactive-text');
+        reactiveItems.forEach((item, idx) => {
+          const parent = item.parentElement;
+          parent.setAttribute('x-data', '{ count: 0 }');
+          item.setAttribute('x-text', `'Item ${idx} - ' + count`);
+        });
+
+        container.offsetHeight;
+
+        const start = performance.now();
+
+        // Manually trigger Alpine's component discovery
+        // Note: This measures initTree which is what Alpine does internally
+        if (window.Alpine && Alpine.initTree) {
+          const components = container.querySelectorAll('[x-data]');
+          components.forEach(comp => {
+            Alpine.initTree(comp);
+          });
+        }
+
+        const end = performance.now();
+        measurements.push(end - start);
+
+        // Cleanup
+        container.innerHTML = '';
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+
+      return calculateStats(measurements);
+    }
+
+    function displayResults(velinStats, alpineStats, config) {
+      const resultsDiv = document.getElementById('results');
+      const resultsBody = document.getElementById('resultsBody');
+      const analysisDiv = document.getElementById('analysis');
+
+      resultsDiv.style.display = 'block';
+
+      const speedup = alpineStats.avg / velinStats.avg;
+      const faster = speedup > 1 ? 'Velin' : 'Alpine';
+
+      resultsBody.innerHTML = `
+        <tr>
+          <td><strong>Velin</strong></td>
+          <td class="${speedup > 1 ? 'winner' : 'loser'}">${velinStats.avg.toFixed(2)}ms</td>
+          <td>${velinStats.min.toFixed(2)}ms</td>
+          <td>${velinStats.max.toFixed(2)}ms</td>
+          <td>${velinStats.stdDev.toFixed(2)}ms</td>
+          <td>${speedup > 1 ? '<span class="speedup">✓ ' + speedup.toFixed(2) + 'x faster</span>' : ''}</td>
+        </tr>
+        <tr>
+          <td><strong>Alpine</strong></td>
+          <td class="${speedup < 1 ? 'winner' : 'loser'}">${alpineStats.avg.toFixed(2)}ms</td>
+          <td>${alpineStats.min.toFixed(2)}ms</td>
+          <td>${alpineStats.max.toFixed(2)}ms</td>
+          <td>${alpineStats.stdDev.toFixed(2)}ms</td>
+          <td>${speedup < 1 ? '<span class="speedup">✓ ' + (1/speedup).toFixed(2) + 'x faster</span>' : ''}</td>
+        </tr>
+      `;
+
+      const densityPercent = (config.density * 100).toFixed(0);
+      const numReactive = Math.floor(config.totalElements * config.density);
+
+      analysisDiv.innerHTML = `
+        <strong>Test Configuration:</strong><br>
+        • Total DOM elements: ${config.totalElements}<br>
+        • Reactive elements: ${numReactive} (${densityPercent}%)<br>
+        • Plain elements: ${config.totalElements - numReactive}<br>
+        • Iterations: ${config.iterations}<br><br>
+
+        <strong>Analysis:</strong><br>
+        ${faster} is <strong>${Math.abs(speedup - 1) < 0.1 ? 'roughly the same speed' : speedup.toFixed(2) + 'x ' + (speedup > 1 ? 'faster' : 'slower')}</strong>
+        for this workload.
+        ${speedup > 1 ?
+          `Velin's scoped binding (${velinStats.avg.toFixed(2)}ms) beats Alpine's initialization (${alpineStats.avg.toFixed(2)}ms) by ${((speedup - 1) * 100).toFixed(1)}%.` :
+          `Alpine's initialization (${alpineStats.avg.toFixed(2)}ms) is faster than Velin (${velinStats.avg.toFixed(2)}ms) by ${((1/speedup - 1) * 100).toFixed(1)}%.`
+        }
+      `;
+    }
+
+    document.getElementById('runTest').addEventListener('click', async () => {
+      const button = document.getElementById('runTest');
+      const loading = document.getElementById('loading');
+      const results = document.getElementById('results');
+      const progress = document.getElementById('progress');
+
+      const totalElements = parseInt(document.getElementById('domSize').value);
+      const density = parseFloat(document.getElementById('density').value);
+      const iterations = parseInt(document.getElementById('iterations').value);
+
+      button.disabled = true;
+      loading.style.display = 'block';
+      results.style.display = 'none';
+
+      try {
+        progress.textContent = 'Testing Velin...';
+        const velinStats = await benchmarkVelin(totalElements, density, iterations);
+
+        progress.textContent = 'Testing Alpine...';
+        const alpineStats = await benchmarkAlpineGlobal(totalElements, density, iterations);
+
+        displayResults(velinStats, alpineStats, { totalElements, density, iterations });
+      } catch (error) {
+        console.error('Benchmark error:', error);
+        alert('Benchmark failed: ' + error.message);
+      } finally {
+        button.disabled = false;
+        loading.style.display = 'none';
+      }
+    });
+
+    // Auto-run on load with default settings
+    window.addEventListener('load', () => {
+      setTimeout(() => {
+        // Check if Velin is loaded
+        if (window.Velin) {
+          console.log('Velin loaded, ready to benchmark');
+        }
+      }, 500);
+    });
+  </script>
+</body>
+</html>

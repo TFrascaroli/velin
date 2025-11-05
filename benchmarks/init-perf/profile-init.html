@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Velin Initialization Profiling</title>
+  <style>
+    body {
+      font-family: monospace;
+      background: #0f172a;
+      color: #e2e8f0;
+      padding: 2rem;
+    }
+    .results {
+      background: #1e293b;
+      padding: 1rem;
+      border-radius: 4px;
+      margin: 1rem 0;
+      border: 1px solid #334155;
+    }
+    .phase {
+      margin: 0.5rem 0;
+    }
+    .time {
+      color: #60a5fa;
+      font-weight: bold;
+    }
+    .slow {
+      color: #f87171;
+      font-weight: bold;
+    }
+    .fast {
+      color: #34d399;
+    }
+    h2 {
+      color: #60a5fa;
+      margin-top: 2rem;
+    }
+    button {
+      background: #3b82f6;
+      color: white;
+      border: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 4px;
+      cursor: pointer;
+      margin: 0.5rem 0.5rem 0.5rem 0;
+    }
+    button:hover {
+      background: #2563eb;
+    }
+  </style>
+</head>
+<body>
+  <h1>🔬 Velin Initialization Profiling</h1>
+  <p>Isolating performance bottlenecks in initialization</p>
+
+  <button onclick="profileStateSetup()">1. Profile State Setup (Proxy Wrapping)</button>
+  <button onclick="profileDOMTraversal()">2. Profile DOM Traversal</button>
+  <button onclick="profilePluginProcessing()">3. Profile Plugin Processing</button>
+  <button onclick="profileComposeState()">4. Profile ComposeState (Loops)</button>
+  <button onclick="runAll()">Run All Tests</button>
+
+  <div id="results"></div>
+
+  <script src="../../../dist/build/velin-all.min.js"></script>
+  <script>
+    const results = document.getElementById('results');
+
+    function log(html) {
+      results.innerHTML += html;
+    }
+
+    function clearResults() {
+      results.innerHTML = '';
+    }
+
+    // Test 1: State Setup (Proxy Wrapping)
+    function profileStateSetup() {
+      clearResults();
+      log('<h2>Test 1: State Setup (Proxy Wrapping)</h2>');
+
+      const configs = [
+        { name: 'Small object (10 props)', data: generateObject(10, 0) },
+        { name: 'Large object (100 props)', data: generateObject(100, 0) },
+        { name: 'Deep object (3 levels)', data: generateObject(5, 3) },
+        { name: 'Array (100 items)', data: Array(100).fill(0).map((_, i) => i) },
+        { name: 'Mixed (objects + arrays)', data: {
+          users: Array(50).fill(0).map((_, i) => ({ id: i, name: `User ${i}` })),
+          settings: generateObject(20, 1)
+        }},
+      ];
+
+      log('<div class="results">');
+      configs.forEach(config => {
+        const times = [];
+        for (let i = 0; i < 10; i++) {
+          const start = performance.now();
+          // Access internal setupState
+          const state = Velin.ø__internal.boundState;
+          const reactiveState = {
+            state: null,
+            bindings: new Map(),
+            ø__depCaptures: [],
+            ø__control: { evaluating: false, currentCycleID: null },
+            ø__innerStates: new Set(),
+            ø__innerBindings: new Map(),
+            ø__finalizers: [],
+          };
+
+          // Just measure the wrapping - call bind but clean up
+          const container = document.createElement('div');
+          const boundState = Velin.bind(container, config.data);
+          const end = performance.now();
+          times.push(end - start);
+
+          // Cleanup
+          container.remove();
+        }
+        const avg = times.reduce((a, b) => a + b, 0) / times.length;
+        const className = avg > 1 ? 'slow' : avg > 0.5 ? 'time' : 'fast';
+        log(`<div class="phase">${config.name}: <span class="${className}">${avg.toFixed(3)}ms</span></div>`);
+      });
+      log('</div>');
+    }
+
+    function generateObject(numProps, depth) {
+      const obj = {};
+      for (let i = 0; i < numProps; i++) {
+        if (depth > 0) {
+          obj[`prop${i}`] = generateObject(Math.floor(numProps / 2), depth - 1);
+        } else {
+          obj[`prop${i}`] = Math.random();
+        }
+      }
+      return obj;
+    }
+
+    // Test 2: DOM Traversal
+    function profileDOMTraversal() {
+      clearResults();
+      log('<h2>Test 2: DOM Traversal (processNode)</h2>');
+
+      const configs = [
+        { name: '100 elements, 0% reactive', total: 100, reactive: 0 },
+        { name: '100 elements, 50% reactive', total: 100, reactive: 50 },
+        { name: '1000 elements, 0% reactive', total: 1000, reactive: 0 },
+        { name: '1000 elements, 10% reactive', total: 1000, reactive: 100 },
+        { name: '1000 elements, 50% reactive', total: 1000, reactive: 500 },
+      ];
+
+      log('<div class="results">');
+      configs.forEach(config => {
+        const container = document.createElement('div');
+
+        // Create DOM
+        for (let i = 0; i < config.total; i++) {
+          const div = document.createElement('div');
+          div.innerHTML = `<span>Item ${i}</span>`;
+          if (i < config.reactive) {
+            div.setAttribute('vln-text', `'Item ' + count`);
+          }
+          container.appendChild(div);
+        }
+
+        const times = [];
+        for (let i = 0; i < 5; i++) {
+          const start = performance.now();
+          const state = Velin.bind(container, { count: 0 });
+          const end = performance.now();
+          times.push(end - start);
+
+          // Reset for next iteration
+          container.innerHTML = '';
+          for (let j = 0; j < config.total; j++) {
+            const div = document.createElement('div');
+            div.innerHTML = `<span>Item ${j}</span>`;
+            if (j < config.reactive) {
+              div.setAttribute('vln-text', `'Item ' + count`);
+            }
+            container.appendChild(div);
+          }
+        }
+
+        const avg = times.reduce((a, b) => a + b, 0) / times.length;
+        const className = avg > 10 ? 'slow' : avg > 3 ? 'time' : 'fast';
+        log(`<div class="phase">${config.name}: <span class="${className}">${avg.toFixed(3)}ms</span></div>`);
+
+        container.remove();
+      });
+      log('</div>');
+    }
+
+    // Test 3: Plugin Processing
+    function profilePluginProcessing() {
+      clearResults();
+      log('<h2>Test 3: Plugin Processing (Expression Evaluation)</h2>');
+
+      const expressions = [
+        { name: 'Simple literal', expr: '"Hello"' },
+        { name: 'Simple variable', expr: 'count' },
+        { name: 'Simple addition', expr: 'count + 1' },
+        { name: 'String concatenation', expr: '"Count: " + count' },
+        { name: 'Object access', expr: 'user.name' },
+        { name: 'Deep object access', expr: 'user.profile.settings.theme' },
+        { name: 'Array access', expr: 'items[0]' },
+        { name: 'Complex expression', expr: 'count > 10 ? "High" : "Low"' },
+        { name: 'Object literal', expr: '{ active: count > 5, value: count * 2 }' },
+      ];
+
+      log('<div class="results">');
+
+      const state = Velin.bind(document.createElement('div'), {
+        count: 5,
+        user: {
+          name: 'Test',
+          profile: {
+            settings: {
+              theme: 'dark'
+            }
+          }
+        },
+        items: [1, 2, 3]
+      });
+
+      const reactiveState = Velin.ø__internal.boundState.root;
+
+      expressions.forEach(test => {
+        const times = [];
+        for (let i = 0; i < 1000; i++) {
+          const start = performance.now();
+          Velin.evaluate(reactiveState, test.expr);
+          const end = performance.now();
+          times.push(end - start);
+        }
+        const avg = times.reduce((a, b) => a + b, 0) / times.length;
+        const className = avg > 0.1 ? 'slow' : avg > 0.05 ? 'time' : 'fast';
+        log(`<div class="phase">${test.name}: <span class="${className}">${avg.toFixed(4)}ms</span> per eval</div>`);
+      });
+      log('</div>');
+    }
+
+    // Test 4: ComposeState (Loop substates)
+    function profileComposeState() {
+      clearResults();
+      log('<h2>Test 4: ComposeState (Loop Substates)</h2>');
+
+      const configs = [
+        { name: '10 items', count: 10 },
+        { name: '50 items', count: 50 },
+        { name: '100 items', count: 100 },
+        { name: '500 items', count: 500 },
+      ];
+
+      log('<div class="results">');
+
+      configs.forEach(config => {
+        const container = document.createElement('div');
+        const template = document.createElement('div');
+        template.innerHTML = '<span vln-text="item.name"></span>';
+        template.setAttribute('vln-loop', 'items:item');
+        container.appendChild(template);
+
+        const items = Array(config.count).fill(0).map((_, i) => ({
+          id: i,
+          name: `Item ${i}`
+        }));
+
+        const times = [];
+        for (let i = 0; i < 3; i++) {
+          const start = performance.now();
+          const state = Velin.bind(container, { items });
+          const end = performance.now();
+          times.push(end - start);
+
+          container.innerHTML = '';
+          const newTemplate = document.createElement('div');
+          newTemplate.innerHTML = '<span vln-text="item.name"></span>';
+          newTemplate.setAttribute('vln-loop', 'items:item');
+          container.appendChild(newTemplate);
+        }
+
+        const avg = times.reduce((a, b) => a + b, 0) / times.length;
+        const perItem = avg / config.count;
+        const className = avg > 20 ? 'slow' : avg > 10 ? 'time' : 'fast';
+        log(`<div class="phase">${config.name}: <span class="${className}">${avg.toFixed(3)}ms</span> (${perItem.toFixed(4)}ms per item)</div>`);
+
+        container.remove();
+      });
+      log('</div>');
+    }
+
+    async function runAll() {
+      clearResults();
+      log('<h1>Running All Profiling Tests...</h1>');
+
+      profileStateSetup();
+      await new Promise(r => setTimeout(r, 100));
+
+      profileDOMTraversal();
+      await new Promise(r => setTimeout(r, 100));
+
+      profilePluginProcessing();
+      await new Promise(r => setTimeout(r, 100));
+
+      profileComposeState();
+
+      log('<h2 style="color: #34d399;">✓ All tests complete!</h2>');
+    }
+  </script>
+</body>
+</html>

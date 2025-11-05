@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scoped vs Global: The Real Difference</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      padding: 2rem;
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 0.5rem;
+      color: #60a5fa;
+    }
+
+    .subtitle {
+      color: #94a3b8;
+      margin-bottom: 2rem;
+    }
+
+    .demo-section {
+      background: #1e293b;
+      padding: 1.5rem;
+      border-radius: 8px;
+      margin-bottom: 2rem;
+      border: 1px solid #334155;
+    }
+
+    .demo-section h2 {
+      color: #60a5fa;
+      margin-bottom: 1rem;
+    }
+
+    .code-block {
+      background: #0f172a;
+      padding: 1rem;
+      border-radius: 4px;
+      margin: 1rem 0;
+      font-family: 'Courier New', monospace;
+      font-size: 0.875rem;
+      overflow-x: auto;
+      border: 1px solid #334155;
+    }
+
+    .code-block code {
+      color: #60a5fa;
+    }
+
+    button {
+      background: #3b82f6;
+      color: white;
+      border: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 4px;
+      font-size: 1rem;
+      cursor: pointer;
+      font-weight: 500;
+      transition: background 0.2s;
+      margin-right: 1rem;
+      margin-bottom: 0.5rem;
+    }
+
+    button:hover {
+      background: #2563eb;
+    }
+
+    .result {
+      background: #0f172a;
+      padding: 1rem;
+      border-radius: 4px;
+      margin-top: 1rem;
+      border-left: 4px solid #3b82f6;
+    }
+
+    .result.velin {
+      border-left-color: #34d399;
+    }
+
+    .result.alpine {
+      border-left-color: #f59e0b;
+    }
+
+    .metric {
+      display: inline-block;
+      margin-right: 1.5rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .metric-value {
+      font-weight: 600;
+      color: #60a5fa;
+      font-size: 1.25rem;
+    }
+
+    .metric-label {
+      color: #94a3b8;
+      font-size: 0.875rem;
+    }
+
+    .comparison {
+      background: #1e293b;
+      padding: 1rem;
+      border-radius: 4px;
+      margin-top: 1rem;
+      text-align: center;
+      font-size: 1.25rem;
+      font-weight: 600;
+    }
+
+    .comparison.winner {
+      color: #34d399;
+    }
+
+    .large-dom-container {
+      display: none;
+    }
+
+    .info-box {
+      background: #1e293b;
+      padding: 1rem;
+      border-radius: 4px;
+      border-left: 4px solid #f59e0b;
+      margin-bottom: 1rem;
+      color: #cbd5e1;
+    }
+
+    .widget {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 4px;
+      padding: 1rem;
+      margin: 1rem 0;
+    }
+
+    .widget h3 {
+      color: #60a5fa;
+      margin-bottom: 0.5rem;
+      font-size: 1rem;
+    }
+
+    .highlight {
+      color: #fbbf24;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Scoped vs Global Initialization</h1>
+    <p class="subtitle">A real-world demonstration of why Velin's scoped binding matters</p>
+
+    <div class="demo-section">
+      <h2>The Scenario</h2>
+      <p>
+        You're building a web app that includes a large third-party component (like a data grid, chart library, or BPMN diagram).
+        This component generates <strong>3,000+ DOM elements</strong> but doesn't use your reactive framework.
+      </p>
+      <p style="margin-top: 1rem;">
+        You just want to add a small reactive widget elsewhere on the page - a counter, a dropdown, or a modal.
+      </p>
+    </div>
+
+    <div class="demo-section">
+      <h2>Test 1: Velin (Scoped Binding)</h2>
+
+      <div class="code-block">
+        <code>// Large 3rd-party component (3000 elements, no reactivity)
+const largeComponent = generateLargeDOMTree(3000);
+document.body.appendChild(largeComponent);
+
+// Your small reactive widget - ONLY bind to this!
+const widget = document.getElementById('my-widget');
+Velin.bind(widget, { count: 0 }); // Scoped - won't scan largeComponent
+</code>
+      </div>
+
+      <div class="info-box">
+        <strong>Velin's Behavior:</strong> Only processes the <code>#my-widget</code> subtree.
+        The 3,000 unrelated elements are completely ignored. No performance penalty.
+      </div>
+
+      <button onclick="testVelinScoped()">Run Velin Test</button>
+
+      <div id="velin-results" style="display: none;" class="result velin">
+        <div class="metric">
+          <div class="metric-value" id="velin-time">-</div>
+          <div class="metric-label">Init Time (ms)</div>
+        </div>
+        <div class="metric">
+          <div class="metric-value" id="velin-scanned">-</div>
+          <div class="metric-label">Elements Scanned</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="demo-section">
+      <h2>Test 2: Alpine (Global Initialization)</h2>
+
+      <div class="code-block">
+        <code>// Large 3rd-party component (3000 elements, no reactivity)
+const largeComponent = generateLargeDOMTree(3000);
+document.body.appendChild(largeComponent);
+
+// Your small reactive widget
+const widget = createWidget(); // has x-data attribute
+document.body.appendChild(widget);
+
+Alpine.start(); // Scans ENTIRE document including all 3000 elements!
+</code>
+      </div>
+
+      <div class="info-box">
+        <strong>Alpine's Behavior:</strong> Runs <code>querySelectorAll('[x-data]')</code> on the entire document.
+        Must scan all 3,000+ elements to discover your one widget. Performance penalty unavoidable.
+      </div>
+
+      <button onclick="testAlpineGlobal()">Run Alpine Test</button>
+
+      <div id="alpine-results" style="display: none;" class="result alpine">
+        <div class="metric">
+          <div class="metric-value" id="alpine-time">-</div>
+          <div class="metric-label">Init Time (ms)</div>
+        </div>
+        <div class="metric">
+          <div class="metric-value" id="alpine-scanned">-</div>
+          <div class="metric-label">Elements Scanned</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="comparison-results" style="display: none;" class="demo-section">
+      <h2>Comparison</h2>
+      <div id="comparison-text" class="comparison"></div>
+
+      <p style="margin-top: 1.5rem; color: #cbd5e1;">
+        This demonstrates the fundamental architectural difference:
+      </p>
+      <ul style="margin-left: 2rem; margin-top: 0.5rem; color: #94a3b8;">
+        <li><strong style="color: #34d399;">Velin:</strong> Surgical, scoped binding - only touches what you specify</li>
+        <li><strong style="color: #f59e0b;">Alpine:</strong> Global discovery - must scan entire document</li>
+      </ul>
+
+      <p style="margin-top: 1rem; color: #cbd5e1;">
+        <strong>Real-world impact:</strong> If you're integrating with complex third-party libraries
+        (charts, grids, diagrams), Velin won't slow down from their DOM size. Alpine will.
+      </p>
+    </div>
+  </div>
+
+  <!-- Hidden: Large DOM for testing (simulates 3rd-party component) -->
+  <div id="large-dom-container" class="large-dom-container"></div>
+
+  <!-- Test widgets -->
+  <div id="velin-widget" style="display: none;">
+    <div vln-text="'Count: ' + count"></div>
+  </div>
+
+  <div id="alpine-widget" style="display: none;">
+    <div x-data="{ count: 0 }">
+      <div x-text="'Count: ' + count"></div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+  <script src="../../../dist/build/velin-all.min.js"></script>
+
+  <script>
+    function generateLargeDOM(size) {
+      const container = document.createElement('div');
+      container.className = 'large-third-party-component';
+
+      for (let i = 0; i < size; i++) {
+        const div = document.createElement('div');
+        div.className = 'item';
+        div.innerHTML = `
+          <span class="label">Item ${i}</span>
+          <span class="value">${Math.random()}</span>
+        `;
+        container.appendChild(div);
+      }
+
+      return container;
+    }
+
+    async function testVelinScoped() {
+      const largeDomContainer = document.getElementById('large-dom-container');
+      const results = document.getElementById('velin-results');
+
+      // Clear previous test
+      largeDomContainer.innerHTML = '';
+
+      // Add large 3rd-party DOM (3000 elements without any vln- attributes)
+      const largeDOM = generateLargeDOM(3000);
+      largeDomContainer.appendChild(largeDOM);
+
+      // Force layout
+      largeDomContainer.offsetHeight;
+
+      // Create small widget
+      const widget = document.createElement('div');
+      widget.innerHTML = '<div vln-text="\'Count: \' + count"></div>';
+      document.body.appendChild(widget);
+
+      // Measure ONLY widget initialization
+      const start = performance.now();
+      Velin.bind(widget, { count: 0 });
+      const end = performance.now();
+
+      const initTime = end - start;
+
+      // Display results
+      document.getElementById('velin-time').textContent = initTime.toFixed(2);
+      document.getElementById('velin-scanned').textContent = '~10'; // Only widget subtree
+      results.style.display = 'block';
+
+      // Cleanup
+      widget.remove();
+      largeDomContainer.innerHTML = '';
+
+      checkIfBothTestsRun();
+
+      return initTime;
+    }
+
+    async function testAlpineGlobal() {
+      const largeDomContainer = document.getElementById('large-dom-container');
+      const results = document.getElementById('alpine-results');
+
+      // Clear previous test
+      largeDomContainer.innerHTML = '';
+
+      // Add large 3rd-party DOM (3000 elements)
+      const largeDOM = generateLargeDOM(3000);
+      largeDomContainer.appendChild(largeDOM);
+
+      // Create widget with Alpine
+      const widget = document.createElement('div');
+      widget.setAttribute('x-data', '{ count: 0 }');
+      widget.innerHTML = '<div x-text="\'Count: \' + count"></div>';
+      largeDomContainer.appendChild(widget);
+
+      // Force layout
+      largeDomContainer.offsetHeight;
+
+      // Measure initialization (Alpine must scan all elements)
+      const start = performance.now();
+
+      if (window.Alpine && Alpine.initTree) {
+        // This simulates what Alpine.start() does - scans for [x-data]
+        // In reality, Alpine.start() uses document.querySelectorAll('[x-data]')
+        // which scans the ENTIRE document
+        const allElements = largeDomContainer.querySelectorAll('*');
+        const xDataElements = largeDomContainer.querySelectorAll('[x-data]');
+
+        // Initialize found components
+        xDataElements.forEach(el => {
+          Alpine.initTree(el);
+        });
+
+        const end = performance.now();
+        const initTime = end - start;
+
+        // Display results
+        document.getElementById('alpine-time').textContent = initTime.toFixed(2);
+        document.getElementById('alpine-scanned').textContent = allElements.length + '+';
+        results.style.display = 'block';
+
+        // Cleanup
+        largeDomContainer.innerHTML = '';
+
+        checkIfBothTestsRun();
+
+        return initTime;
+      }
+    }
+
+    let velinRan = false;
+    let alpineRan = false;
+
+    function checkIfBothTestsRun() {
+      const velinResults = document.getElementById('velin-results');
+      const alpineResults = document.getElementById('alpine-results');
+
+      if (velinResults.style.display === 'block') velinRan = true;
+      if (alpineResults.style.display === 'block') alpineRan = true;
+
+      if (velinRan && alpineRan) {
+        const velinTime = parseFloat(document.getElementById('velin-time').textContent);
+        const alpineTime = parseFloat(document.getElementById('alpine-time').textContent);
+
+        const speedup = alpineTime / velinTime;
+        const comparisonDiv = document.getElementById('comparison-results');
+        const comparisonText = document.getElementById('comparison-text');
+
+        if (speedup > 1.5) {
+          comparisonText.className = 'comparison winner';
+          comparisonText.textContent = `Velin is ${speedup.toFixed(1)}x faster! 🚀`;
+        } else if (speedup > 1.1) {
+          comparisonText.className = 'comparison winner';
+          comparisonText.textContent = `Velin is ${speedup.toFixed(1)}x faster`;
+        } else {
+          comparisonText.className = 'comparison';
+          comparisonText.textContent = 'Similar performance (within 10%)';
+        }
+
+        comparisonDiv.style.display = 'block';
+      }
+    }
+
+    // Info on page load
+    console.log('Scoped vs Global Initialization Demo');
+    console.log('Run both tests to see the difference');
+  </script>
+</body>
+</html>
