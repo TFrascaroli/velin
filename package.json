@@ -18,6 +18,7 @@
     "prepare": "node scripts/prepare.js",
     "prepare:benchmarks": "npm run prepare && npm run build:react && npm run build:angular",
     "serve": "npm run build && npm run prepare && node scripts/serve.js",
+    "serve:dev": "npm run build && npm run prepare -- --dev && node scripts/serve.js",
     "serve:benchmarks": "npm run prepare:benchmarks && npm run serve",
     "build": "node scripts/build.js && tsc -p tsconfig.json",
     "test": "npx vitest run"
