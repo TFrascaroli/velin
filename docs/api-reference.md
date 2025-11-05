@@ -576,23 +576,169 @@ Velin uses error codes in console messages:
 
 ## TypeScript Support
 
-Velin includes TypeScript definitions. To use them:
+Velin includes comprehensive TypeScript definitions for type-safe reactive applications.
+
+### Basic Usage
+
+Type your state object for full autocomplete and type checking:
 
 ```typescript
-import Velin, { VelinCore, ReactiveState } from 'velin';
+import Velin from 'velin';
 
 interface AppState {
   count: number;
   name: string;
+  todos: Array<{ id: number; text: string; done: boolean }>;
 }
 
 const vln = Velin.bind<AppState>(root, {
   count: 0,
-  name: 'Alice'
+  name: 'Alice',
+  todos: []
 });
 
-// TypeScript knows vln.count is a number
-vln.count++;
+// TypeScript knows the types
+vln.count++;           // number
+vln.name.toUpperCase(); // string
+vln.todos.push({ id: 1, text: 'Task', done: false });
 ```
 
-**Note:** Type definitions are located in `dist/types/`.
+### Typing Methods and Getters
+
+Methods and computed properties work naturally:
+
+```typescript
+interface CounterState {
+  count: number;
+  increment(): void;
+  decrement(): void;
+  readonly displayValue: string;
+}
+
+const vln = Velin.bind<CounterState>(root, {
+  count: 0,
+
+  increment() {
+    this.count++;
+  },
+
+  decrement() {
+    this.count--;
+  },
+
+  get displayValue() {
+    return `Count: ${this.count}`;
+  }
+});
+
+vln.increment(); // Type-safe method call
+```
+
+### Typing Custom Plugins
+
+Create type-safe custom plugins:
+
+```typescript
+import { VelinPlugin } from 'velin';
+
+const uppercasePlugin: VelinPlugin = {
+  name: 'uppercase',
+  track: Velin.trackers.expressionTracker,
+  render: ({ node, tracked }) => {
+    if (node instanceof HTMLElement) {
+      node.textContent = String(tracked).toUpperCase();
+    }
+  }
+};
+
+Velin.plugins.registerPlugin(uppercasePlugin);
+```
+
+### Advanced: Plugin Render Arguments
+
+For more control, type the render function arguments:
+
+```typescript
+import type { PluginRenderArgs, PluginRenderResult } from 'velin';
+
+Velin.plugins.registerPlugin({
+  name: 'myPlugin',
+  render: (args: PluginRenderArgs): PluginRenderResult => {
+    const { node, tracked, reactiveState, pluginState } = args;
+
+    // Full type checking on all arguments
+    if (node instanceof HTMLElement) {
+      node.textContent = String(tracked);
+    }
+
+    return { state: { initialized: true } };
+  }
+});
+```
+
+### Working with ReactiveState
+
+When using advanced APIs, type the reactive state:
+
+```typescript
+import type { ReactiveState } from 'velin';
+
+function myCustomTracker(reactiveState: ReactiveState, expr: string) {
+  const result = Velin.evaluate(reactiveState, expr);
+  // reactiveState is fully typed
+  return result;
+}
+```
+
+### Type Definitions Location
+
+All type definitions are available in `dist/types/velin-core.d.ts`:
+
+- `VelinCore` - Main Velin object interface
+- `ReactiveState` - Internal reactive state structure
+- `VelinPlugin` - Plugin definition interface
+- `PluginRenderArgs` - Arguments passed to plugin render functions
+- `PluginRenderResult` - Return type for plugin render functions
+- `Trackers` - Type for tracker helper functions
+
+### Tips
+
+**Strict mode:** Enable `strict: true` in `tsconfig.json` for maximum type safety.
+
+**Type inference:** In most cases, TypeScript can infer types from your state object:
+
+```typescript
+// Types are inferred automatically
+const vln = Velin.bind(root, {
+  count: 0,        // inferred as number
+  name: 'Alice',   // inferred as string
+  items: [] as Array<{ id: number; name: string }>  // explicit array type
+});
+```
+
+**JSDoc for vanilla JS:** If you're not using TypeScript, you can still get type hints with JSDoc:
+
+```javascript
+/**
+ * @typedef {Object} AppState
+ * @property {number} count
+ * @property {string} name
+ */
+
+/** @type {AppState} */
+const vln = Velin.bind(root, {
+  count: 0,
+  name: 'Alice'
+});
+```
+
+
+---
+
+## See Also
+
+- **[Getting Started](./getting-started.md)** - Learn how to use these APIs in practice
+- **[Creating Plugins](./plugins.md)** - Practical guide to using Advanced and Danger Zone APIs
+- **[Directives Guide](./directives.md)** - See how built-in plugins use these APIs
+- **[TypeScript Definitions](../dist/types/)** - Full type definitions for all APIs
+- **[Documentation Hub](./README.md)** - Navigate all Velin documentation

@@ -534,3 +534,15 @@ Usage:
 ```html
 <textarea vln-autosize="message" placeholder="Type something..."></textarea>
 ```
+
+
+---
+
+## See Also
+
+- **[API Reference: Advanced APIs](./api-reference.md#advanced-apis)** - Detailed API docs for plugin creation
+- **[API Reference: Danger Zone](./api-reference.md#danger-zone)** - State composition APIs for complex plugins
+- **[Source: velin-std.js](../src/velin-std.js)** - Source code of built-in plugins (great examples)
+- **[Source: velin-templates-and-fragments.js](../src/velin-templates-and-fragments.js)** - Advanced plugin examples
+- **[Directives Guide](./directives.md)** - See what each built-in plugin does
+- **[Documentation Hub](./README.md)** - Navigate all Velin documentation
