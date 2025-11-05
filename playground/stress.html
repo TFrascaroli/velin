@@ -37,7 +37,7 @@
     <div>
       <button vln-on:click="cycle()" class="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded">Cycle once</button>
     </div>
-    <div vln-text="Math.floor(1000 / time) + ' FPS'" class="text-sm text-gray-400"></div>
+    <div vln-text="fps + ' FPS'" class="text-sm text-gray-400"></div>
   </div>
 
   <div class="grid-container grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
@@ -83,16 +83,19 @@
       dots: [],
       time: 1000,
       running: false,
-      startStop: () => {
-        if (bound.running) {
-          bound.running = false;
-          bound.dots = [];
+      startStop() {
+        if (this.running) {
+          this.running = false;
+          this.dots = [];
         } else {
-          bound.running = true;
-          setTimeout(loop,0);
+          this.running = true;
+          setTimeout(loop, 10);
         }
       },
-      cycle: () => update()
+      cycle() { update(); },
+      get fps() {
+        return Math.floor(1000 / this.time);
+      }
     });
     const raf = requestAnimationFrame;
     const alpha = 0.1; // smoothing factor, lower = smoother
