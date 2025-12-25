@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Object Replacement Test</title>
+    <script src="velin.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  </head>
+  <body class="bg-gray-100 min-h-screen py-8">
+    <div class="max-w-4xl mx-auto px-6">
+      <h1 class="text-3xl font-bold text-gray-800 mb-2">
+        Object Replacement Reactivity Test
+      </h1>
+      <p class="text-gray-600 mb-6">
+        Testing whether Velin updates when parent objects are completely
+        replaced
+      </p>
+
+      <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+        <h2 class="text-xl font-semibold text-gray-800 mb-4">
+          Test 1: Replace parent object (user = {name: "newname"})
+        </h2>
+        <p class="text-gray-700 mb-4">
+          Current value:
+          <strong class="text-indigo-600 text-lg" vln-text="user.name"></strong>
+        </p>
+        <div class="flex gap-2 mb-4">
+          <button
+            vln-on:click="replaceUser()"
+            class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded transition cursor-pointer"
+          >
+            Replace User Object
+          </button>
+          <button
+            vln-on:click="modifyName()"
+            class="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded transition cursor-pointer"
+          >
+            Modify Name Property
+          </button>
+        </div>
+        <div
+          class="bg-gray-50 border border-gray-200 rounded p-3 text-sm font-mono text-gray-700"
+        >
+          <div>Expected after replace: "Jane"</div>
+          <div>Expected after modify: "Modified"</div>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+        <h2 class="text-xl font-semibold text-gray-800 mb-4">
+          Test 2: Deep nesting (profile.user.name)
+        </h2>
+        <p class="text-gray-700 mb-4">
+          Current value:
+          <strong
+            class="text-indigo-600 text-lg"
+            vln-text="profile.user.name"
+          ></strong>
+        </p>
+        <div class="flex gap-2 mb-4">
+          <button
+            vln-on:click="replaceProfileUser()"
+            class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded transition cursor-pointer"
+          >
+            Replace profile.user
+          </button>
+          <button
+            vln-on:click="replaceProfile()"
+            class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded transition cursor-pointer"
+          >
+            Replace entire profile
+          </button>
+        </div>
+        <div
+          class="bg-gray-50 border border-gray-200 rounded p-3 text-sm font-mono text-gray-700"
+        >
+          <div>Expected after replace user: "Bob"</div>
+          <div>Expected after replace profile: "Charlie"</div>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+        <h2 class="text-xl font-semibold text-gray-800 mb-4">
+          Test 3: Multiple bindings
+        </h2>
+        <div class="text-gray-700 mb-4 space-y-2">
+          <p>
+            Name:
+            <strong
+              class="text-indigo-600 text-lg"
+              vln-text="person.name"
+            ></strong>
+          </p>
+          <p>
+            Email:
+            <strong
+              class="text-indigo-600 text-lg"
+              vln-text="person.email"
+            ></strong>
+          </p>
+        </div>
+        <div class="flex gap-2 mb-4">
+          <button
+            vln-on:click="replacePerson()"
+            class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded transition cursor-pointer"
+          >
+            Replace Person Object
+          </button>
+        </div>
+        <div
+          class="bg-gray-50 border border-gray-200 rounded p-3 text-sm font-mono text-gray-700"
+        >
+          Expected: Name="Alice", Email="alice@example.com"
+        </div>
+      </div>
+
+      <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+        <h2 class="text-xl font-semibold text-gray-800 mb-4">
+          Test 4: Array loops - Replace array item object
+        </h2>
+        <div class="mb-4">
+          <div vln-loop:item="items" class="space-y-2">
+            <div class="flex items-center gap-2 bg-gray-50 p-2 rounded">
+              <span class="text-gray-700"
+                >Name:
+                <strong class="text-indigo-600" vln-text="item.name"></strong
+              ></span>
+              <span class="text-gray-700"
+                >Value:
+                <strong class="text-indigo-600" vln-text="item.value"></strong
+              ></span>
+            </div>
+          </div>
+        </div>
+        <div class="flex gap-2 mb-4">
+          <button
+            vln-on:click="replaceFirstItem()"
+            class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded transition cursor-pointer"
+          >
+            Replace items[0]
+          </button>
+          <button
+            vln-on:click="modifyFirstItemName()"
+            class="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded transition cursor-pointer"
+          >
+            Modify items[0].name
+          </button>
+          <button
+            vln-on:click="replaceEntireArray()"
+            class="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-4 rounded transition cursor-pointer"
+          >
+            Replace Entire Array
+          </button>
+        </div>
+        <div
+          class="bg-gray-50 border border-gray-200 rounded p-3 text-sm font-mono text-gray-700"
+        >
+          <div>
+            Replace items[0]: Should update first item to "NewItem" / 999
+          </div>
+          <div>
+            Modify items[0].name: Should update first item name to "Modified"
+          </div>
+          <div>Replace array: Should show 3 new items</div>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+        <h2 class="text-xl font-semibold text-gray-800 mb-4">
+          Test 5: Nested objects in arrays
+        </h2>
+        <div class="mb-4">
+          <div vln-loop:user="users" class="space-y-2">
+            <div class="bg-gray-50 p-3 rounded">
+              <div class="text-gray-700">
+                Name:
+                <strong
+                  class="text-indigo-600"
+                  vln-text="user.profile.name"
+                ></strong>
+              </div>
+              <div class="text-gray-700">
+                Age:
+                <strong
+                  class="text-indigo-600"
+                  vln-text="user.profile.age"
+                ></strong>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="flex gap-2 mb-4">
+          <button
+            vln-on:click="replaceUserProfile()"
+            class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded transition cursor-pointer"
+          >
+            Replace users[0].profile
+          </button>
+          <button
+            vln-on:click="modifyProfileName()"
+            class="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded transition cursor-pointer"
+          >
+            Modify users[0].profile.name
+          </button>
+        </div>
+        <div
+          class="bg-gray-50 border border-gray-200 rounded p-3 text-sm font-mono text-gray-700"
+        >
+          <div>Replace profile: Should update first user to "Bob" / 35</div>
+          <div>
+            Modify name: Should update first user name to "Alice-Modified"
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+        <h2 class="text-xl font-semibold text-gray-800 mb-4">
+          Test 6: Parent replacement should NOT cascade through arrays
+        </h2>
+        <p class="text-gray-600 mb-4">
+          When replacing 'account', should NOT trigger individual friend effects
+          (loop handles it)
+        </p>
+        <div class="mb-4">
+          <div class="text-gray-700 mb-2">
+            Account:
+            <strong
+              class="text-indigo-600"
+              vln-text="account.username"
+            ></strong>
+          </div>
+          <div class="text-gray-700 mb-2">Friends:</div>
+          <div vln-loop:friend="account.friends" class="space-y-2">
+            <div class="bg-gray-50 p-2 rounded">
+              <span class="text-indigo-600" vln-text="friend.info.name"></span>
+            </div>
+          </div>
+        </div>
+        <div class="flex gap-2 mb-4">
+          <button
+            vln-on:click="replaceAccount()"
+            class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-4 rounded transition cursor-pointer"
+          >
+            Replace Entire Account
+          </button>
+          <button
+            vln-on:click="replaceFriendInfo()"
+            class="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded transition cursor-pointer"
+          >
+            Replace account.friends[0].info
+          </button>
+        </div>
+        <div
+          class="bg-gray-50 border border-gray-200 rounded p-3 text-sm font-mono text-gray-700"
+        >
+          <div>
+            Replace account: Should show new username + new friends (Charlie,
+            Diana)
+          </div>
+          <div>
+            Replace friend info: Should update first friend to "Alice-Updated"
+          </div>
+          <div class="text-red-600 mt-2">
+            ⚠️ Critical test: Replacing account should NOT trigger individual
+            friend.info.name effects
+          </div>
+        </div>
+      </div>
+    </div>
+    <script>
+      // Bind all tests to document.body with a unified state
+      const state = Velin.bind(document.body, {
+        user: { name: "John" },
+        profile: { user: { name: "Alice" } },
+        person: { name: "Unknown", email: "unknown@example.com" },
+        items: [
+          { name: "Item1", value: 10 },
+          { name: "Item2", value: 20 },
+        ],
+        users: [
+          { profile: { name: "Alice", age: 30 } },
+          { profile: { name: "Bob", age: 25 } },
+        ],
+        account: {
+          username: "john_doe",
+          friends: [{ info: { name: "Alice" } }, { info: { name: "Bob" } }],
+        },
+        // Test 1 functions
+        replaceUser: function () {
+          this.user = { name: "Jane" };
+          console.log("Replaced user object, DOM should show: Jane");
+        },
+
+        modifyName: function () {
+          this.user.name = "Modified";
+          console.log("Modified user.name, DOM should show: Modified");
+        },
+
+        // Test 2 functions
+        replaceProfileUser: function () {
+          this.profile.user = { name: "Bob" };
+          console.log("Replaced profile.user, DOM should show: Bob");
+        },
+
+        replaceProfile: function () {
+          this.profile = { user: { name: "Charlie" } };
+          console.log("Replaced profile, DOM should show: Charlie");
+        },
+
+        // Test 3 functions
+        replacePerson: function () {
+          this.person = { name: "Alice", email: "alice@example.com" };
+          console.log(
+            "Replaced person, DOM should show: Name=Alice, Email=alice@example.com"
+          );
+        },
+
+        // Test 4 functions - Array loops
+        replaceFirstItem: function () {
+          this.items[0] = { name: "NewItem", value: 999 };
+          console.log("Replaced items[0], should show NewItem / 999");
+        },
+
+        modifyFirstItemName: function () {
+          this.items[0].name = "Modified";
+          console.log("Modified items[0].name, should show Modified");
+        },
+
+        replaceEntireArray: function () {
+          this.items = [
+            { name: "New1", value: 100 },
+            { name: "New2", value: 200 },
+            { name: "New3", value: 300 },
+          ];
+          console.log("Replaced entire items array, should show 3 new items");
+        },
+
+        // Test 5 functions - Nested objects in arrays
+        replaceUserProfile: function () {
+          this.users[0].profile = { name: "Bob", age: 35 };
+          console.log("Replaced users[0].profile, should show Bob / 35");
+        },
+
+        modifyProfileName: function () {
+          this.users[0].profile.name = "Alice-Modified";
+          console.log(
+            "Modified users[0].profile.name, should show Alice-Modified"
+          );
+        },
+
+        // Test 6 functions - Parent replacement through arrays
+        replaceAccount: function () {
+          console.log("🔍 CRITICAL TEST: Replacing account...");
+          console.log(
+            "⚠️  Should NOT trigger individual friend.info.name effects"
+          );
+          console.log("✅ Should only trigger account.friends (loop) effect");
+          this.account = {
+            username: "jane_doe",
+            friends: [
+              { info: { name: "Charlie" } },
+              { info: { name: "Diana" } },
+            ],
+          };
+          console.log(
+            "Replaced account, should show jane_doe + Charlie, Diana"
+          );
+        },
+
+        replaceFriendInfo: function () {
+          this.account.friends[0].info = { name: "Alice-Updated" };
+          console.log(
+            "Replaced account.friends[0].info, should show Alice-Updated"
+          );
+        },
+      });
+
+      console.log(
+        "Test page loaded. Click buttons to test object replacement reactivity."
+      );
+      console.log("Open the browser console to see debug output.");
+      console.log("");
+      console.log(
+        "🔍 Critical Test: Test 6 - Parent replacement should NOT cascade through arrays"
+      );
+      console.log(
+        'When you click "Replace Entire Account", watch the console for effect triggers.'
+      );
+    </script>
+  </body>
+</html>

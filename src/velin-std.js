@@ -424,6 +424,9 @@ function setupVelinStd(vln) {
             substate.interpolations.set('$index', `${i}`);
           }
 
+          // Ensure tricklingRoot is set for reused substates
+          substate.tricklingRoot = expr;
+
           if (substate?.interpolations.size) {
             vln.ø__internal.triggerEffects(
               `${expr}[${i}]`,
@@ -450,6 +453,11 @@ function setupVelinStd(vln) {
             substate.interpolations.set(subkey, `${expr}[${i}]`);
           }
           substate.interpolations.set('$index', `${i}`);
+
+          // Set tricklingRoot to the array expression to prevent triggering
+          // dependencies at or above the array level (since the entire loop
+          // will recalculate if the array or its parents change)
+          substate.tricklingRoot = expr;
 
           newSubstates.push(substate);
           placeholder.parentNode.insertBefore(clone, lastInserted.nextSibling);

@@ -26,6 +26,7 @@
  * @property {Map<string, Set<VelinBindingEffect>>} ø__innerBindings Optional map of inner bindings (for cleanup)
  * @property {Set<ReactiveState>} ø__innerStates Optional set of inner states (for cleanup)
  * @property {Array<() => void>} ø__finalizers Optional array of plugin finalizers attached to this state (for cleanup)
+ * @property {string=} tricklingRoot Optional root path for dependency filtering. Dependencies at or above this level will be filtered out (used by vln-loop to prevent unnecessary recalculations)
  */
 
 /**
@@ -315,11 +316,15 @@ function processPlugin(plugin, reactiveState, expr, node, attributeName, subkey 
       plugin.track
         ? plugin.track({ reactiveState, expr, node, subkey })
         : null;
-    track();
+    try {
+      track();
+    } catch (error) {
+      console.error("Error occurred while tracking plugin:", error);
+    }
     depCapture.capturingDeps = false;
     /** @type {VelinBindingEffect} */
     const effect = () => {
-      if (!nodeState || !nodeState[stateKey]) return; // Is finalized
+      if (!nodeState?.[stateKey]) return; // Is finalized
       const tracked = track();
       const control = plugin.render({
         reactiveState,
@@ -338,26 +343,23 @@ function processPlugin(plugin, reactiveState, expr, node, attributeName, subkey 
       return control;
     };
     const entries = [...depCapture.deps];
-    const deps = entries.filter(
-      (e) =>
-        !entries.some(
-          (other) =>
-            other !== e &&
-            other.startsWith(e) &&
-            [".", "["].includes(other.charAt(e.length))
-        )
-    );
+    // Filter dependencies only if tricklingRoot is set, otherwise keep all
+    const deps = reactiveState.tricklingRoot
+      ? entries.filter((e) => {
+          const tricklingRoot = reactiveState.tricklingRoot;
+          // Dependencies are always in "root.*" format, so normalize tricklingRoot to match
+          const normalizedRoot = tricklingRoot.startsWith('root.') 
+            ? tricklingRoot 
+            : `root.${tricklingRoot}`;
+          // Remove dependencies that are upstream from or at the tricklingRoot level
+          // (i.e., if normalizedRoot starts with e, then e is a branch upstream)
+          return !normalizedRoot.startsWith(e);
+        })
+      : entries;
     if (deps.length && __DEV__)
       console.log("Dependencies tracked: " + deps.join(", "));
     for (const dep of deps) {
       let prop = dep;
-      if (reactiveState.interpolations) {
-        for (const [key, value] of reactiveState.interpolations.entries()) {
-          if ("root." + key === prop) {
-            prop = value.replace("vln", "root");
-          }
-        }
-      }
       if (!reactiveState.bindings.has(prop))
         reactiveState.bindings.set(prop, new Set());
       reactiveState.bindings.get(prop).add(effect);
