@@ -53,11 +53,37 @@ const DefaultPluginPriorities = {
  */
 
 /**
+ * @typedef {Object} ASTToken
+ * @property {'BOOLEAN'|'NULL'|'IDENTIFIER'|'NUMBER'|'STRING'|'ASSIGNMENT'|'PUNCTUATION'|'OPERATOR'|'UNDEFINED'} type
+ * @property {string|number|boolean|null|undefined} value
+ */
+
+/**
+ * @typedef {(expr: string) => Array<ASTToken>} Tokenizer
+ */
+
+/**
+ * @typedef {(tokens: Array<ASTToken>) => Object} Parser
+ */
+
+/**
+ * @typedef {(ast: Object, context: Object, reactiveState?: ReactiveState|null) => any} EvalAST
+ */
+
+/**
+ * @typedef {Object} ASTInternals
+ * @property {Tokenizer} tokenize
+ * @property {Parser} parse
+ * @property {EvalAST} evalAst
+ */
+
+/**
  * @typedef {Object} VelinInternal
  * @property {WeakMap<Node, any>} pluginStates
  * @property {{root?: ReactiveState}} boundState
  * @property {(node: HTMLElement, attr: string, expr: string) => void} consumeAttribute
  * @property {(prop: string, reactiveState: ReactiveState) => void} triggerEffects
+ * @property {ASTInternals} ast
  */
 
 /**
@@ -349,8 +375,12 @@ function processPlugin(plugin, reactiveState, expr, node, attributeName, subkey 
 
 /**
  * Tokenizer for CSP-safe expression evaluation
+ * @type {Tokenizer}
  */
 function tokenize(expr) {
+  /**
+   * @type {Array<ASTToken>}
+   */
   const tokens = [];
   let i = 0;
 
@@ -445,6 +475,7 @@ function tokenize(expr) {
 
 /**
  * Parser for CSP-safe expression evaluation
+ * @type {Parser}
  */
 function parse(tokens) {
   let pos = 0;
@@ -650,9 +681,7 @@ function parse(tokens) {
 
 /**
  * Evaluates AST with given context
- * @param {Object} ast - The AST node
- * @param {Object} context - The context object (reactive proxy)
- * @param {ReactiveState|null} reactiveState - The reactive state (for mutation control)
+ * @type {EvalAST}
  */
 function evalAst(ast, context, reactiveState = null) {
   switch (ast.type) {
@@ -1417,7 +1446,14 @@ const Velin = {
     pluginStates,
     boundState,
     consumeAttribute,
-    triggerEffects
+    triggerEffects: (prop, reactiveState) => {
+      triggerEffects("root." + prop, reactiveState);
+    },
+    ast: {
+      tokenize,
+      parse,
+      evalAst
+    }
   },
 };
 
