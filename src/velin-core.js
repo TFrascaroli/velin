@@ -319,7 +319,7 @@ function processPlugin(plugin, reactiveState, expr, node, attributeName, subkey 
     try {
       track();
     } catch (error) {
-      console.error("Error occurred while tracking plugin:", error);
+      console.error(`Error occurred while tracking expression '${expr}' in plugin '${plugin.name}':`, error);
     }
     depCapture.capturingDeps = false;
     /** @type {VelinBindingEffect} */
