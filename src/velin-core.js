@@ -805,6 +805,25 @@ function evalAst(ast, context, reactiveState = null) {
 }
 
 /**
+ * 
+ * @param {string} intKey 
+ * @param {ReactiveState} reactiveState 
+ * @returns 
+ */
+function lerp(intKey, reactiveState){
+  const inter = reactiveState.interpolations;
+  if (inter?.has(intKey)) {
+    const interp = inter.get(intKey);
+    // If interpolation is a string, evaluate it as an expression
+    // Otherwise, return the value directly (e.g., event objects)
+    return typeof interp === 'string'
+      ? evaluate(reactiveState, interp)
+      : interp;
+  }
+  return undefined;
+}
+
+/**
  * Evaluates a JavaScript expression against the reactive state.
  * CSP-safe implementation using tokenizer + parser + AST walker (no eval/Function).
  *
@@ -847,12 +866,7 @@ function evaluate(reactiveState, expr, allowMutations = false) {
       get(target, prop, receiver) {
         const propStr = String(prop);
         if (inter?.has(propStr)) {
-          const interp = inter.get(propStr);
-          // If interpolation is a string, evaluate it as an expression
-          // Otherwise, return the value directly (e.g., event objects)
-          return typeof interp === 'string'
-            ? evaluate(reactiveState, interp, allowMutations)
-            : interp;
+          return lerp(propStr, reactiveState);
         }
         return Reflect.get(target, prop, receiver);
       },
