@@ -824,6 +824,17 @@ function lerp(intKey, reactiveState){
 }
 
 /**
+ * Compiles a JavaScript expression into an AST.
+ * CSP-safe implementation using tokenizer + parser (no eval/Function).
+ * @param {string} expr 
+ */
+function compile(expr) {
+    const tokens = tokenize(expr);
+    const ast = parse(tokens);
+    return ast;
+}
+
+/**
  * Evaluates a JavaScript expression against the reactive state.
  * CSP-safe implementation using tokenizer + parser + AST walker (no eval/Function).
  *
@@ -885,11 +896,7 @@ function evaluate(reactiveState, expr, allowMutations = false) {
         return Reflect.set(target, prop, value, receiver);
       },
     });
-
-    // Parse and evaluate using CSP-safe approach
-    const tokens = tokenize(expr);
-    const ast = parse(tokens);
-
+    const ast = compile(expr);
     return evalAst(ast, contextualizedProxy, reactiveState);
   } catch (err) {
     console.error(
