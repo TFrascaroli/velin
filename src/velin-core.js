@@ -9,7 +9,8 @@
 
 /**
  * @typedef {Object} VelinStateControl
- * @property {boolean} evaluating Wether or not we are currently in an evaluation (to prevent multi-sets in evaluation)
+ * @property {boolean} evaluating Whether or not we are currently in an evaluation (to prevent multi-sets in evaluation)
+ * @property {boolean} wrapping Whether or not we are currently wrapping nested objects (to prevent false positives when setting the wrapped values)
  */
 
 /**
@@ -879,7 +880,10 @@ function evalTernary(ast, context, reactiveState) {
 function evalObjectLiteral(ast, context, reactiveState) {
   const result = {};
   for (const prop of ast.properties) {
-    result[prop.key] = evalAst(prop.value, context, reactiveState);
+    const value = evalAst(prop.value, context, reactiveState);
+    result[prop.key] = value && typeof value === 'object' && value.constructor === Object
+      ? {...value, constructor: undefined} // Unwrap the object
+      : value;
   }
   return result;
 }
@@ -1154,6 +1158,7 @@ function setupState(obj) {
   const ø__depCaptures = [];
   const ø__control = {
     evaluating: false,
+    wrapping: false,
     currentCycleID: null,
   };
   /** @type {ReactiveState} */
@@ -1181,19 +1186,26 @@ function setupState(obj) {
         const depCapture = peek(reactiveState.ø__depCaptures);
         if (depCapture?.capturingDeps)
           depCapture.deps.add(path + "." + prop.toString());
-        return Reflect.get(target, prop, receiver);
+        const value = Reflect.get(target, prop, receiver);
+        const wrappedValue = wrap(value, path + "." + prop.toString());
+        Reflect.set(
+          target,
+          prop,
+          wrappedValue,
+          receiver
+        );
+        return wrappedValue;
       },
       set(target, prop, value, receiver) {
-        if (!init && ø__control.evaluating)
+        if (!init && ø__control.evaluating && !ø__control.wrapping)
           throw new Error(
             "[VLN010] Setting values during evaluation is forbidden. Use Velin.getSetter"
           );
-        const innerPath = path + "." + prop.toString();
         const old = target[prop];
         const result = Reflect.set(
           target,
           prop,
-          wrap(value, innerPath),
+          value,
           receiver
         );
         if (old !== value && !init) {
@@ -1201,13 +1213,6 @@ function setupState(obj) {
         }
         return result;
       },
-    });
-    Object.keys(obj).forEach((prop) => {
-      const descriptor = Object.getOwnPropertyDescriptor(obj, prop);
-      // Skip accessor properties (getters/setters) - they don't need wrapping
-      if (descriptor && !descriptor.get && !descriptor.set) {
-        state[prop] = wrap(state[prop], path + "." + prop.toString());
-      }
     });
     return state;
   }
@@ -1224,12 +1229,13 @@ function setupState(obj) {
         if (prop === "ø__velinObj") return true;
         const value = Reflect.get(target, prop, receiver);
         const depCapture = peek(reactiveState.ø__depCaptures);
+        const innerPath = path + "[" + prop.toString() + "]";
         if (depCapture?.capturingDeps) {
           // For .length and other properties that depend on array mutations, track the array itself
           if (prop === "length" || typeof value === "function") {
             depCapture.deps.add(path);
           } else {
-            depCapture.deps.add(path + "[" + prop.toString() + "]");
+            depCapture.deps.add(innerPath);
           }
         }
 
@@ -1248,23 +1254,22 @@ function setupState(obj) {
           return function (...args) {
             const result = value.apply(target, args);
             if (!init) {
-              init = true;
-              try {
-                for (let i = 0; i < arr.length; i++) {
-                  arr[i] = wrap(arr[i], path + "[" + i + "]");
-                }
-              } finally {
-                init = false;
-              }
               triggerEffects(path, reactiveState);
             }
             return result;
           };
         }
-        return value;
+        const wrappedValue = wrap(value, innerPath);
+        Reflect.set(
+          target,
+          prop,
+          wrappedValue,
+          receiver
+        );
+        return wrappedValue;
       },
       set(target, prop, value, receiver) {
-        if (!init && ø__control.evaluating)
+        if (!init && ø__control.evaluating && !ø__control.wrapping)
           throw new Error(
             "[VLN010] Setting values during evaluation is forbidden. Use Velin.getSetter"
           );
@@ -1274,7 +1279,7 @@ function setupState(obj) {
           const result = Reflect.set(
             target,
             prop,
-            wrap(value, innerPath),
+            value,
             receiver
           );
           if (old !== value && !init) {
@@ -1285,11 +1290,6 @@ function setupState(obj) {
         return Reflect.set(target, prop, value, receiver);
       },
     });
-
-    for (let i = 0; i < arr.length; i++) {
-      arrayProxy[i] = wrap(arr[i], path + "[" + i + "]");
-    }
-
     return arrayProxy;
   }
 
@@ -1300,13 +1300,19 @@ function setupState(obj) {
    * @returns {any}
    */
   function wrap(value, path) {
-    if (value === null || value === undefined) return value;
-    if (value.ø__velinObj) return value;
-    if (typeof value === "object") {
-      if (Array.isArray(value)) return wrapArray(value, path);
-      return wrapObj(value, path);
+    const dnm = ø__control.wrapping;
+    ø__control.wrapping = true;
+    try {
+      if (value === null || value === undefined) return value;
+      if (value.ø__velinObj) return value;
+      if (typeof value === "object") {
+        if (Array.isArray(value)) return wrapArray(value, path);
+        return wrapObj(value, path);
+      }
+      return value;
+    } finally {
+      if (!dnm) ø__control.wrapping = false;
     }
-    return value;
   }
 
   const state = wrap(obj, "root");
