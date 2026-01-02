@@ -64,18 +64,106 @@ const DefaultPluginPriorities = {
  */
 
 /**
- * @typedef {(tokens: Array<ASTToken>) => Object} Parser
+ * @typedef {Object} ASTNodeBase
+ * @property {string} type The type of the AST node
  */
 
 /**
- * @typedef {(ast: Object, context: Object, reactiveState?: ReactiveState|null) => any} EvalAST
+ * @typedef {ASTNodeBase & {
+ *   type: 'Sequence',
+ *   expressions: Array<ASTNode>
+ * }} ASTSequenceNode
+ */
+
+/**
+ * @typedef {ASTNodeBase & {
+ *   type: 'Assignment',
+ *   left: ASTIdentifierNode | ASTMemberNode,
+ *   right: ASTNode
+ * }} ASTAssignmentNode
+ */
+
+/**
+ * @typedef {ASTNodeBase & {
+ *   type: 'Ternary',
+ *   test: ASTNode,
+ *   consequent: ASTNode,
+ *   alternate: ASTNode
+ * }} ASTTernaryNode
+ */
+
+/**
+ * @typedef {ASTNodeBase & {
+ *   type: 'Binary',
+ *   operator: string,
+ *   left: ASTNode,
+ *   right: ASTNode
+ * }} ASTBinaryNode
+ */
+
+/**
+ * @typedef {ASTNodeBase & {
+ *   type: 'Unary',
+ *   operator: string,
+ *   argument: ASTNode
+ * }} ASTUnaryNode
+ */
+
+/**
+ * @typedef {ASTNodeBase & {
+ *   type: 'Call',
+ *   callee: ASTMemberNode,
+ *   arguments: Array<ASTNode>
+ * }} ASTCallNode
+ */
+
+/**
+ * @typedef {ASTNodeBase & {
+ *   type: 'Member',
+ *   object: ASTNode,
+ *   property: ASTNode,
+ *   computed: boolean
+ * }} ASTMemberNode
+ */
+
+/**
+ * @typedef {ASTNodeBase & {
+ *   type: 'Literal',
+ *   value: string | number | boolean | null | undefined
+ * }} ASTLiteralNode
+ */
+
+/**
+ * @typedef {ASTNodeBase & {
+ *   type: 'Identifier',
+ *   name: string
+ * }} ASTIdentifierNode
+ */
+
+/**
+ * @typedef {ASTNodeBase & {
+ *   type: 'ObjectLiteral',
+ *   properties: Array<{ key: string, value: ASTNode }>
+ * }} ASTObjectLiteralNode
+ */
+
+/**
+ * @typedef {ASTNodeBase} ASTNode
+ */
+
+/**
+ * @typedef {(tokens: Array<ASTToken>) => ASTNode} Parser
+ */
+
+/**
+ * @typedef {(ast: ASTNode, reactiveState: ReactiveState) => any} EvaluateAST
  */
 
 /**
  * @typedef {Object} ASTInternals
  * @property {Tokenizer} tokenize
  * @property {Parser} parse
- * @property {EvalAST} evalAst
+ * @property {EvaluateAST} evaluateAst
  */
 
 /**
@@ -683,126 +771,199 @@ function parse(tokens) {
 
 /**
  * Evaluates AST with given context
- * @type {EvalAST}
+ * @type {EvaluateAST}
+ */
+/**
+ * @param {ASTLiteralNode} ast
+ */
+function evalLiteral(ast) {
+  return ast.value;
+}
+
+/**
+ * @param {ASTIdentifierNode} ast
+ * @param {Record<string, any>} context
+ */
+function evalIdentifier(ast, context) {
+  return context[ast.name];
+}
+
+/**
+ * @param {ASTMemberNode} ast
+ * @param {Record<string, any>} context
+ * @param {any} reactiveState
+ */
+function evalMember(ast, context, reactiveState) {
+  const obj = evalAst(ast.object, context, reactiveState);
+  if (obj == null) return undefined;
+  const key = ast.computed
+    ? evalAst(ast.property, context, reactiveState)
+    : ast.property;
+  return obj[key];
+}
+
+/**
+ * @param {ASTCallNode} ast
+ * @param {Record<string, any>} context
+ * @param {any} reactiveState
+ */
+function evalCall(ast, context, reactiveState) {
+  const fn = evalAst(ast.callee, context, reactiveState);
+  if (typeof fn !== 'function') throw new TypeError('Not a function');
+  const args = ast.arguments.map(arg => evalAst(arg, context, reactiveState));
+  const thisArg = ast.callee.type === 'Member'
+    ? evalAst(ast.callee.object, context, reactiveState)
+    : context;
+  return fn.apply(thisArg, args);
+}
+
+/**
+ * @param {ASTBinaryNode} ast
+ * @param {Record<string, any>} context
+ * @param {any} reactiveState
+ */
+function evalBinary(ast, context, reactiveState) {
+  const left = evalAst(ast.left, context, reactiveState);
+  const right = evalAst(ast.right, context, reactiveState);
+  const ops = {
+    '+':  (a, b) => a + b,
+    '-':  (a, b) => a - b,
+    '*':  (a, b) => a * b,
+    '/':  (a, b) => a / b,
+    '%':  (a, b) => a % b,
+    '>':  (a, b) => a > b,
+    '<':  (a, b) => a < b,
+    '>=': (a, b) => a >= b,
+    '<=': (a, b) => a <= b,
+    '===':(a, b) => a === b,
+    '!==':(a, b) => a !== b,
+    '==': (a, b) => a == b,
+    '!=': (a, b) => a != b,
+    '&&': (a, b) => a && b,
+    '||': (a, b) => a || b,
+  };
+  return (ops[ast.operator] || (() => undefined))(left, right);
+}
+
+/**
+ * @param {ASTUnaryNode} ast
+ * @param {Record<string, any>} context
+ * @param {any} reactiveState
+ */
+function evalUnary(ast, context, reactiveState) {
+  const arg = evalAst(ast.argument, context, reactiveState);
+  const ops = {
+    '!': a => !a,
+    '-': a => -a,
+  };
+  return (ops[ast.operator] || (() => undefined))(arg);
+}
+
+/**
+ * @param {ASTTernaryNode} ast
+ * @param {Record<string, any>} context
+ * @param {any} reactiveState
+ */
+function evalTernary(ast, context, reactiveState) {
+  const test = evalAst(ast.test, context, reactiveState);
+  return test
+    ? evalAst(ast.consequent, context, reactiveState)
+    : evalAst(ast.alternate, context, reactiveState);
+}
+
+/**
+ * @param {ASTObjectLiteralNode} ast
+ * @param {Record<string, any>} context
+ * @param {any} reactiveState
+ */
+function evalObjectLiteral(ast, context, reactiveState) {
+  const result = {};
+  for (const prop of ast.properties) {
+    result[prop.key] = evalAst(prop.value, context, reactiveState);
+  }
+  return result;
+}
+
+/**
+ * @param {ASTAssignmentNode} ast
+ * @param {Record<string, any>} context
+ * @param {any} reactiveState
+ */
+function evalAssignment(ast, context, reactiveState) {
+  const value = evalAst(ast.right, context, reactiveState);
+
+  if (ast.left.type === 'Identifier') {
+    context[ast.left.name] = value;
+  } else if (ast.left.type === 'Member') {
+    const obj = evalAst(ast.left.object, context, reactiveState);
+    if (obj == null) throw new TypeError('Cannot set property on null or undefined');
+    const key = ast.left.computed
+      ? evalAst(ast.left.property, context, reactiveState)
+      : ast.left.property;
+    obj[key] = value;
+  } else {
+    throw new Error('Invalid assignment target');
+  }
+
+  return value;
+}
+
+/**
+ * @param {ASTSequenceNode} ast
+ * @param {Record<string, any>} context
+ * @param {any} reactiveState
+ */
+function evalSequence(ast, context, reactiveState) {
+  let result;
+  for (const expr of ast.expressions) {
+    result = evalAst(expr, context, reactiveState);
+  }
+  return result;
+}
+
+/**
+ * @param {ASTNode} ast
+ * @param {Record<string, any>} context
+ * @param {any} [reactiveState]
  */
 function evalAst(ast, context, reactiveState = null) {
   switch (ast.type) {
     case 'Literal':
-      return ast.value;
+      return evalLiteral(/** @type {ASTLiteralNode} */ (ast));
 
     case 'Identifier':
-      return context[ast.name];
+      return evalIdentifier(/** @type {ASTIdentifierNode} */ (ast), context);
 
-    case 'Member': {
-      const obj = evalAst(ast.object, context, reactiveState);
-      if (obj == null) return undefined;
-      if (ast.computed) {
-        const prop = evalAst(ast.property, context, reactiveState);
-        return obj[prop];
-      } else {
-        return obj[ast.property];
-      }
-    }
-    case 'Call': {
-      const callee = evalAst(ast.callee, context, reactiveState);
-      if (typeof callee !== 'function') {
-        throw new TypeError('Not a function');
-      }
-      const args = ast.arguments.map(arg => evalAst(arg, context, reactiveState));
-      // Get the object for 'this' binding
-      let thisArg = context;
-      if (ast.callee.type === 'Member') {
-        thisArg = evalAst(ast.callee.object, context, reactiveState);
-      }
+    case 'Member':
+      return evalMember(/** @type {ASTMemberNode} */ (ast), context, reactiveState);
 
-      return callee.apply(thisArg, args);
-    }
+    case 'Call':
+      return evalCall(/** @type {ASTCallNode} */ (ast), context, reactiveState);
 
-    case 'Binary': {
-      const left = evalAst(ast.left, context, reactiveState);
-      const right = evalAst(ast.right, context, reactiveState);
-      const ops = {
-        '+':  (a, b) => a + b,
-        '-':  (a, b) => a - b,
-        '*':  (a, b) => a * b,
-        '/':  (a, b) => a / b,
-        '%':  (a, b) => a % b,
-        '>':  (a, b) => a > b,
-        '<':  (a, b) => a < b,
-        '>=': (a, b) => a >= b,
-        '<=': (a, b) => a <= b,
-        '===':(a, b) => a === b,
-        '!==':(a, b) => a !== b,
-        '==': (a, b) => a == b,
-        '!=': (a, b) => a != b,
-        '&&': (a, b) => a && b,
-        '||': (a, b) => a || b,
-      };
+    case 'Binary':
+      return evalBinary(/** @type {ASTBinaryNode} */ (ast), context, reactiveState);
 
-      return (ops[ast.operator] || (() => undefined))(left, right);
+    case 'Unary':
+      return evalUnary(/** @type {ASTUnaryNode} */ (ast), context, reactiveState);
 
-    }
+    case 'Ternary':
+      return evalTernary(/** @type {ASTTernaryNode} */ (ast), context, reactiveState);
 
-    case 'Unary': {
-      const arg = evalAst(ast.argument, context, reactiveState);
-      const ops = {
-        '!':  (a) => !a,
-        '-':  (a) => -a,
-      };
+    case 'ObjectLiteral':
+      return evalObjectLiteral(/** @type {ASTObjectLiteralNode} */ (ast), context, reactiveState);
 
-      return (ops[ast.operator] || (() => undefined))(arg);
-    }
+    case 'Assignment':
+      return evalAssignment(/** @type {ASTAssignmentNode} */ (ast), context, reactiveState);
 
-    case 'Ternary': {
-      const test = evalAst(ast.test, context, reactiveState);
-      return test ? evalAst(ast.consequent, context, reactiveState) : evalAst(ast.alternate, context, reactiveState);
-    }
-
-    case 'ObjectLiteral': {
-      const result = {};
-      for (const prop of ast.properties) {
-        result[prop.key] = evalAst(prop.value, context, reactiveState);
-      }
-      return result;
-    }
-
-    case 'Assignment': {
-      const value = evalAst(ast.right, context, reactiveState);
-
-      if (ast.left.type === 'Identifier') {
-        // Simple assignment: x = value
-        context[ast.left.name] = value;
-      } else if (ast.left.type === 'Member') {
-        // Member assignment: obj.prop = value or obj[key] = value
-        const obj = evalAst(ast.left.object, context, reactiveState);
-        if (obj == null) {
-          throw new TypeError('Cannot set property on null or undefined');
-        }
-        if (ast.left.computed) {
-          const prop = evalAst(ast.left.property, context, reactiveState);
-          obj[prop] = value;
-        } else {
-          obj[ast.left.property] = value;
-        }
-      } else {
-        throw new Error('Invalid assignment target');
-      }
-
-      return value;
-    }
-
-    case 'Sequence': {
-      let result;
-      for (const expr of ast.expressions) {
-        result = evalAst(expr, context, reactiveState);
-      }
-      return result;
-    }
+    case 'Sequence':
+      return evalSequence(/** @type {ASTSequenceNode} */ (ast), context, reactiveState);
 
     default:
       throw new Error(`Bad AST: ${ast.type}`);
   }
 }
+
+
 
 /**
  * 
@@ -832,6 +993,39 @@ function compile(expr) {
     const tokens = tokenize(expr);
     const ast = parse(tokens);
     return ast;
+}
+
+/**
+ * Evaluates a whole AST against a given state
+ * @type {EvaluateAST}
+ */
+
+function evaluateAst(ast, reactiveState) {
+  const inter = reactiveState.interpolations;
+  const contextualizedProxy = new Proxy(reactiveState.state, {
+    get(target, prop, receiver) {
+      const propStr = String(prop);
+      if (inter?.has(propStr)) {
+        return lerp(propStr, reactiveState);
+      }
+      return Reflect.get(target, prop, receiver);
+    },
+    set(target, prop, value, receiver) {
+      // TODO: This optional chaining is a hack to prevent crashes when async functions
+      // mutate state after their evaluation context has been cleaned up (e.g., event handlers
+      // with async operations). We should instead:
+      // 1. Detect null ø__control and throw a helpful error explaining the async issue
+      // 2. Add explicit async support via vln-on:event|async modifier
+      // 3. Await async results before cleanup OR use different cleanup strategy
+      // For now, this silently allows mutations that should probably be flagged.
+      if (reactiveState.ø__control?.evaluating)
+        throw new Error(
+          "[VLN010] Setting values during evaluation is forbidden. Use Velin.getSetter"
+        );
+      return Reflect.set(target, prop, value, receiver);
+    },
+  });
+  return evalAst(ast, contextualizedProxy, reactiveState);
 }
 
 /**
@@ -872,32 +1066,8 @@ function compile(expr) {
 function evaluate(reactiveState, expr, allowMutations = false) {
   reactiveState.ø__control.evaluating = !allowMutations;
   try {
-    const inter = reactiveState.interpolations;
-    const contextualizedProxy = new Proxy(reactiveState.state, {
-      get(target, prop, receiver) {
-        const propStr = String(prop);
-        if (inter?.has(propStr)) {
-          return lerp(propStr, reactiveState);
-        }
-        return Reflect.get(target, prop, receiver);
-      },
-      set(target, prop, value, receiver) {
-        // TODO: This optional chaining is a hack to prevent crashes when async functions
-        // mutate state after their evaluation context has been cleaned up (e.g., event handlers
-        // with async operations). We should instead:
-        // 1. Detect null ø__control and throw a helpful error explaining the async issue
-        // 2. Add explicit async support via vln-on:event|async modifier
-        // 3. Await async results before cleanup OR use different cleanup strategy
-        // For now, this silently allows mutations that should probably be flagged.
-        if (reactiveState.ø__control?.evaluating)
-          throw new Error(
-            "[VLN010] Setting values during evaluation is forbidden. Use Velin.getSetter"
-          );
-        return Reflect.set(target, prop, value, receiver);
-      },
-    });
     const ast = compile(expr);
-    return evalAst(ast, contextualizedProxy, reactiveState);
+    return evaluateAst(ast, reactiveState);
   } catch (err) {
     console.error(
       `Velin evaluate() error in expression "${expr}".`
@@ -1475,7 +1645,7 @@ const Velin = {
     ast: {
       tokenize,
       parse,
-      evalAst
+      evaluateAst
     }
   },
 };

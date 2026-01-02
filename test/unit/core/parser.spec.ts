@@ -16,9 +16,9 @@ const tokenizeFn = tokenizeMatch ? tokenizeMatch[0] : null;
 const parseMatch = velinCoreSrc.match(/function parse\(tokens\) \{[\s\S]+?^\}/m);
 const parseFn = parseMatch ? parseMatch[0] : null;
 
-// Extract evalAst function
-const evalAstMatch = velinCoreSrc.match(/function evalAst\(ast, context, reactiveState = null\) \{[\s\S]+?^}/m);
-const evalAstFn = evalAstMatch ? evalAstMatch[0] : null;
+// Extract all eval*** functions
+const evalFunctionsMatch = velinCoreSrc.match(/function eval[A-Z][a-zA-Z]*\([\s\S]+?\n\}/g);
+const evalFunctions = evalFunctionsMatch ? evalFunctionsMatch.join('\n\n') : '';
 
 // Create an environment to execute the functions
 function createParser() {
@@ -26,7 +26,7 @@ function createParser() {
   const code = `
     ${tokenizeFn}
     ${parseFn}
-    ${evalAstFn}
+    ${evalFunctions}
 
     return { tokenize, parse, evalAst };
   `;
