@@ -2,6 +2,10 @@
 
 /**
  * @typedef {import('./velin-core').VelinCore} VelinCore
+ * @typedef {import('./velin-core').Interpolation} Interpolation
+ */
+
+/**
  * @param {VelinCore} vln
  */
 function setupVelinStd(vln) {
@@ -185,7 +189,7 @@ function setupVelinStd(vln) {
       if (pluginState?.handler)
         node.removeEventListener(subkey, pluginState.handler);
     },
-    render: ({ reactiveState, expr, node, subkey, pluginState = {} }) => {
+    render: ({ reactiveState, compiledExpression, node, subkey, pluginState = {} }) => {
       if (typeof node.addEventListener !== "function") {
         console.warn("[VLN004] No events hook found");
         return;
@@ -197,13 +201,17 @@ function setupVelinStd(vln) {
       // Pass true for allowMutations - event handlers should be able to mutate state
       const handler = (event) => {
         // Build interpolations map with event object directly
+        /** @type {Map<string, Interpolation>} */
         const interpolations = new Map();
-        interpolations.set('event', event);
+        interpolations.set('event', {type: 'LITERAL', value: event});
 
         const substate = vln.composeState(reactiveState, interpolations);
 
         try {
-          vln.evaluate(substate, expr, true);
+          vln.evaluateAst(
+            compiledExpression,
+            substate
+          );
         } finally {
           vln.cleanupState(reactiveState, substate);
         }
@@ -421,7 +429,7 @@ function setupVelinStd(vln) {
 
           // Update $index interpolation for reused substates
           if (substate?.interpolations) {
-            substate.interpolations.set('$index', `${i}`);
+            substate.interpolations.set('$index', {type: 'LITERAL', value: i});
           }
 
           // Ensure tricklingRoot is set for reused substates
@@ -440,19 +448,15 @@ function setupVelinStd(vln) {
           newChildren.push(clone);
 
           // Build interpolations map with item and $index
+          /** @type {Map<string, Interpolation>} */
           const interpolations = new Map();
           if (subkey) {
-            interpolations.set(subkey, `${expr}[${i}]`);
+            interpolations.set(subkey, {type: 'EXPR', value: {expr: `${expr}[${i}]`}});
           }
           // Add $index as a literal expression
-          interpolations.set('$index', `${i}`);
+          interpolations.set('$index', {type: 'LITERAL', value: i});
 
           const substate = vln.composeState(reactiveState, interpolations);
-
-          if (subkey) {
-            substate.interpolations.set(subkey, `${expr}[${i}]`);
-          }
-          substate.interpolations.set('$index', `${i}`);
 
           // Set tricklingRoot to the array expression to prevent triggering
           // dependencies at or above the array level (since the entire loop

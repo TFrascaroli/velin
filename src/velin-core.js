@@ -18,12 +18,29 @@
  */
 
 /**
+ * @template K, V
+ * @typedef {ReadonlyMap<K, V>} ImmutableMap
+ */
+
+/** 
+ * @typedef {Object} ExpressionInterpolation
+ * @property {string} expr The original expression string
+ * @property {ASTNode} ast The compiled AST of the expression
+ */
+
+/**
+ * @typedef {Object} Interpolation
+ * @property {'EXPR'|'LITERAL'} type The type of interpolation
+ * @property {ExpressionInterpolation|any} value The AST node or literal value
+ */
+
+/**
  * @typedef {Object} ReactiveState
  * @property {any} state The proxied reactive state object
  * @property {DepCapture[]} ø__depCaptures Dependency capture
  * @property {Map<string, Set<VelinBindingEffect>>} bindings Map of property paths to sets of reactive effect functions
  * @property {VelinStateControl} ø__control Dependency capture state
- * @property {Map<string, string>=} interpolations Optional map of interpolation keys to expressions
+ * @property {ImmutableMap<string, Interpolation>=} interpolations Optional map of interpolation keys to expressions
  * @property {Map<string, Set<VelinBindingEffect>>} ø__innerBindings Optional map of inner bindings (for cleanup)
  * @property {Set<ReactiveState>} ø__innerStates Optional set of inner states (for cleanup)
  * @property {Array<() => void>} ø__finalizers Optional array of plugin finalizers attached to this state (for cleanup)
@@ -49,8 +66,8 @@ const DefaultPluginPriorities = {
  * @typedef {Object} VelinPlugin
  * @property {string} name
  * @property {number=} priority
- * @property {(args: {reactiveState: ReactiveState, expr: string, node: Node, subkey: string | null}) => any} [track] Optional function to track dependencies from an expression
- * @property {(args: {reactiveState: ReactiveState, expr: string, node: HTMLElement, subkey: string | null, tracked: any, pluginState?: any, attributeName: string}) => any} render Function to apply reactive updates to a node
+ * @property {(args: {reactiveState: ReactiveState, compiledExpression: ASTNode, expr: string, node: Node, subkey: string | null}) => any} [track] Optional function to track dependencies from an expression
+ * @property {(args: {reactiveState: ReactiveState, compiledExpression: ASTNode, expr: string, node: HTMLElement, subkey: string | null, tracked: any, pluginState?: any, attributeName: string}) => any} render Function to apply reactive updates to a node
  * @property {PluginDestroyerFn} [destroy]
  */
 
@@ -161,10 +178,7 @@ const DefaultPluginPriorities = {
  */
 
 /**
- * @typedef {Object} ASTInternals
- * @property {Tokenizer} tokenize
- * @property {Parser} parse
- * @property {EvaluateAST} evaluateAst
+ * @typedef {(expr: string) => ASTNode} Compile
  */
 
 /**
@@ -173,7 +187,6 @@ const DefaultPluginPriorities = {
  * @property {{root?: ReactiveState}} boundState
  * @property {(node: HTMLElement, attr: string, expr: string) => void} consumeAttribute
  * @property {(prop: string, reactiveState: ReactiveState) => void} triggerEffects
- * @property {ASTInternals} ast
  */
 
 /**
@@ -193,12 +206,12 @@ const DefaultPluginPriorities = {
 /** @typedef {(node: Node, reactiveState: ReactiveState) => void} ProcessNode */
 /** @typedef {(node: HTMLElement, attr: string, expr: string) => void} ConsumeAttribute */
 
-/** @typedef {(reactiveState: ReactiveState, interpolations: Map<string, any>) => ReactiveState} ComposeState */
+/** @typedef {(reactiveState: ReactiveState, interpolations: Map<string, Interpolation>) => ReactiveState} ComposeState */
 /** @typedef {(parentState: ReactiveState, innerState: ReactiveState) => void} CleanupState */
 /** @typedef {<T extends object>(root?: Element | DocumentFragment, initialState?: T) => T} Bind */
 
-/** @typedef {(args: { reactiveState: ReactiveState, expr: string }) => any} ExpressionTracker */
-/** @typedef {(args: { reactiveState: ReactiveState, expr: string }) => (value: any) => void} SetterTracker */
+/** @typedef {(args: { reactiveState: ReactiveState, expr: string, compiledExpression: ASTNode }) => any} ExpressionTracker */
+/** @typedef {(args: { reactiveState: ReactiveState, expr: string, compiledExpression: ASTNode }) => (value: any) => void} SetterTracker */
 /** 
  * @typedef {Object} Trackers
  * @property {ExpressionTracker} expressionTracker
@@ -210,6 +223,8 @@ const DefaultPluginPriorities = {
  * @property {Bind} bind
  * @property {VelinPluginManager} plugins
  * @property {Evaluate} evaluate
+ * @property {EvaluateAST} evaluateAst
+ * @property {Compile} compile
  * @property {GetSetter} getSetter
  * @property {ComposeState} composeState
  * @property {CleanupState} cleanupState
@@ -234,15 +249,15 @@ function peek(arr) {
   return arr[arr.length - 1];
 }
 
+/**
+ * Tracks dependencies by evaluating the expression.
+ * Used by plugins that need to reactively display or compute values.
+ * @type {Trackers}
+ */
 const trackers = {
   /**
    * Tracks dependencies by evaluating the expression.
    * Used by plugins that need to reactively display or compute values.
-   *
-   * @param {Object} args
-   * @param {ReactiveState} args.reactiveState - The reactive state object
-   * @param {string} args.expr - JavaScript expression to evaluate
-   * @returns {any} The evaluated result
    *
    * @example
    * // Used in vln-text plugin to display reactive content
@@ -267,16 +282,11 @@ const trackers = {
    * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/plugins.md|Creating Plugins Guide}
    * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/api-reference.md#velintrackersexpressiontracker|API Reference}
    */
-  expressionTracker: ({ reactiveState, expr }) => evaluate(reactiveState, expr),
+  expressionTracker: ({ reactiveState, compiledExpression }) => evaluateAst(compiledExpression, reactiveState),
 
   /**
    * Returns a setter function for the expression's target property.
    * Used by plugins that need two-way data binding.
-   *
-   * @param {Object} args
-   * @param {ReactiveState} args.reactiveState - The reactive state object
-   * @param {string} args.expr - Property path to create setter for
-   * @returns {(value: any) => void} Function that sets the property value
    *
    * @example
    * // Used in vln-input plugin for two-way binding
@@ -387,6 +397,7 @@ function processPlugin(plugin, reactiveState, expr, node, attributeName, subkey 
   const nodeState = pluginStates.get(node) || {};
   const stateKey = plugin.name + (subkey ? "_" + subkey : "");
   nodeState[stateKey] = {};
+  nodeState["ø__exprAST"] = compile(expr);
   nodeState["ø__originalNode"] = node.cloneNode(true);
   nodeState["ø__lastTriggerID"] = null;
   pluginStates.set(node, nodeState);
@@ -398,12 +409,12 @@ function processPlugin(plugin, reactiveState, expr, node, attributeName, subkey 
         nodeState[stateKey] = null;
         if (Object.keys(nodeState).every(k => nodeState[k] === null)) {
           pluginStates.delete(node);
+          }
         }
-      }
     });
     const track = () =>
       plugin.track
-        ? plugin.track({ reactiveState, expr, node, subkey })
+        ? plugin.track({ reactiveState, compiledExpression: nodeState["ø__exprAST"], expr, node, subkey })
         : null;
     try {
       track();
@@ -417,12 +428,13 @@ function processPlugin(plugin, reactiveState, expr, node, attributeName, subkey 
       const tracked = track();
       const control = plugin.render({
         reactiveState,
-        expr,
+        compiledExpression: nodeState["ø__exprAST"],
         node,
         subkey,
         tracked,
         pluginState: nodeState[stateKey],
-        attributeName
+        attributeName,
+        expr
       });
       if (control?.state) {
         nodeState[stateKey] = control.state;
@@ -981,9 +993,11 @@ function lerp(intKey, reactiveState){
     const interp = inter.get(intKey);
     // If interpolation is a string, evaluate it as an expression
     // Otherwise, return the value directly (e.g., event objects)
-    return typeof interp === 'string'
-      ? evaluate(reactiveState, interp)
-      : interp;
+    if (interp.type === 'EXPR') {
+      return evaluateAst(interp.value.ast, reactiveState);
+    } else {
+      return interp.value;
+    }
   }
   return undefined;
 }
@@ -991,7 +1005,12 @@ function lerp(intKey, reactiveState){
 /**
  * Compiles a JavaScript expression into an AST.
  * CSP-safe implementation using tokenizer + parser (no eval/Function).
- * @param {string} expr 
+ * @type {Compile}
+ *
+ * @example
+ * // Basic usage
+ * const ast = Velin.ast.compile('count * 2 + 1');
+ *
  */
 function compile(expr) {
     const tokens = tokenize(expr);
@@ -1058,12 +1077,6 @@ function evaluateAst(ast, reactiveState) {
  *   }
  * });
  *
- * @example
- * // Evaluating lifecycle hooks in templates
- * if (lifecycle.onMount) {
- *   Velin.evaluate(innerState, lifecycle.onMount, true);
- * }
- *
  * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/api-reference.md#velintrackersevaluate|API Reference}
  * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/getting-started.md#expressions-are-javascript|Getting Started: Expressions}
  */
@@ -1114,7 +1127,8 @@ function evaluate(reactiveState, expr, allowMutations = false) {
  */
 function getSetter(reactiveState, expr) {
   const inter = reactiveState.interpolations;
-  const property = inter?.has(expr) ? inter.get(expr) : expr;
+  // If it's an expression interpolation, grab the original expression from it
+  const property = inter?.has(expr) && inter?.get(expr).type == 'EXPR' ? inter.get(expr).value.expr : expr;
   const lastDotIndex = property.lastIndexOf(".");
 
   // Handle root-level properties (no dots)
@@ -1360,12 +1374,20 @@ function setupState(obj) {
  * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/plugins.md|Creating Plugins Guide}
  */
 function composeState(reactiveState, interpolations) {
+  /** @type {[string, Interpolation][]} */
+  const lerps = [];
+  for (const [k, v] of interpolations) {
+    if (v.type === 'EXPR')
+      lerps.push([k, { type: 'EXPR', value: { expr: v.value.expr, ast: compile(v.value.expr) } }]);
+    else
+      lerps.push([k, v]);
+  }
   /** @type {ReactiveState} */
   const inner = {
     ...reactiveState,
     interpolations: new Map([
       ...(reactiveState.interpolations?.entries() ?? []),
-      ...interpolations.entries(),
+      ...lerps,
     ]),
     ø__innerBindings: new Map(),
     ø__innerStates: new Set(),
@@ -1425,7 +1447,7 @@ function cleanupState(parentState, innerState) {
   if (parentState === innerState) return;
   // Clear interpolations
   if (innerState.interpolations) {
-    innerState.interpolations.clear();
+    /** @type Map<string, any> */ (innerState.interpolations).clear();
   }
   // Clear inner bindings
   if (innerState.ø__innerBindings) {
@@ -1629,11 +1651,13 @@ function bind(root, initialState) {
 /** @type {VelinCore} */
 const Velin = {
   bind,
-  evaluate,
   getSetter,
   composeState,
   cleanupState,
   processNode,
+  compile,
+  evaluate,
+  evaluateAst,
   plugins: {
     registerPlugin,
     processPlugin,
@@ -1648,11 +1672,6 @@ const Velin = {
     triggerEffects: (prop, reactiveState) => {
       triggerEffects("root." + prop, reactiveState);
     },
-    ast: {
-      tokenize,
-      parse,
-      evaluateAst
-    }
   },
 };
 

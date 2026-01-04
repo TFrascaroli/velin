@@ -77,26 +77,6 @@ describe("Templates and Fragments", () => {
     expect(card?.textContent?.trim()).toBe("Charlie");
   });
 
-  // TODO: Fix onMount lifecycle hook test - needs investigation
-  it.skip("should support onMount lifecycle hook", () => {
-    container.innerHTML = `
-      <template id="testCard" vln-vars="name">
-        <div class="card">
-          <span vln-text="name"></span>
-        </div>
-      </template>
-      <div vln-fragment="'testCard'"
-           vln-var:name="userName"
-           vln-var:onMount="mounted = true"></div>
-    `;
-
-    const state = Velin.bind(container, {
-      userName: "Diana",
-      mounted: false
-    });
-
-    expect(state.mounted).toBe(true);
-  });
 
   // TODO: Fix validation test - error is being logged but render still happens
   it.skip("should handle missing template variables gracefully", () => {

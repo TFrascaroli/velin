@@ -2,6 +2,10 @@
 
 /**
  * @typedef {import('./velin-core').VelinCore} VelinCore
+ * @typedef {import('./velin-core').Interpolation} Interpolation
+ */
+
+/**
  * @param {VelinCore} vln
  */
 function setupTemplatesAndFragments(vln) {
@@ -32,13 +36,8 @@ function setupTemplatesAndFragments(vln) {
    *        vln-var:user="user"
    *        vln-var:actions="createActions(user)"></div>
    *
-   * **Lifecycle Hooks (optional special vars):**
-   *   vln-var:onMount="setupComponent()"    - Called after template rendered
-   *   vln-var:onUnmount="cleanupComponent()" - Called before template removed
-   *
    * **Validation:**
    * Will error if required variables (from vln-vars) are not provided.
-   * Lifecycle hooks (onMount, onUnmount) are optional and don't need declaration.
    *
    * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/templates.md|Templates & Fragments Guide}
    * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/directives.md|Directives Guide}
@@ -48,15 +47,15 @@ function setupTemplatesAndFragments(vln) {
     name: "fragment",
     priority: vln.plugins.priorities.LATE,
 
-    track: ({ reactiveState, expr, node }) => {
+    track: ({ reactiveState, compiledExpression, node }) => {
       // Track the template ID
-      const templateId = vln.evaluate(reactiveState, expr);
+      const templateId = vln.evaluateAst(compiledExpression, reactiveState);
 
       // Also track all vln-var:* expressions and their current values
       const varValues = {};
       if (node instanceof HTMLElement) {
         const varAttrs = Array.from(node.attributes)
-          .filter(a => a.name.startsWith("vln-var:") && !['onMount', 'onUnmount'].includes(a.name.slice(8)));
+          .filter(a => a.name.startsWith("vln-var:"));
 
         for (const attr of varAttrs) {
           const varName = attr.name.slice(8); // Remove "vln-var:" prefix
@@ -69,15 +68,6 @@ function setupTemplatesAndFragments(vln) {
     },
 
     destroy: ({ pluginState, reactiveState }) => {
-      // Trigger onUnmount if it exists
-      if (pluginState?.lifecycle?.onUnmount) {
-        try {
-          vln.evaluate(pluginState.innerState, pluginState.lifecycle.onUnmount);
-        } catch (err) {
-          console.error('[Velin Templates] Error in onUnmount hook:', err);
-        }
-      }
-
       // Cleanup inner state
       if (pluginState?.innerState) {
         vln.cleanupState(reactiveState, pluginState.innerState);
@@ -138,18 +128,15 @@ function setupTemplatesAndFragments(vln) {
         : [];
 
       // Extract provided vars from fragment node
+      /** @type {Map<string, Interpolation>} */
       const interpolations = new Map(
         Array.from(node.attributes)
           .filter(a => a.name.startsWith("vln-var:"))
-          .map(a => [a.name.slice(8), a.value]) // "vln-var:".length === 8
+          .map(a => [a.name.slice(8), {type: 'EXPR', value: { expr: a.value } }]) // "vln-var:".length === 8
       );
 
       // Validate required vars are provided (excluding lifecycle hooks)
-      const missingVars = templateVars.filter(v =>
-        v !== 'onMount' &&
-        v !== 'onUnmount' &&
-        !interpolations.has(v)
-      );
+      const missingVars = templateVars.filter(v =>!interpolations.has(v));
 
       if (missingVars.length) {
         console.error(
@@ -166,33 +153,17 @@ function setupTemplatesAndFragments(vln) {
       // Create scoped state
       const innerState = vln.composeState(reactiveState, interpolations);
 
-      // Handle lifecycle hooks
-      const lifecycle = {
-        onMount: interpolations.get('onMount'),
-        onUnmount: interpolations.get('onUnmount')
-      };
-
       // Append and process child nodes
       Array.from(clone.childNodes).forEach(child => {
         node.appendChild(child);
         vln.processNode(child, innerState);
       });
 
-      // Trigger onMount after processing
-      if (lifecycle.onMount) {
-        try {
-          vln.evaluate(innerState, lifecycle.onMount);
-        } catch (err) {
-          console.error('[Velin Templates] Error in onMount hook:', err);
-        }
-      }
-
       return {
         halt: true,
         state: {
           templateId,
           innerState,
-          lifecycle
         }
       };
     },
@@ -212,8 +183,8 @@ function setupTemplatesAndFragments(vln) {
   vln.plugins.registerPlugin({
     name: "use",
     priority: vln.plugins.priorities.LATE,
-    track: ({ reactiveState, expr }) => {
-      return vln.evaluate(reactiveState, expr);
+    track: ({ reactiveState, compiledExpression }) => {
+      return vln.evaluateAst(compiledExpression, reactiveState);
     },
     destroy: ({ node, pluginState, reactiveState, subkey }) => {
       // Delegate to fragment plugin

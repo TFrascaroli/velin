@@ -85,7 +85,7 @@ describe("Velin Public API", () => {
     it("should set through interpolated properties on an inner state", () => {
       const innerState = Velin.composeState(
         reactiveState,
-        new Map([["propB", "abc.a.b"]])
+        new Map([["propB", {type: 'EXPR', value: {expr: "abc.a.b"}}]])
       );
       Velin.getSetter(innerState, "propB")({ c: "hello!" });
       expect(Velin.evaluate(reactiveState, "abc.a.b.c")).toBe("hello!");
@@ -94,7 +94,7 @@ describe("Velin Public API", () => {
     it("should be able to retrieve through interpolated properties after set", () => {
       const innerState = Velin.composeState(
         reactiveState,
-        new Map([["propB", "abc.a.b"]])
+        new Map([["propB", {type: 'EXPR', value: {expr: "abc.a.b"}}]])
       );
       Velin.getSetter(reactiveState, "abc.a.b")({ c: "hello!" });
       expect(Velin.evaluate(innerState, "propB.c")).toBe("hello!");
@@ -129,7 +129,7 @@ describe("Velin Public API", () => {
       });
       innerState = Velin.composeState(
         Velin.ø__internal.boundState.root!,
-        new Map([["score", "friend.score"]])
+        new Map([["score", {type: 'EXPR', value: {expr: "friend.score"}}]])
       );
     });
 

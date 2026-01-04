@@ -238,7 +238,7 @@ Returns a setter function for an expression instead of evaluating it. This is ra
 
 ### `Velin.evaluate(reactiveState, expr, allowMutations)`
 
-Evaluates a JavaScript expression in the context of the reactive state without tracking dependencies. This is used when you need to evaluate expressions that should trigger side effects, like event handlers or lifecycle hooks.
+Evaluates a JavaScript expression in the context of the reactive state without tracking dependencies. This is used when you need to evaluate expressions that should trigger side effects, like event handlers.
 
 **Parameters:**
 - `reactiveState` (ReactiveState): Internal reactive state object
@@ -263,21 +263,8 @@ Velin.plugins.registerPlugin({
 
 This allows `<button vln-on:click="count++">` to modify state when clicked.
 
-**Real example from template lifecycle hooks:**
-```javascript
-// Execute onMount hook after template is inserted
-if (lifecycle.onMount) {
-  try {
-    Velin.evaluate(innerState, lifecycle.onMount);
-  } catch (err) {
-    console.error('Error in onMount hook:', err);
-  }
-}
-```
-
 **When to use:**
 - Event handlers that need to modify state
-- Lifecycle hooks (onMount, onUnmount)
 - One-time expression evaluation
 - Side effects that shouldn't trigger re-renders
 
@@ -495,15 +482,6 @@ destroy: ({ pluginState, reactiveState }) => {
 **Real example from `vln-fragment` destroy hook:**
 ```javascript
 destroy: ({ node, pluginState, reactiveState }) => {
-  // Call lifecycle hook before cleanup
-  if (pluginState?.lifecycle?.onUnmount) {
-    try {
-      Velin.evaluate(pluginState.innerState, pluginState.lifecycle.onUnmount);
-    } catch (err) {
-      console.error('[Velin Templates] Error in onUnmount hook:', err);
-    }
-  }
-
   // Clean up inner state
   if (pluginState?.innerState) {
     Velin.cleanupState(reactiveState, pluginState.innerState);

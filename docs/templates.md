@@ -174,71 +174,6 @@ const vln = Velin.bind(root, {
 </script>
 ```
 
-## Lifecycle Hooks (Optional)
-
-Templates support optional lifecycle hooks via special variables:
-
-### onMount
-
-Executed after the template is rendered and processed:
-
-```html
-<template id="modal" vln-vars="content">
-  <div class="modal">
-    <div vln-text="content"></div>
-  </div>
-</template>
-
-<div vln-if="showModal"
-     vln-fragment="'modal'"
-     vln-var:content="modalContent"
-     vln-var:onMount="setupModal()">
-</div>
-
-<script>
-const vln = Velin.bind(root, {
-  showModal: false,
-  modalContent: 'Hello!',
-
-  setupModal() {
-    document.body.style.overflow = 'hidden';
-    console.log('Modal mounted');
-  }
-});
-</script>
-```
-
-### onUnmount
-
-Executed before the template is removed or replaced:
-
-```html
-<div vln-if="showModal"
-     vln-fragment="'modal'"
-     vln-var:content="modalContent"
-     vln-var:onMount="setupModal()"
-     vln-var:onUnmount="cleanupModal()">
-</div>
-
-<script>
-const vln = Velin.bind(root, {
-  showModal: false,
-  modalContent: 'Hello!',
-
-  setupModal() {
-    document.body.style.overflow = 'hidden';
-  },
-
-  cleanupModal() {
-    document.body.style.overflow = '';
-    console.log('Modal unmounted');
-  }
-});
-</script>
-```
-
-**Note:** Lifecycle hooks are optional variables and don't need to be declared in `vln-vars` on the template.
-
 ## Alternative: `vln-use`
 
 `vln-use` is an alias for `vln-fragment`. Some developers prefer this naming:
@@ -445,7 +380,6 @@ const vln = Velin.bind(root, {
 | Build step | No | Yes | Optional | No |
 | CSS encapsulation | No | No | Yes (scoped) | Yes (Shadow DOM) |
 | Props validation | Basic | PropTypes/TS | Yes | No |
-| Lifecycle hooks | onMount/onUnmount | Many | Many | Many |
 | Dynamic selection | Yes | Yes | Yes | No |
 | Learning curve | Flat | Steep | Moderate | Moderate |
 
