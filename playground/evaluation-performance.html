@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+
+<head>
+  <title>Evaluation Performance Test - Velin Playground</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- Velin (All) -->
+  <script src="velin.js"></script>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+</head>
+
+<body class="bg-gray-900 text-gray-100 p-6 font-sans">
+  <div class="max-w-4xl mx-auto">
+    <h1 class="text-3xl font-bold text-indigo-400 mb-6">Evaluation Performance Test</h1>
+    <p class="text-gray-300 mb-8">This test measures the performance of 1 million evaluation reactions by changing parent object values 100,000 times across 10 different evaluations.</p>
+
+    <!-- Test Controls -->
+    <div class="bg-gray-800 p-6 rounded-lg mb-6">
+      <div class="flex items-center gap-4 mb-4">
+        <button 
+          vln-on:click="startTest()" 
+          vln-attr:disabled="isRunning"
+          class="bg-indigo-600 hover:bg-indigo-500 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-6 py-2 rounded font-semibold">
+          <span vln-if="!isRunning">Start Performance Test</span>
+          <span vln-if="isRunning">Running...</span>
+        </button>
+        <button 
+          vln-on:click="resetTest()"
+          vln-attr:disabled="isRunning" 
+          class="bg-gray-600 hover:bg-gray-500 disabled:bg-gray-700 disabled:cursor-not-allowed text-white px-6 py-2 rounded font-semibold">
+          Reset
+        </button>
+      </div>
+      
+      <!-- Progress -->
+      <div vln-if="isRunning || hasResults" class="mb-4">
+        <div class="flex justify-between text-sm text-gray-400 mb-2">
+          <span>Progress</span>
+          <span vln-text="progress + '%'"></span>
+        </div>
+        <div class="w-full bg-gray-700 rounded-full h-2">
+          <div 
+            class="bg-indigo-600 h-2 rounded-full transition-all duration-200" 
+            vln-attr:style="'width': progress + '%'">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Results Display -->
+    <div vln-if="hasResults" class="bg-gray-800 p-6 rounded-lg mb-6">
+      <h2 class="text-xl font-semibold text-green-400 mb-4">Performance Results</h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="bg-gray-700 p-4 rounded">
+          <div class="text-2xl font-bold text-green-400" vln-text="totalTime + 'ms'"></div>
+          <div class="text-sm text-gray-400">Total Time</div>
+        </div>
+        <div class="bg-gray-700 p-4 rounded">
+          <div class="text-2xl font-bold text-blue-400" vln-text="evaluationsPerSecond"></div>
+          <div class="text-sm text-gray-400">Evaluations/sec</div>
+        </div>
+        <div class="bg-gray-700 p-4 rounded">
+          <div class="text-2xl font-bold text-purple-400" vln-text="avgTimePerEvaluation + 'μs'"></div>
+          <div class="text-sm text-gray-400">Avg μs/evaluation</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live Evaluation Display -->
+    <div class="bg-gray-800 p-6 rounded-lg">
+      <h2 class="text-xl font-semibold text-indigo-400 mb-4">Live Evaluations</h2>
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div class="bg-gray-700 p-3 rounded">
+          <div class="text-sm text-gray-400 mb-1">Sum</div>
+          <div class="text-lg font-mono text-green-400" vln-text="data.a + data.b"></div>
+        </div>
+        <div class="bg-gray-700 p-3 rounded">
+          <div class="text-sm text-gray-400 mb-1">Product</div>
+          <div class="text-lg font-mono text-blue-400" vln-text="data.a * data.b"></div>
+        </div>
+        <div class="bg-gray-700 p-3 rounded">
+          <div class="text-sm text-gray-400 mb-1">Squared</div>
+          <div class="text-lg font-mono text-purple-400" vln-text="data.c * data.c"></div>
+        </div>
+        <div class="bg-gray-700 p-3 rounded">
+          <div class="text-sm text-gray-400 mb-1">Complex</div>
+          <div class="text-lg font-mono text-yellow-400" vln-text="Math.floor((data.a + data.b) / data.c)"></div>
+        </div>
+        <div class="bg-gray-700 p-3 rounded">
+          <div class="text-sm text-gray-400 mb-1">Boolean</div>
+          <div class="text-lg font-mono text-red-400" vln-text="data.a > data.b ? 'TRUE' : 'FALSE'"></div>
+        </div>
+        <div class="bg-gray-700 p-3 rounded">
+          <div class="text-sm text-gray-400 mb-1">Modulo</div>
+          <div class="text-lg font-mono text-teal-400" vln-text="data.a % data.d"></div>
+        </div>
+        <div class="bg-gray-700 p-3 rounded">
+          <div class="text-sm text-gray-400 mb-1">Average</div>
+          <div class="text-lg font-mono text-orange-400" vln-text="Math.round((data.a + data.b + data.c + data.d) / 4)"></div>
+        </div>
+        <div class="bg-gray-700 p-3 rounded">
+          <div class="text-sm text-gray-400 mb-1">Max</div>
+          <div class="text-lg font-mono text-pink-400" vln-text="Math.max(data.a, data.b, data.c, data.d)"></div>
+        </div>
+        <div class="bg-gray-700 p-3 rounded">
+          <div class="text-sm text-gray-400 mb-1">String</div>
+          <div class="text-lg font-mono text-cyan-400" vln-text="'Val:' + (data.a + data.b)"></div>
+        </div>
+        <div class="bg-gray-700 p-3 rounded">
+          <div class="text-sm text-gray-400 mb-1">Nested</div>
+          <div class="text-lg font-mono text-lime-400" vln-text="data.nested ? data.nested.value * 2 : 0"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Test Configuration -->
+    <div class="bg-gray-800 p-6 rounded-lg mt-6">
+      <h3 class="text-lg font-semibold text-gray-300 mb-4">Test Configuration</h3>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+        <div>
+          <span class="text-gray-400">Total Evaluations:</span>
+          <span class="text-white ml-2">1,000,000</span>
+        </div>
+        <div>
+          <span class="text-gray-400">Iterations:</span>
+          <span class="text-white ml-2">100,000</span>
+        </div>
+        <div>
+          <span class="text-gray-400">Different Evaluations:</span>
+          <span class="text-white ml-2">10</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="application/javascript">
+    const TOTAL_ITERATIONS = 100000;
+    const EVALUATIONS_PER_ITERATION = 10;
+    const TOTAL_EVALUATIONS = TOTAL_ITERATIONS * EVALUATIONS_PER_ITERATION;
+
+    const bound = Velin.bind(document.body, {
+      // Test state
+      isRunning: false,
+      hasResults: false,
+      progress: 0,
+      
+      // Results
+      totalTime: 0,
+      evaluationsPerSecond: 0,
+      avgTimePerEvaluation: 0,
+      
+      // Test data that will be modified during the test
+      data: {
+        a: 10,
+        b: 20,
+        c: 5,
+        d: 3,
+        nested: { value: 100 }
+      },
+
+      // Test methods
+      startTest() {
+        this.isRunning = true;
+        this.hasResults = false;
+        this.progress = 0;
+        this.resetData();
+        
+        console.log('Starting evaluation performance test...');
+        console.log(`Total iterations: ${TOTAL_ITERATIONS}`);
+        console.log(`Evaluations per iteration: ${EVALUATIONS_PER_ITERATION}`);
+        console.log(`Total evaluations: ${TOTAL_EVALUATIONS}`);
+        
+        // Start the test after a small delay to let the UI update
+        setTimeout(() => this.runPerformanceTest(), 50);
+      },
+
+      resetTest() {
+        this.isRunning = false;
+        this.hasResults = false;
+        this.progress = 0;
+        this.totalTime = 0;
+        this.evaluationsPerSecond = 0;
+        this.avgTimePerEvaluation = 0;
+        this.resetData();
+      },
+
+      resetData() {
+        this.data = {
+          a: 10,
+          b: 20,
+          c: 5,
+          d: 3,
+          nested: { value: 100 }
+        };
+      },
+
+      async runPerformanceTest() {
+        const startTime = performance.now();
+        
+        // We'll do this in batches to allow the UI to update
+        const batchSize = 1000;
+        const totalBatches = Math.ceil(TOTAL_ITERATIONS / batchSize);
+        
+        for (let batch = 0; batch < totalBatches; batch++) {
+          const batchStart = batch * batchSize;
+          const batchEnd = Math.min(batchStart + batchSize, TOTAL_ITERATIONS);
+          
+          // Process this batch
+          for (let i = batchStart; i < batchEnd; i++) {
+            // Change all the values that are used in evaluations
+            // This should trigger re-evaluation of all 10 expressions
+            this.data.a = Math.floor(Math.random() * 100) + 1;
+            this.data.b = Math.floor(Math.random() * 100) + 1;
+            this.data.c = Math.floor(Math.random() * 10) + 1;
+            this.data.d = Math.floor(Math.random() * 10) + 1;
+            this.data.nested.value = Math.floor(Math.random() * 200) + 1;
+          }
+          
+          // Update progress
+          this.progress = Math.round(((batch + 1) / totalBatches) * 100);
+        }
+        
+        const endTime = performance.now();
+        const totalTimeMs = endTime - startTime;
+        
+        // Calculate results
+        this.totalTime = Math.round(totalTimeMs);
+        this.evaluationsPerSecond = Math.round(TOTAL_EVALUATIONS / (totalTimeMs / 1000));
+        this.avgTimePerEvaluation = Math.round((totalTimeMs * 1000) / TOTAL_EVALUATIONS); // microseconds
+        
+        this.isRunning = false;
+        this.hasResults = true;
+        
+        console.log('Performance test completed!');
+        console.log(`Total time: ${this.totalTime}ms`);
+        console.log(`Evaluations per second: ${this.evaluationsPerSecond}`);
+        console.log(`Average time per evaluation: ${this.avgTimePerEvaluation}μs`);
+      }
+    });
+  </script>
+</body>
+
+</html>
