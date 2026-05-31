@@ -72,7 +72,7 @@ Open it in a browser and you'll see:
 const vln = Velin.bind(rootElement, initialState);
 ```
 
-- `rootElement`: The DOM element to make reactive (usually `document.body` or a container)
+- `rootElement`: The DOM element to make reactive (defaults to `document.body`)
 - `initialState`: An object containing your application's data
 - Returns: A reactive proxy of your state
 
@@ -93,9 +93,6 @@ All directive values are JavaScript expressions:
 ```html
 <!-- Simple variable -->
 <span vln-text="count"></span>
-
-<!-- String literal -->
-<h1 vln-text="'Hello World'"></h1>
 
 <!-- Math -->
 <div vln-text="price * 1.1"></div>
@@ -123,17 +120,8 @@ Sets the text content of an element:
 Binds form inputs to state:
 
 ```html
-<!-- Text input -->
 <input vln-input="name" />
-
-<!-- Checkbox -->
 <input type="checkbox" vln-input="agreed" />
-
-<!-- Select -->
-<select vln-input="country">
-  <option value="us">USA</option>
-  <option value="uk">UK</option>
-</select>
 ```
 
 ### Conditional Display: `vln-if`
@@ -141,13 +129,7 @@ Binds form inputs to state:
 Shows/hides elements based on a condition:
 
 ```html
-<div vln-if="isLoggedIn">
-  Welcome back!
-</div>
-
-<div vln-if="error">
-  Error: <span vln-text="error"></span>
-</div>
+<div vln-if="isLoggedIn">Welcome back!</div>
 ```
 
 ### Lists: `vln-loop`
@@ -160,50 +142,15 @@ Repeats an element for each item in an array:
 </ul>
 ```
 
-The syntax is `vln-loop:varName="arrayExpression"`.
-
 ### Event Handlers: `vln-on:event`
 
 Responds to DOM events:
 
 ```html
 <button vln-on:click="count++">Increment</button>
-
-<form vln-on:submit="handleSubmit()">
-  <!-- form fields -->
-</form>
-
-<input vln-on:keypress="handleKeyPress($event)" />
 ```
 
-### Attributes: `vln-attr:name`
-
-Sets HTML attributes dynamically:
-
-```html
-<img vln-attr:src="imageUrl" vln-attr:alt="imageAlt" />
-<button vln-attr:disabled="!isValid">Submit</button>
-<a vln-attr:href="link">Click here</a>
-```
-
-### Classes: `vln-class`
-
-Adds CSS classes dynamically:
-
-```html
-<!-- Single class name -->
-<div vln-class="theme"></div>
-
-<!-- Object of class names and booleans -->
-<div vln-class="{ active: isActive, disabled: !isEnabled }"></div>
-
-<!-- Conditional expression -->
-<div vln-class="status === 'error' ? 'text-red' : 'text-green'"></div>
-```
-
-## Building a Todo App
-
-Let's build a simple todo app to practice:
+## Example: Todo App
 
 ```html
 <!DOCTYPE html>
@@ -269,7 +216,7 @@ Let's build a simple todo app to practice:
 
 ## Reactivity Explained
 
-Velin automatically tracks dependencies and updates the DOM when data changes:
+Velin tracks dependencies and updates the DOM when data changes:
 
 ```javascript
 const vln = Velin.bind(root, {
@@ -277,15 +224,14 @@ const vln = Velin.bind(root, {
   user: { name: 'Alice' }
 });
 
-// This automatically updates any elements using count
+// Updates elements using count
 vln.count++;
 
-// This automatically updates any elements using user.name
+// Updates elements using user.name
 vln.user.name = 'Bob';
 
-// Array methods work too
+// Array methods work
 vln.items.push({ name: 'New item' });
-vln.items.splice(0, 1);
 ```
 
 ### Computed Properties
@@ -303,11 +249,7 @@ const vln = Velin.bind(root, {
 });
 ```
 
-```html
-<div vln-text="fullName"></div>
-```
-
-Now changing either `firstName` or `lastName` will update `fullName` automatically.
+Changing either `firstName` or `lastName` will update `fullName`.
 
 ## Next Steps
 

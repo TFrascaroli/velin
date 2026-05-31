@@ -118,38 +118,15 @@ Shows or hides an element based on a condition.
 
 **Examples:**
 ```html
-<!-- Simple boolean -->
 <div vln-if="isLoggedIn">Welcome back!</div>
-
-<!-- Negation -->
 <div vln-if="!isLoggedIn">Please log in</div>
-
-<!-- Comparison -->
 <div vln-if="count > 0">You have items</div>
-<div vln-if="status === 'error'">An error occurred</div>
-
-<!-- Logical operators -->
-<div vln-if="isAdmin && canEdit">Edit mode</div>
-<div vln-if="isLoading || isSaving">Please wait...</div>
-
-<!-- Truthy/falsy -->
-<div vln-if="errorMessage">Error: <span vln-text="errorMessage"></span></div>
 ```
 
-**How it works:**
+**Mechanism:**
 - If expression is truthy: element is displayed (`style.display = ""`)
 - If expression is falsy: element is hidden (`style.display = "none"`)
-- Element remains in DOM, just hidden via CSS
-
-**Else Pattern:**
-```html
-<div vln-if="isLoggedIn">
-  Logged in content
-</div>
-<div vln-if="!isLoggedIn">
-  Logged out content
-</div>
-```
+- Element remains in the DOM.
 
 ## Lists
 
@@ -166,51 +143,9 @@ Repeats an element for each item in an array.
 </ul>
 ```
 
-**With Object Items:**
-```html
-<script>
-const vln = Velin.bind(root, {
-  users: [
-    { id: 1, name: 'Alice', email: 'alice@example.com' },
-    { id: 2, name: 'Bob', email: 'bob@example.com' }
-  ]
-});
-</script>
-
-<div vln-loop:user="users">
-  <h3 vln-text="user.name"></h3>
-  <p vln-text="user.email"></p>
-</div>
-```
-
-**Complex Content:**
-```html
-<table>
-  <tbody>
-    <tr vln-loop:product="products">
-      <td vln-text="product.name"></td>
-      <td vln-text="'$' + product.price"></td>
-      <td>
-        <button vln-on:click="addToCart(product)">Add to Cart</button>
-      </td>
-    </tr>
-  </tbody>
-</table>
-```
-
-**Nested Loops:**
-```html
-<div vln-loop:category="categories">
-  <h2 vln-text="category.name"></h2>
-  <ul>
-    <li vln-loop:item="category.items" vln-text="item.name"></li>
-  </ul>
-</div>
-```
-
 **With Index:**
 
-Inside a loop, you can access the special `$index` variable which contains the current iteration index (0-based):
+Inside a loop, you can access `$index` (0-based):
 
 ```html
 <ul>
@@ -220,26 +155,10 @@ Inside a loop, you can access the special `$index` variable which contains the c
 </ul>
 ```
 
-**Using Index in Event Handlers:**
-```html
-<button vln-loop:item="items" vln-on:click="removeAt($index)">
-  Remove <span vln-text="item"></span>
-</button>
-```
-
-**Using Index for Styling:**
-```html
-<div vln-loop:item="items" vln-class="$index % 2 === 0 ? 'even' : 'odd'">
-  <span vln-text="item"></span>
-</div>
-```
-
 **Notes:**
-- Variable name can be anything: `vln-loop:item`, `vln-loop:user`, `vln-loop:todo`, etc.
-- The loop variable is scoped to that element and its children
-- `$index` is automatically available in all loop iterations (0-based)
-- Each nested loop has its own `$index` variable
-- Reactive: adding/removing array items updates the DOM automatically
+- The loop variable is scoped to that element and its children.
+- `$index` is automatically provided.
+- Reactive: adding/removing array items updates the DOM.
 
 ## Side-Effects
 
@@ -264,19 +183,9 @@ const vln = Velin.bind(root, {
 <button vln-on:click="count++">Increment</button>
 ```
 
-**How it works:**
-- It uses fine-grained dependency tracking, just like `vln-text`.
-- When any part of the expression changes, the named method is called with the new value.
-- **Note:** The method must exist on your state object.
-
-**Use Cases:**
-- Saving data to a backend when a value changes.
-- Triggering 3rd-party library updates (e.g., updating a chart when data changes).
-- complex logging or debugging.
-
-**Best Practices:**
-- For performance, keep the watch handler simple.
-- If you need debouncing or throttling, wrap your state method using plain JavaScript.
+**Mechanism:**
+- When any part of the expression changes, the named method is called with the result.
+- For debouncing or throttling, wrap your state method in plain JS.
 
 ## Event Handling
 
