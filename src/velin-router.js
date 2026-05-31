@@ -55,16 +55,6 @@ function setupVelinRouter(vln) {
     name: "route",
     priority: vln.plugins.priorities.STOPPER,
     render: ({ node, expr, reactiveState }) => {
-      // Find parent router state (look up the DOM)
-      let routerObj = null;
-      let el = node.parentElement;
-      while (el && !routerObj) {
-        // This is a naive lookup - ideally we'd have a better way to register routers
-        // For now, assume the user handles this by naming
-        el = el.parentElement;
-      }
-      
-      // Simple path matching
       const currentPath = window.location.pathname;
       const pattern = expr.replace(/:([^\/]+)/g, '(?<$1>[^/]+)');
       const regex = new RegExp(`^${pattern}$`);
