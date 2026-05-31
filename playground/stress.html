@@ -12,7 +12,18 @@
 </head>
 
 <body class="bg-gray-900 text-gray-100 p-6 font-sans">
-  <div class="top-bar flex justify-between items-center mb-4">
+  <div class="max-w-4xl mx-auto">
+    <h1 class="text-3xl font-bold mb-4">Velin Stress Test</h1>
+    
+    <div class="bg-yellow-900 border-l-4 border-yellow-500 p-4 mb-8">
+      <p class="text-sm text-yellow-100 font-bold">Internal Benchmarking Tool</p>
+      <p class="text-sm text-yellow-200">
+        This page is used to gauge Velin's overhead with large datasets (up to 10,000 items) compared to VDOM-based frameworks. 
+        It is an intentional "stress test" and not representative of typical usage in the light SPAs or widgets Velin is built for.
+      </p>
+    </div>
+
+    <div class="top-bar flex justify-between items-center mb-4">
     <div class="flex items-center gap-2">
       <label for="sizeInput" class="sr-only">Grid size</label>
       <input
