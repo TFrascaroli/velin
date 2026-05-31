@@ -10,7 +10,8 @@ Velin is a fine-grained reactivity engine for plain HTML and JavaScript. It uses
 *   **CSP Friendly & Secure**: Built with an AST-based evaluator instead of `eval()` or `new Function()`. It is fully compatible with strict Content Security Policies (CSP) and ready for enterprise environments.
 *   **Fine-Grained Reactivity**: Changing a property only triggers updates for the specific DOM elements that depend on it.
 *   **Scale Naturally**: Designed for interactive widgets and light-to-medium SPAs. You can modularize your state naturally as your project grows.
-*   **Minimal Footprint**: ~6KB gzipped for the standard library.
+-   **`velin-events.js`** (~1KB gzipped) - Event orchestration (alias, contain)
+-   **`velin-all.js`** (~6KB gzipped) - Everything bundled (recommended)
 
 ## Getting Started
 
