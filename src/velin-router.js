@@ -48,17 +48,23 @@ function setupVelinRouter(vln) {
   });
 
   /**
-   * vln-route="/path/:id"
+   * vln-route:routerKey="/path/:id"
    * Conditional renderer based on route matching.
    */
   vln.plugins.registerPlugin({
     name: "route",
     priority: vln.plugins.priorities.STOPPER,
-    track: vln.trackers.expressionTracker,
-    render: ({ node, expr, reactiveState }) => {
-      // Find the router state from the reactiveState object
-      // This is dynamic based on where the router state lives in the root object
-      const currentPath = window.location.pathname;
+    track: ({ reactiveState, subkey }) => {
+      // Track the router state's path if subkey (routerKey) is provided
+      if (subkey && reactiveState.state[subkey]) {
+        return reactiveState.state[subkey].path;
+      }
+      return window.location.pathname;
+    },
+    render: ({ node, expr, subkey, reactiveState }) => {
+      const currentPath = subkey && reactiveState.state[subkey] 
+        ? reactiveState.state[subkey].path 
+        : window.location.pathname;
       const pattern = expr.replace(/:([^\/]+)/g, '(?<$1>[^/]+)');
       const regex = new RegExp(`^${pattern}$`);
       const match = currentPath.match(regex);
