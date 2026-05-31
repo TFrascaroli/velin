@@ -462,6 +462,36 @@ get filteredItems() {
 <div vln-loop:item="filteredItems">...</div>
 ```
 
+## Event Orchestration
+
+These plugins are available in the optional `velin-events.js` module.
+
+### `vln-evt-alias`
+
+Listens for an existing DOM event and re-dispatches it as a new event name. Useful for mapping internal component events to parent expectations.
+
+**Syntax:** `vln-evt-alias:newName="'sourceEvent'"`
+
+**Example:**
+```html
+<!-- Listen for 'success' from a lib and fire it as 'saved' -->
+<div vln-evt-alias:saved="'success'"></div>
+```
+
+### `vln-evt-contain`
+
+Stops the propagation of specified events, preventing them from bubbling.
+
+**Syntax:** `vln-evt-contain="['event1', 'event2']"`
+
+**Example:**
+```html
+<!-- Prevent clicks and keypresses from leaving this container -->
+<div class="modal" vln-evt-contain="['click', 'keypress']">
+  <!-- Content -->
+</div>
+```
+
 ---
 
 ## See Also
