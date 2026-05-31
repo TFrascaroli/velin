@@ -54,7 +54,10 @@ function setupVelinRouter(vln) {
   vln.plugins.registerPlugin({
     name: "route",
     priority: vln.plugins.priorities.STOPPER,
+    track: vln.trackers.expressionTracker,
     render: ({ node, expr, reactiveState }) => {
+      // Find the router state from the reactiveState object
+      // This is dynamic based on where the router state lives in the root object
       const currentPath = window.location.pathname;
       const pattern = expr.replace(/:([^\/]+)/g, '(?<$1>[^/]+)');
       const regex = new RegExp(`^${pattern}$`);

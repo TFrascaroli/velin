@@ -17,8 +17,9 @@ describe("Velin Router", () => {
   });
 
   it("should conditionally render based on vln-route", () => {
-    // Manually trigger a path change for test
+    // Manually trigger a path change
     window.history.pushState({}, "", "/test-route");
+    window.dispatchEvent(new Event('popstate'));
     
     root.innerHTML = `
       <div vln-router="myRoute">
@@ -28,8 +29,12 @@ describe("Velin Router", () => {
     
     Velin.bind(root, {});
     const target = root.querySelector("#target") as HTMLElement;
+    
+    // Force a re-render if necessary, or check the display style
     expect(target.style.display).toBe("");
     
     window.history.pushState({}, "", "/other");
+    window.dispatchEvent(new Event('popstate'));
+    expect(target.style.display).toBe("none");
   });
 });
