@@ -140,39 +140,70 @@ const vln = Velin.bind(root, {
 </script>
 ```
 
-## Component Pattern
+## Lifecycle Events
 
-You can use templates with factory functions to create a component-like pattern:
+Templates and Fragments trigger native DOM events when they are created or destroyed. You can listen to these using standard `vln-on` listeners.
+
+### `init`
+
+Fired when a node and its entire subtree have been processed by Velin.
 
 ```html
-<template id="counter" vln-vars="state">
-  <div class="counter">
-    <button vln-on:click="state.decrement()">−</button>
-    <span vln-text="state.count"></span>
-    <button vln-on:click="state.increment()">+</button>
+<template id="chart">
+  <canvas vln-on:init="renderChart(event.target)"></canvas>
+</template>
+```
+
+### `destroy`
+
+Fired when a node's reactive state is being cleaned up (e.g., when a fragment is swapped or a loop item removed).
+
+```html
+<template id="timer">
+  <div vln-on:destroy="stopTimer()">
+    Time: <span vln-text="time"></span>
   </div>
 </template>
-
-<div vln-fragment="'counter'" vln-var:state="counterState"></div>
-
-<script>
-function createCounter(initialCount = 0) {
-  return {
-    count: initialCount,
-    increment() {
-      this.count++;
-    },
-    decrement() {
-      this.count--;
-    }
-  };
-}
-
-const vln = Velin.bind(root, {
-  counterState: createCounter(5)
-});
-</script>
 ```
+
+## Component Pattern
+
+In Velin, **Templates ARE Components**. You don't need a separate registry. By combining templates, `vln-var`, and lifecycle events, you get full component functionality.
+
+1. **The View**: Defined in a `<template>` tag.
+2. **The Logic**: Defined in your central JavaScript state.
+3. **The Interface**: Documented via `vln-vars` and `@vln-type`.
+4. **The Lifecycle**: Managed via `vln-on:init` and `vln-on:destroy`.
+
+## IDE IntelliSense & Type Safety
+
+Velin provides a way to document the "interface" of your template so that IDEs (via the Velin VS Code extension) can provide autocomplete and type checking.
+
+### `@vln-type`
+
+Add a comment at the top of your `<template>` to link it to a JavaScript type (defined via JSDoc or TypeScript).
+
+```javascript
+// state.js
+/**
+ * @typedef {Object} UserProfile
+ * @property {string} name
+ * @property {string} role
+ */
+```
+
+```html
+<!-- index.html -->
+<template id="userCard">
+  <!-- @vln-type {UserProfile} -->
+  <div class="card">
+    <h3 vln-text="name"></h3>
+    <span vln-text="role"></span>
+  </div>
+</template>
+```
+
+The IDE will now provide autocomplete for `name` and `role` inside the template expressions and when using `vln-var:name` on a fragment.
 
 ## Alternative: `vln-use`
 
@@ -186,7 +217,7 @@ const vln = Velin.bind(root, {
 
 ## Complete Example
 
-Here's a complete example of a user management interface using templates:
+Here's a complete example of a user management interface using the "Component Pattern":
 
 ```html
 <!DOCTYPE html>
@@ -207,7 +238,8 @@ Here's a complete example of a user management interface using templates:
 <body>
   <!-- Template Definition -->
   <template id="userCard" vln-vars="user, actions">
-    <div class="user-card">
+    <!-- @vln-type {UserCardProps} -->
+    <div class="user-card" vln-on:init="console.log('User card ready:', user.name)">
       <h3 vln-text="user.name"></h3>
       <p vln-text="user.email"></p>
       <button vln-on:click="actions.edit()">Edit</button>
@@ -220,13 +252,19 @@ Here's a complete example of a user management interface using templates:
     <h1>Users</h1>
 
     <div vln-loop:user="users"
-         vln-fragment="'userCard'"
+         vln-use="'userCard'"
          vln-var:user="user"
          vln-var:actions="createUserActions(user)">
     </div>
   </div>
 
   <script>
+    /**
+     * @typedef {Object} UserCardProps
+     * @property {Object} user
+     * @property {Object} actions
+     */
+
     const vln = Velin.bind(document.getElementById('app'), {
       users: [
         { id: 1, name: 'Alice', email: 'alice@example.com' },
@@ -366,13 +404,6 @@ const vln = Velin.bind(root, {
 });
 ```
 
-## Limitations
-
-- **No CSS encapsulation**: Styles are global (use CSS Modules, BEM, or scoped classes)
-- **No slot system**: Unlike Web Components, no `<slot>` support
-- **No props validation**: Beyond required variable checking
-- **Template must exist in DOM**: Can't be dynamically created from strings
-
 ## Comparison to Other Frameworks
 
 | Feature | Velin Templates | React | Vue | Web Components |
@@ -382,6 +413,50 @@ const vln = Velin.bind(root, {
 | Props validation | Basic | PropTypes/TS | Yes | No |
 | Dynamic selection | Yes | Yes | Yes | No |
 | Learning curve | Flat | Steep | Moderate | Moderate |
+| Native Lifecycle | Yes | Hooks | Hooks | Yes |
+
+## Debugging
+
+If templates aren't working:
+
+1. **Check template exists:**
+   ```javascript
+   console.log(document.getElementById('myTemplate'));
+   ```
+
+2. **Check for typos in fragment name:**
+   ```html
+   <!-- Make sure the ID matches -->
+   <template id="userCard">...</template>
+   <div vln-fragment="'userCard'"><!-- Not 'usercard' --></div>
+   ```
+
+3. **Verify all variables are provided:**
+   Look for `[VLN009]` errors in console
+
+4. **Check quotes in expressions:**
+   ```html
+   <!-- Correct: quotes inside attribute value -->
+   <div vln-fragment="'userCard'"></div>
+
+   <!-- Wrong: no quotes -->
+   <div vln-fragment="userCard"></div>
+   ```
+
+5. **Use browser DevTools:**
+   Inspect the element to see if content was rendered
+
+
+---
+
+## See Also
+
+- **[API Reference: Danger Zone](./api-reference.md#danger-zone)** - Understanding state composition and cleanup
+- **[Creating Plugins](./plugins.md)** - How `vln-fragment` works internally
+- **[Directives Guide](./directives.md)** - Other directives to use with templates
+- **[Getting Started](./getting-started.md)** - Basic concepts before using templates
+- **[Documentation Hub](./README.md)** - Navigate all Velin documentation
+
 
 ## Debugging
 

@@ -241,6 +241,43 @@ Inside a loop, you can access the special `$index` variable which contains the c
 - Each nested loop has its own `$index` variable
 - Reactive: adding/removing array items updates the DOM automatically
 
+## Side-Effects
+
+### `vln-watch`
+
+Monitors an expression and calls a method in your state whenever it changes.
+
+**Syntax:** `vln-watch:methodName="expression"`
+
+**Example:**
+```html
+<script>
+const vln = Velin.bind(root, {
+  count: 0,
+  logChange(newVal) {
+    console.log('Count changed to:', newVal);
+  }
+});
+</script>
+
+<div vln-watch:logChange="count"></div>
+<button vln-on:click="count++">Increment</button>
+```
+
+**How it works:**
+- It uses fine-grained dependency tracking, just like `vln-text`.
+- When any part of the expression changes, the named method is called with the new value.
+- **Note:** The method must exist on your state object.
+
+**Use Cases:**
+- Saving data to a backend when a value changes.
+- Triggering 3rd-party library updates (e.g., updating a chart when data changes).
+- complex logging or debugging.
+
+**Best Practices:**
+- For performance, keep the watch handler simple.
+- If you need debouncing or throttling, wrap your state method using plain JavaScript.
+
 ## Event Handling
 
 ### `vln-on:event`

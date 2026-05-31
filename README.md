@@ -113,22 +113,53 @@ No heavy framework required:
 
 Write JavaScript modules when you want them, or keep it simple with inline scripts. Velin works both ways.
 
+
 ## Installation
 
-**CDN** (for quick prototyping) (release date TBD):
+### CDN (for quick prototyping)
 ```html
-<script src="https://unpkg.com/velin/dist/build/velin-all.min.js"></script>
+<script src="https://unpkg.com/velin@<version>/velin-all.min.js"></script>
+```
+or
+```html
+<script src="https://cdn.jsdelivr.net/npm/velin@<version>/velin-all.min.js"></script>
 ```
 
-**NPM** (for real projects) (release date TBD):
+### NPM (for real projects)
 ```bash
 npm install velin
 ```
 
-Then in your JavaScript:
+Then in your JavaScript or TypeScript:
 ```javascript
 import Velin from 'velin';
 ```
+
+TypeScript types are included automatically.
+
+---
+
+## Publishing (for maintainers)
+
+### How to acquire an npm token
+1. Log in to your npm account at https://www.npmjs.com/
+2. Go to your profile → Access Tokens → Generate New Token
+3. Choose "Automation" type, set permissions as needed, and copy the token (starts with `npm_...`).
+4. **Keep this token secret!**
+
+### How to publish
+1. Build and prepare the publish directory:
+  ```bash
+  npm run build
+  npm run prepare:publish
+  ```
+2. Publish using your npm token:
+  ```bash
+  NPM_TOKEN=your-token ./scripts/publish.sh
+  ```
+  (Replace `your-token` with your actual npm token)
+
+After publishing, the package will be available via npm and CDN (jsdelivr/unpkg) for all users.
 
 ## Core Concepts
 
@@ -499,13 +530,25 @@ Velin requires ES6 features:
 
 Velin is under active development. Planned features:
 
-- **Components** - Reusable, encapsulated UI components with props and slots
-- **Router** - Client-side routing without a full SPA framework
-- **Lifecycle Hooks** - Component mount/unmount callbacks
-- **Async State** - Built-in patterns for loading/error states
-- **Transformers** - easy, fast, pipable transformers
-- **Aspects** reusable aspects, think templates but combinable
-- **Data initializers** Not for everyday use, but powerful when combined with everything else around
+- **Velin Router** - Minimal, state-driven client-side routing
+- **DevTools** - Browser extension for direct state inspection and debugging
+- **Async State Patterns** - Built-in documentation/examples for loading/error states in the central model
+- **Standard Library Expansion** - Quality-of-life directives (like `vln-watch`) and event traffic control
+
+### Components in Velin
+
+You don't need a separate "Component" system. In Velin, **Templates ARE Components**. Use `vln-fragment` (or its alias `vln-use`) to render templates with scoped variables (`vln-var:*`) and native lifecycle events (`vln-on:init`, `vln-on:destroy`). This pattern gives you 100% of the component functionality with 0% of the framework bloat.
+
+### Functional Data Formatting
+
+Velin does not use a custom "Transformer" or "Pipe" DSL. Since expressions are plain JavaScript, just use functions defined in your state:
+
+```html
+<span vln-text="formatCurrency(item.price)"></span>
+<div vln-class="getThemeClasses(user.preferences)"></div>
+```
+
+This keeps your logic in testable JavaScript and your views clean.
 
 ## Development
 
