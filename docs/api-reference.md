@@ -440,7 +440,7 @@ Velin uses error codes in console messages:
 
 ## TypeScript Support
 
-Velin is written in plain JavaScript but provides comprehensive TypeScript definitions for autocomplete and type safety.
+Velin is written in plain JavaScript but provides TypeScript definitions for autocomplete and type safety.
 
 ### Basic Usage
 

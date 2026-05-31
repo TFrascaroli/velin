@@ -81,7 +81,7 @@ dist/types/                # TypeScript type definitions
 
 - **Source Code:** [src/velin-core.js](../src/velin-core.js) - Well-commented core implementation
 - **Examples:** [playground/](../playground/) - Interactive demos and test cases
-- **Tests:** [test/unit/](../test/unit/) - Comprehensive test suite with usage examples
+- **Tests:** [test/unit/](../test/unit/) - Full test suite with usage examples
 
 ## Contributing to Documentation
 

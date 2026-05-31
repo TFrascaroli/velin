@@ -1,6 +1,6 @@
 # Creating Plugins
 
-Velin's plugin system allows you to create custom directives that extend the framework's capabilities.
+Create custom directives using the Velin plugin system.
 
 ## Plugin Basics
 
