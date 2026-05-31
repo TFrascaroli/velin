@@ -17,7 +17,6 @@ describe("Velin Router", () => {
   });
 
   it("should conditionally render based on vln-route", async () => {
-    // Manually trigger a path change
     window.history.pushState({}, "", "/test-route");
     window.dispatchEvent(new Event('popstate'));
     
@@ -30,13 +29,13 @@ describe("Velin Router", () => {
     Velin.bind(root, {});
     const target = root.querySelector("#target") as HTMLElement;
     
-    // Should be 'none'
     expect(target.style.display).toBe("none");
     
-    // Update state to trigger reactivity
+    // Update state
     Velin.ø__internal.boundState.root.state.myRoute.path = '/other';
-    // Manually trigger effects for the path
-    Velin.ø__internal.triggerEffects('myRoute.path', Velin.ø__internal.boundState.root);
+    
+    // Force re-process
+    Velin.processNode(root, Velin.ø__internal.boundState.root);
     
     expect(target.style.display).toBe("");
   });

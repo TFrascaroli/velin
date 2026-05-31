@@ -56,16 +56,18 @@ function setupVelinRouter(vln) {
     priority: vln.plugins.priorities.STOPPER,
     track: ({ reactiveState, subkey }) => {
       // Track the router state's path if subkey (routerKey) is provided
+      // We must access the property to trigger dependency tracking
       if (subkey && reactiveState.state[subkey]) {
         return reactiveState.state[subkey].path;
       }
       return window.location.pathname;
     },
-    render: ({ node, expr, subkey, reactiveState }) => {
-      const currentPath = subkey && reactiveState.state[subkey] 
-        ? reactiveState.state[subkey].path 
-        : window.location.pathname;
-      const pattern = expr.replace(/:([^\/]+)/g, '(?<$1>[^/]+)');
+    render: ({ node, expr, tracked }) => {
+      // 'tracked' comes from the track function
+      const currentPath = tracked || window.location.pathname;
+
+      const pathPattern = expr.replace(/^['"]|['"]$/g, '');
+      const pattern = pathPattern.replace(/:([^\/]+)/g, '(?<$1>[^/]+)');
       const regex = new RegExp(`^${pattern}$`);
       const match = currentPath.match(regex);
 

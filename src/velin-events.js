@@ -45,7 +45,7 @@ function setupVelinEvents(vln) {
     name: "evt-contain",
     track: vln.trackers.expressionTracker,
     render: ({ node, tracked, pluginState = {} }) => {
-      // Remove old listeners if any
+      // Remove old listeners
       if (pluginState.handlers) {
         for (const [evt, handler] of Object.entries(pluginState.handlers)) {
           node.removeEventListener(evt, /** @type {EventListener} */ (handler));
@@ -53,21 +53,14 @@ function setupVelinEvents(vln) {
       }
 
       const handlers = {};
-      const eventsToContain = Array.isArray(tracked) ? tracked : (tracked === true ? null : []);
+      const eventsToContain = typeof tracked === 'string' ? tracked.split(',') : [];
 
-      if (tracked === true) {
-        // If true, we can't easily catch "all" events without a lot of listeners.
-        // Usually used as a general "stop everything" marker for plugins to check,
-        // but for now, we'll assume it means common UI events if true.
-        // Actually, let's stick to explicit arrays or a specific use case.
-      } else if (Array.isArray(eventsToContain)) {
-        eventsToContain.forEach(evt => {
-          const handler = (e) => e.stopPropagation();
-          node.addEventListener(evt, handler);
-          handlers[evt] = handler;
-        });
-      }
-
+      eventsToContain.forEach(evt => {
+        const eventName = evt.trim();
+        const handler = (e) => e.stopPropagation();
+        node.addEventListener(eventName, handler, true); // true for capture
+        handlers[eventName] = handler;
+      });
       return { state: { handlers } };
     },
     destroy: ({ node, pluginState }) => {
