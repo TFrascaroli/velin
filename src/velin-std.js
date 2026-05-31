@@ -320,6 +320,31 @@ function setupVelinStd(vln) {
   });
 
   /**
+   * vln-watch:name: Monitors an expression and calls a method when it changes.
+   *
+   * @example
+   * <div vln-watch:count="logChange"></div>
+   *
+   * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/directives.md#vln-watch|Directives Guide: vln-watch}
+   */
+  vln.plugins.registerPlugin({
+    name: "watch",
+    track: vln.trackers.expressionTracker,
+    render: ({ reactiveState, tracked, subkey }) => {
+      if (!subkey) {
+        console.warn("[VLN007] Expected method name 'watch:methodName'");
+        return;
+      }
+      const handler = reactiveState.state[subkey];
+      if (typeof handler === "function") {
+        handler(tracked);
+      } else {
+        console.warn(`[VLN008] Watch handler '${subkey}' not found or not a function`);
+      }
+    },
+  });
+
+  /**
    * vln-loop:varName: Repeats element for each item in array.
    * Creates scoped variable for each iteration. Automatically provides $index.
    *
