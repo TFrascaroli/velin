@@ -451,51 +451,9 @@ If templates aren't working:
 
 ## See Also
 
-- **[API Reference: Danger Zone](./api-reference.md#danger-zone)** - Understanding state composition and cleanup
+- **[API Reference: Low-Level APIs](./api-reference.md#low-level-apis)** - Understanding state composition and cleanup
 - **[Creating Plugins](./plugins.md)** - How `vln-fragment` works internally
 - **[Directives Guide](./directives.md)** - Other directives to use with templates
 - **[Getting Started](./getting-started.md)** - Basic concepts before using templates
 - **[Documentation Hub](./README.md)** - Navigate all Velin documentation
 
-
-## Debugging
-
-If templates aren't working:
-
-1. **Check template exists:**
-   ```javascript
-   console.log(document.getElementById('myTemplate'));
-   ```
-
-2. **Check for typos in fragment name:**
-   ```html
-   <!-- Make sure the ID matches -->
-   <template id="userCard">...</template>
-   <div vln-fragment="'userCard'"><!-- Not 'usercard' --></div>
-   ```
-
-3. **Verify all variables are provided:**
-   Look for `[VLN009]` errors in console
-
-4. **Check quotes in expressions:**
-   ```html
-   <!-- Correct: quotes inside attribute value -->
-   <div vln-fragment="'userCard'"></div>
-
-   <!-- Wrong: no quotes -->
-   <div vln-fragment="userCard"></div>
-   ```
-
-5. **Use browser DevTools:**
-   Inspect the element to see if content was rendered
-
-
----
-
-## See Also
-
-- **[API Reference: Danger Zone](./api-reference.md#danger-zone)** - Understanding state composition and cleanup
-- **[Creating Plugins](./plugins.md)** - How `vln-fragment` works internally
-- **[Directives Guide](./directives.md)** - Other directives to use with templates
-- **[Getting Started](./getting-started.md)** - Basic concepts before using templates
-- **[Documentation Hub](./README.md)** - Navigate all Velin documentation

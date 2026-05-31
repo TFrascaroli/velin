@@ -1280,41 +1280,10 @@ function setupState(obj) {
 
 /**
  * Creates a child reactive state with scoped variables (interpolations).
- *
- * This is a "Danger Zone" API used by structure-altering plugins like vln-loop
- * and vln-fragment to create isolated scopes with their own variables while
- * still accessing the parent state.
- *
- * **How it works:**
- * - Child state inherits parent's reactive proxy
- * - Interpolations map variable names to property paths in parent state
- * - When child accesses interpolated variable, it resolves to parent property
- * - Child tracks its own bindings for cleanup
- *
+ * @param {ReactiveState} reactiveState
+ * @param {ImmutableMap<string, Interpolation>} interpolations
+ * @returns {ReactiveState}
  * @type {ComposeState}
- *
- * @example
- * // Used in vln-loop to create scoped 'item' and '$index' variables
- * for (let i = 0; i < tracked.length; i++) {
- *   const interpolations = new Map();
- *   interpolations.set('item', `todos[${i}]`);  // 'item' resolves to todos[0], todos[1], etc.
- *   interpolations.set('$index', `${i}`);       // '$index' resolves to 0, 1, 2, etc.
- *
- *   const substate = Velin.composeState(reactiveState, interpolations);
- *   Velin.processNode(clone, substate); // Process with scoped state
- * }
- *
- * @example
- * // Used in vln-fragment for template variables
- * const interpolations = new Map([
- *   ['user', 'currentUser'],      // Template's 'user' maps to state's 'currentUser'
- *   ['onSave', 'handleSave']      // Template's 'onSave' maps to state's 'handleSave'
- * ]);
- * const innerState = Velin.composeState(reactiveState, interpolations);
- *
- * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/api-reference.md#velincomposestate|API Reference}
- * @see {@link cleanupState} for cleanup when scope is no longer needed
- * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/plugins.md|Creating Plugins Guide}
  */
 function composeState(reactiveState, interpolations) {
   /** @type {[string, Interpolation][]} */

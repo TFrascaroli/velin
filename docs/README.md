@@ -41,12 +41,12 @@ Velin's documentation is organized into several key sections:
 → [API Reference: TypeScript Support](./api-reference.md#typescript-support) + `dist/types/` directory
 
 #### "I want to understand how Velin works internally"
-→ [Getting Started: How Velin Works](./getting-started.md#how-velin-works) + [API Reference: Danger Zone](./api-reference.md#danger-zone)
+→ [Getting Started: Reactivity Explained](./getting-started.md#reactivity-explained) + [API Reference: Low-Level APIs](./api-reference.md#low-level-apis)
 
 ## Core Concepts
 
 ### Reactivity
-Velin uses JavaScript Proxy to track property access and automatically update the DOM. Read about it in [Getting Started: Reactive State](./getting-started.md#reactive-state).
+Velin uses JavaScript Proxy to track property access and update the DOM. Read about it in [Getting Started: Reactive State](./getting-started.md#reactive-state).
 
 ### Directives
 HTML attributes prefixed with `vln-` that add reactive behavior. See [Directives Guide](./directives.md) for the complete list.
@@ -55,7 +55,7 @@ HTML attributes prefixed with `vln-` that add reactive behavior. See [Directives
 Velin's extension system for creating custom directives. Learn in [Creating Plugins](./plugins.md).
 
 ### State Composition
-Child states that inherit from parent states with scoped variables. Used by `vln-loop` and `vln-fragment`. See [API Reference: Danger Zone](./api-reference.md#danger-zone).
+Child states that inherit from parent states with scoped variables. Used by `vln-loop` and `vln-fragment`. See [API Reference: Low-Level APIs](./api-reference.md#low-level-apis).
 
 ## File Organization
 
