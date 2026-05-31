@@ -1,6 +1,6 @@
 {
   "name": "velin",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "main": "dist/build/velin-all.min.js",
   "types": "dist/types/velin-all.d.ts",
   "exports": {
@@ -10,7 +10,7 @@
     }
   },
   "files": [
-    "dist/"
+    "publish/"
   ],
   "scripts": {
     "build:angular": "cd benchmarks/angular && npm run build",
@@ -21,7 +21,8 @@
     "serve:dev": "npm run build && npm run prepare -- --dev && node scripts/serve.js",
     "serve:benchmarks": "npm run prepare:benchmarks && npm run serve",
     "build": "node scripts/build.js && tsc -p tsconfig.json",
-    "test": "npx vitest run"
+    "test": "npx vitest run",
+    "prepare:publish": "node scripts/prepare-publish.js"
   },
   "devDependencies": {
     "autoprefixer": "^10.4.21",
