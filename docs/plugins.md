@@ -412,9 +412,7 @@ Velin.plugins.registerPlugin({
 ```javascript
 {
   destroy: ({ pluginState }) => {
-    // Remove event listeners
-    // Clear timeouts/intervals
-    // Cancel pending requests
+    // Remove event listeners, timers, etc.
   }
 }
 ```
@@ -423,9 +421,9 @@ Velin.plugins.registerPlugin({
 
 ```javascript
 {
-  priority: Velin.plugins.priorities.STOPPER  // For structural directives (if, for)
-  priority: Velin.plugins.priorities.OVERRIDABLE  // For most directives
-  priority: Velin.plugins.priorities.LATE  // For directives that should run last
+  priority: Velin.plugins.priorities.STOPPER,     // Structural directives
+  priority: Velin.plugins.priorities.OVERRIDABLE, // Most directives
+  priority: Velin.plugins.priorities.LATE         // Run last
 }
 ```
 
@@ -451,88 +449,51 @@ render: ({ pluginState = {} }) => {
 
 ```javascript
 render: ({ node, tracked }) => {
-  if (!(node instanceof HTMLElement)) {
-    console.warn('Plugin requires HTMLElement');
-    return;
-  }
-
+  if (!(node instanceof HTMLElement)) return;
   // ... rest of logic
 }
 ```
 
-## Complete Plugin Example
-
-Here's a complete, production-ready plugin with all features:
+## Plugin Example: Auto-size Textarea
 
 ```javascript
 Velin.plugins.registerPlugin({
   name: 'autosize',
   priority: Velin.plugins.priorities.OVERRIDABLE,
 
-  track: ({ reactiveState, expr }) => {
-    return Velin.evaluate(reactiveState, expr);
-  },
-
   destroy: ({ node, pluginState }) => {
-    if (pluginState.observer) {
-      pluginState.observer.disconnect();
-    }
     if (pluginState.handler) {
       node.removeEventListener('input', pluginState.handler);
     }
   },
 
   render: ({ node, tracked, pluginState = {} }) => {
-    if (!(node instanceof HTMLTextAreaElement)) {
-      console.warn('[vln-autosize] Only works on <textarea> elements');
-      return;
-    }
+    if (!(node instanceof HTMLTextAreaElement)) return;
 
-    // Set initial value
     if (tracked !== undefined && node.value !== tracked) {
       node.value = tracked;
     }
 
-    // Auto-resize function
     const resize = () => {
       node.style.height = 'auto';
       node.style.height = node.scrollHeight + 'px';
     };
 
-    // Initial resize
-    resize();
-
-    // Setup input listener (first time only)
     if (!pluginState.initialized) {
       const handler = () => resize();
       node.addEventListener('input', handler);
-
-      // Also observe for external changes
-      const observer = new MutationObserver(resize);
-      observer.observe(node, {
-        attributes: true,
-        attributeFilter: ['value']
-      });
-
-      return {
-        state: {
-          initialized: true,
-          handler,
-          observer
-        }
-      };
+      resize();
+      return { state: { initialized: true, handler } };
     }
 
-    // Subsequent renders: just resize
     resize();
-    return { state: pluginState };
   }
 });
 ```
 
 Usage:
 ```html
-<textarea vln-autosize="message" placeholder="Type something..."></textarea>
+<textarea vln-autosize="message"></textarea>
 ```
 
 

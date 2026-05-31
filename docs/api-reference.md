@@ -369,9 +369,9 @@ Array.from(clone.childNodes).forEach(child => {
 
 ---
 
-## Danger Zone
+## Low-Level APIs
 
-For structure-altering plugins like `vln-loop` or `vln-fragment` that create scoped child states. These APIs manage the parent-child state hierarchy and are critical for preventing memory leaks.
+For structure-altering plugins like `vln-loop` or `vln-fragment` that create scoped child states. These APIs manage the parent-child state hierarchy.
 
 ### `Velin.composeState(reactiveState, interpolations)`
 
@@ -380,160 +380,45 @@ Creates a child reactive state that inherits from a parent state but adds new sc
 **Parameters:**
 - `reactiveState` (ReactiveState): Parent reactive state to inherit from
 - `interpolations` (Map<string, string>): Map of variable names to expressions
-  - Key: variable name (e.g., `'item'`, `'$index'`)
-  - Value: expression in parent scope (e.g., `'items[0]'`, `'0'`)
 
 **Returns:** New child reactive state with combined scope
 
 **How it works:**
 1. Creates a new reactive state that links to the parent
 2. Adds interpolation mappings so expressions can access scoped variables
-3. Tracks the parent-child relationship for cleanup
-4. Child can access both its interpolations and parent's state
+3. Child can access both its interpolations and parent's state
 
-**Real example from `vln-loop` plugin:**
+**Usage:**
 ```javascript
-// For each item in the array
-for (let i = 0; i < tracked.length; i++) {
-  const clone = template.cloneNode(true);
-
-  // Create scoped state with 'item' and '$index' variables
-  const interpolations = new Map();
-  interpolations.set(subkey, `${expr}[${i}]`);     // item = todos[0]
-  interpolations.set('$index', `${i}`);             // $index = 0
-
-  const substate = Velin.composeState(reactiveState, interpolations);
-
-  // Now expressions in this scope can use 'item' and '$index'
-  placeholder.parentNode.insertBefore(clone, lastInserted.nextSibling);
-  Velin.processNode(clone, substate);
-}
-```
-
-When you write:
-```html
-<li vln-loop:todo="todos">
-  <span vln-text="todo.text"></span>
-  <span vln-text="$index + 1"></span>
-</li>
-```
-
-Each `<li>` gets its own substate where:
-- `todo` maps to `todos[0]`, `todos[1]`, etc.
-- `$index` maps to `'0'`, `'1'`, etc.
-
-**Real example from `vln-fragment` plugin:**
-```javascript
-// Build interpolations from vln-var:* attributes
+// Create scoped state with 'item' and '$index' variables
 const interpolations = new Map();
-for (const [varName, varExpr] of Object.entries(tracked.varValues)) {
-  interpolations.set(varName, varExpr);
-}
+interpolations.set(subkey, `${expr}[${i}]`);
+interpolations.set('$index', `${i}`);
 
-// Create scoped state for template
-const innerState = Velin.composeState(reactiveState, interpolations);
-
-// Process template with scoped variables
-Array.from(clone.childNodes).forEach(child => {
-  node.appendChild(child);
-  Velin.processNode(child, innerState);
-});
+const substate = Velin.composeState(reactiveState, interpolations);
 ```
 
-### `Velin.cleanupState(parentState, innerState)`
+### `Velin.cleanupState(parentState, innerState, node)`
 
-Cleans up a child reactive state, removing all reactive bindings, calling finalizers, and breaking the parent-child link. **Critical for preventing memory leaks** when removing elements.
+Cleans up a child reactive state, removing all reactive bindings and calling finalizers. **Crucial for preventing memory leaks** when removing elements.
 
 **Parameters:**
 - `parentState` (ReactiveState): Parent reactive state
 - `innerState` (ReactiveState): Child state to clean up
+- `node` (Node): The DOM element associated with this state (triggers `destroy` event)
 
 **Returns:** void
 
 **What it cleans:**
 1. Clears all interpolation mappings
-2. Removes all dependency bindings (so property changes stop triggering re-renders)
-3. Calls all registered finalizers (cleanup functions)
+2. Removes all dependency bindings
+3. Calls all registered finalizers
 4. Recursively cleans up any nested child states
-5. Removes the child from parent's tracking
 
-**Real example from `vln-loop` destroy hook:**
+**Usage:**
 ```javascript
-destroy: ({ pluginState, reactiveState }) => {
-  const parent = pluginState?.placeholder?.parentNode;
-  if (parent && pluginState) {
-    // Clean up all child states
-    if (pluginState.substates) {
-      pluginState.substates.forEach((substate) => {
-        if (substate) {
-          Velin.cleanupState(reactiveState, substate);
-        }
-      });
-    }
-
-    // Remove DOM nodes
-    if (pluginState.children) {
-      pluginState.children.forEach((child) => parent.removeChild(child));
-    }
-  }
-}
+Velin.cleanupState(reactiveState, pluginState.innerState, node);
 ```
-
-**Real example from `vln-fragment` destroy hook:**
-```javascript
-destroy: ({ node, pluginState, reactiveState }) => {
-  // Clean up inner state
-  if (pluginState?.innerState) {
-    Velin.cleanupState(reactiveState, pluginState.innerState);
-  }
-}
-```
-
-**Why it matters:** Without proper cleanup, removed elements would continue to hold references to reactive state, causing memory leaks and potentially triggering re-renders on elements that no longer exist in the DOM.
-
-### `Velin.plugins.processPlugin(plugin, reactiveState, expr, node, attributeName, subkey)`
-
-Manually runs a plugin on a node. This is rarely needed, but can be useful for plugins that delegate to other plugins.
-
-**Parameters:**
-- `plugin` (Object): Plugin definition (from `Velin.plugins.get()`)
-- `reactiveState` (ReactiveState): Reactive state object
-- `expr` (string): Expression to evaluate
-- `node` (Node): DOM node
-- `attributeName` (string): Full attribute name (e.g., `'vln-text'`)
-- `subkey` (string, optional): Subkey from attribute (e.g., `'click'` from `'vln-on:click'`)
-
-**Returns:** void
-
-**Real example - delegating between plugins:**
-```javascript
-// The 'vln-use' plugin is just an alias that delegates to 'vln-fragment'
-Velin.plugins.registerPlugin({
-  name: 'use',
-  destroy: ({ node, pluginState, reactiveState, subkey }) => {
-    const fragmentPlugin = Velin.plugins.get('fragment');
-    if (fragmentPlugin?.destroy) {
-      fragmentPlugin.destroy({ node, pluginState, reactiveState, subkey });
-    }
-  },
-  render: (args) => {
-    const fragmentPlugin = Velin.plugins.get('fragment');
-    return fragmentPlugin.render(args);
-  }
-});
-```
-
-### `Velin.ø__internal`
-
-Object containing internal state and utilities.
-
-**Properties:**
-- `pluginStates` (WeakMap): Plugin state storage
-- `boundState` (Object): Contains the root reactive state
-- `consumeAttribute` (Function): Marks an attribute as processed
-- `triggerEffects` (Function): Manually triggers reactive updates
-
-**Warning:** These APIs are subject to change. Use at your own risk.
 
 ---
 
@@ -547,18 +432,19 @@ Velin uses error codes in console messages:
 - `[VLN004]`: No event handler found
 - `[VLN005]`: No event name specified for `vln-on`
 - `[VLN006]`: Target is not a valid input element
-- `[VLN007]`: (Reserved)
 - `[VLN008]`: Template name not provided
 - `[VLN009]`: Missing required template parameters
 - `[VLN010]`: Attempted to set value during evaluation (use `Velin.getSetter`)
+- `[VLN013]`: Duplicate plugin application
+- `[VLN014]`: Async mutation attempted after cleanup
 
 ## TypeScript Support
 
-Velin includes comprehensive TypeScript definitions for type-safe reactive applications.
+Velin is written in plain JavaScript but provides comprehensive TypeScript definitions for autocomplete and type safety.
 
 ### Basic Usage
 
-Type your state object for full autocomplete and type checking:
+Type your state object for full autocomplete:
 
 ```typescript
 import Velin from 'velin';
@@ -566,149 +452,15 @@ import Velin from 'velin';
 interface AppState {
   count: number;
   name: string;
-  todos: Array<{ id: number; text: string; done: boolean }>;
 }
 
 const vln = Velin.bind<AppState>(root, {
   count: 0,
-  name: 'Alice',
-  todos: []
-});
-
-// TypeScript knows the types
-vln.count++;           // number
-vln.name.toUpperCase(); // string
-vln.todos.push({ id: 1, text: 'Task', done: false });
-```
-
-### Typing Methods and Getters
-
-Methods and computed properties work naturally:
-
-```typescript
-interface CounterState {
-  count: number;
-  increment(): void;
-  decrement(): void;
-  readonly displayValue: string;
-}
-
-const vln = Velin.bind<CounterState>(root, {
-  count: 0,
-
-  increment() {
-    this.count++;
-  },
-
-  decrement() {
-    this.count--;
-  },
-
-  get displayValue() {
-    return `Count: ${this.count}`;
-  }
-});
-
-vln.increment(); // Type-safe method call
-```
-
-### Typing Custom Plugins
-
-Create type-safe custom plugins:
-
-```typescript
-import { VelinPlugin } from 'velin';
-
-const uppercasePlugin: VelinPlugin = {
-  name: 'uppercase',
-  track: Velin.trackers.expressionTracker,
-  render: ({ node, tracked }) => {
-    if (node instanceof HTMLElement) {
-      node.textContent = String(tracked).toUpperCase();
-    }
-  }
-};
-
-Velin.plugins.registerPlugin(uppercasePlugin);
-```
-
-### Advanced: Plugin Render Arguments
-
-For more control, type the render function arguments:
-
-```typescript
-import type { PluginRenderArgs, PluginRenderResult } from 'velin';
-
-Velin.plugins.registerPlugin({
-  name: 'myPlugin',
-  render: (args: PluginRenderArgs): PluginRenderResult => {
-    const { node, tracked, reactiveState, pluginState } = args;
-
-    // Full type checking on all arguments
-    if (node instanceof HTMLElement) {
-      node.textContent = String(tracked);
-    }
-
-    return { state: { initialized: true } };
-  }
-});
-```
-
-### Working with ReactiveState
-
-When using advanced APIs, type the reactive state:
-
-```typescript
-import type { ReactiveState } from 'velin';
-
-function myCustomTracker(reactiveState: ReactiveState, expr: string) {
-  const result = Velin.evaluate(reactiveState, expr);
-  // reactiveState is fully typed
-  return result;
-}
-```
-
-### Type Definitions Location
-
-All type definitions are available in `dist/types/velin-core.d.ts`:
-
-- `VelinCore` - Main Velin object interface
-- `ReactiveState` - Internal reactive state structure
-- `VelinPlugin` - Plugin definition interface
-- `PluginRenderArgs` - Arguments passed to plugin render functions
-- `PluginRenderResult` - Return type for plugin render functions
-- `Trackers` - Type for tracker helper functions
-
-### Tips
-
-**Strict mode:** Enable `strict: true` in `tsconfig.json` for maximum type safety.
-
-**Type inference:** In most cases, TypeScript can infer types from your state object:
-
-```typescript
-// Types are inferred automatically
-const vln = Velin.bind(root, {
-  count: 0,        // inferred as number
-  name: 'Alice',   // inferred as string
-  items: [] as Array<{ id: number; name: string }>  // explicit array type
-});
-```
-
-**JSDoc for vanilla JS:** If you're not using TypeScript, you can still get type hints with JSDoc:
-
-```javascript
-/**
- * @typedef {Object} AppState
- * @property {number} count
- * @property {string} name
- */
-
-/** @type {AppState} */
-const vln = Velin.bind(root, {
-  count: 0,
   name: 'Alice'
 });
 ```
+
+All type definitions are available in `dist/types/velin-core.d.ts`.
 
 
 ---
