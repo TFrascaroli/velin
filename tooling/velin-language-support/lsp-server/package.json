@@ -1,0 +1,24 @@
+{
+  "name": "@velin/lsp-server",
+  "version": "0.1.0",
+  "description": "Language Server Protocol server for Velin HTML directives",
+  "main": "dist/server.js",
+  "bin": {
+    "velin-lsp": "dist/server.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "@velin/shared": "*",
+    "vscode-languageserver": "^9.0.1",
+    "vscode-languageserver-textdocument": "^1.0.11",
+    "vscode-uri": "^3.0.8",
+    "typescript": "^5.8.3"
+  },
+  "devDependencies": {
+    "@types/node": "^18.0.0"
+  }
+}

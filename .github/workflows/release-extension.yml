@@ -1,0 +1,48 @@
+# VS Code Extension Release Workflow
+name: Release Extension
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        
+    - name: Install dependencies
+      run: |
+        cd tooling/velin-language-support
+        npm ci
+        
+    - name: Build extension
+      run: |
+        cd tooling/velin-language-support
+        npm run build
+        npm run package:vscode
+        
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: tooling/velin-language-support/vscode-extension/*.vsix
+        body: |
+          ## Velin Language Support v${{ github.ref_name }}
+          
+          ### Installation
+          1. Download the .vsix file
+          2. In VS Code: Command Palette > "Extensions: Install from VSIX"
+          3. Select the downloaded file
+          
+          ### Features
+          - IntelliSense for Velin directives
+          - TypeScript-aware completions
+          - Syntax highlighting for expressions
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

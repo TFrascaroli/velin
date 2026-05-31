@@ -1,0 +1,99 @@
+{
+  "name": "velin-language-support",
+  "displayName": "Velin Language Support",
+  "description": "Language Server Protocol support for Velin HTML directives with TypeScript IntelliSense",
+  "version": "0.1.0",
+  "publisher": "velin-framework",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TFrascaroli/velin"
+  },
+  "bugs": {
+    "url": "https://github.com/TFrascaroli/velin/issues"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Other"
+  ],
+  "keywords": [
+    "velin",
+    "html",
+    "reactive",
+    "javascript",
+    "typescript"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "html-velin",
+        "aliases": ["HTML with Velin", "html-velin"],
+        "extensions": [".html"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "html-velin",
+        "scopeName": "text.html.velin",
+        "path": "./syntaxes/html-velin.tmLanguage.json",
+        "embeddedLanguages": {
+          "source.js": "javascript",
+          "source.ts": "typescript"
+        }
+      }
+    ],
+    "configurationDefaults": {
+      "editor.language.brackets": [
+        ["{", "}"],
+        ["[", "]"],
+        ["(", ")"]
+      ]
+    },
+    "configuration": {
+      "type": "object",
+      "title": "Velin Language Support",
+      "properties": {
+        "velin.enable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Velin language support"
+        },
+        "velin.trace.server": {
+          "type": "string",
+          "enum": ["off", "messages", "verbose"],
+          "default": "off",
+          "description": "Trace level for the language server"
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "velin.restartServer",
+        "title": "Restart Velin Language Server"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "tsc -p ./",
+    "dev": "tsc -watch -p ./",
+    "package": "vsce package",
+    "publish": "vsce publish",
+    "pretest": "npm run build",
+    "test": "node ./dist/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.90.0",
+    "@types/node": "^18.0.0",
+    "typescript": "^5.8.3",
+    "@vscode/vsce": "^3.1.1"
+  },
+  "dependencies": {
+    "@velin/lsp-server": "*",
+    "vscode-languageclient": "^9.0.1"
+  }
+}

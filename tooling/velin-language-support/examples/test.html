@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Velin Language Support Example</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 2rem; }
+        .user-card { border: 1px solid #ccc; padding: 1rem; margin: 1rem 0; border-radius: 8px; }
+        .loading { color: #666; font-style: italic; }
+        .error { color: red; padding: 0.5rem; background: #fee; border-radius: 4px; }
+        button { padding: 0.5rem 1rem; margin: 0.25rem; cursor: pointer; }
+        input { padding: 0.5rem; margin: 0.25rem; border: 1px solid #ccc; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <!-- @velin-schema: ./examples/UserState.ts#UserStateInterface -->
+    <div id="app">
+        <h1>User Management</h1>
+        
+        <!-- Loading state -->
+        <div vln-if="isLoading" class="loading">
+            Loading users...
+        </div>
+
+        <!-- Error display -->
+        <div vln-if="error" class="error">
+            <span vln-text="error"></span>
+            <button vln-on:click="clearError()">Dismiss</button>
+        </div>
+
+        <!-- Current user display -->
+        <div class="user-card" vln-if="user">
+            <h2>Current User</h2>
+            <p><strong>Name:</strong> <span vln-text="user.name"></span></p>
+            <p><strong>Email:</strong> <span vln-text="user.email"></span></p>
+            <p><strong>Status:</strong> <span vln-text="user.isActive ? 'Active' : 'Inactive'"></span></p>
+            
+            <!-- User profile -->
+            <div vln-if="user.profile">
+                <h3>Profile</h3>
+                <img vln-attr:src="user.profile.avatar" vln-attr:alt="user.name + ' avatar'" style="width: 50px; height: 50px; border-radius: 50%;">
+                <p vln-text="user.profile.bio"></p>
+                
+                <!-- Preferences -->
+                <div class="preferences">
+                    <h4>Preferences</h4>
+                    <label>
+                        Theme:
+                        <select vln-input="user.profile.preferences.theme">
+                            <option value="light">Light</option>
+                            <option value="dark">Dark</option>
+                        </select>
+                    </label>
+                    <label>
+                        <input type="checkbox" vln-input="user.profile.preferences.notifications">
+                        Enable notifications
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- User editing form -->
+        <div class="user-card">
+            <h3>Edit User</h3>
+            <input vln-input="user.name" placeholder="Name" />
+            <input vln-input="user.email" type="email" placeholder="Email" />
+            <label>
+                <input type="checkbox" vln-input="user.isActive" />
+                Active user
+            </label>
+            <button vln-on:click="updateUser({ name: user.name, email: user.email })">
+                Update User
+            </button>
+        </div>
+
+        <!-- Users list -->
+        <div class="user-card">
+            <h3>All Users (<span vln-text="getUserCount()"></span>)</h3>
+            
+            <div vln-loop:u="users" class="user-item" style="margin: 0.5rem 0; padding: 0.5rem; background: #f9f9f9;">
+                <strong vln-text="u.name"></strong> 
+                (<span vln-text="u.email"></span>)
+                <button vln-on:click="setCurrentUser(u.id)" vln-class="currentUserId === u.id ? 'active' : ''">
+                    Select
+                </button>
+                <button vln-on:click="removeUser(u.id)">Remove</button>
+            </div>
+
+            <!-- Add new user -->
+            <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #ccc;">
+                <h4>Add New User</h4>
+                <input id="newUserName" placeholder="Name" />
+                <input id="newUserEmail" placeholder="Email" />
+                <button vln-on:click="addUser({ name: document.getElementById('newUserName').value, email: document.getElementById('newUserEmail').value })">
+                    Add User
+                </button>
+            </div>
+        </div>
+
+        <!-- Current user indicator -->
+        <div vln-if="getCurrentUser()" class="user-card">
+            <h3>Currently Selected</h3>
+            <p vln-text="'You have selected: ' + getCurrentUser().name"></p>
+        </div>
+    </div>
+
+    <!-- Try typing in the expressions above to test autocompletion:
+    
+    When you type "user." you should see:
+    - name (string)
+    - email (string)  
+    - isActive (boolean)
+    - profile (object)
+    
+    When you type "user.profile." you should see:
+    - avatar (string)
+    - bio (string)
+    - preferences (object)
+    
+    When you type method names, you should see:
+    - updateUser() 
+    - addUser()
+    - removeUser()
+    - setCurrentUser()
+    - clearError()
+    - getCurrentUser()
+    - getUserCount()
+    
+    -->
+
+    <script src="https://unpkg.com/velin/dist/build/velin-all.min.js"></script>
+    <script>
+        // This would normally be your actual state implementation
+        const userState = {
+            user: {
+                name: 'Alice Johnson',
+                email: 'alice@example.com',
+                isActive: true,
+                profile: {
+                    avatar: 'https://via.placeholder.com/50',
+                    bio: 'Software developer with a passion for reactive UIs',
+                    preferences: {
+                        theme: 'light',
+                        notifications: true
+                    }
+                }
+            },
+            users: [
+                { id: '1', name: 'Alice Johnson', email: 'alice@example.com' },
+                { id: '2', name: 'Bob Smith', email: 'bob@example.com' },
+                { id: '3', name: 'Carol Brown', email: 'carol@example.com' }
+            ],
+            currentUserId: '1',
+            isLoading: false,
+            error: null,
+
+            updateUser(updates) {
+                Object.assign(this.user, updates);
+            },
+            
+            addUser(user) {
+                const id = Date.now().toString();
+                this.users.push({ ...user, id });
+            },
+            
+            removeUser(id) {
+                this.users = this.users.filter(u => u.id !== id);
+                if (this.currentUserId === id) {
+                    this.currentUserId = null;
+                }
+            },
+            
+            setCurrentUser(id) {
+                this.currentUserId = id;
+            },
+            
+            clearError() {
+                this.error = null;
+            },
+            
+            getCurrentUser() {
+                return this.users.find(u => u.id === this.currentUserId) || null;
+            },
+            
+            getUserCount() {
+                return this.users.length;
+            }
+        };
+
+        // Bind the state to the DOM
+        const vln = Velin.bind(document.getElementById('app'), userState);
+    </script>
+</body>
+</html>

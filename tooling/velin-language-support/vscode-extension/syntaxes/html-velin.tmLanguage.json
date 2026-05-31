@@ -1,0 +1,90 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "HTML with Velin",
+  "scopeName": "text.html.velin",
+  "patterns": [
+    {
+      "include": "text.html.basic"
+    },
+    {
+      "include": "#velin-directives"
+    },
+    {
+      "include": "#velin-schema-comments"
+    }
+  ],
+  "repository": {
+    "velin-directives": {
+      "patterns": [
+        {
+          "name": "meta.attribute.velin",
+          "begin": "\\b(vln-(?:text|input|if|class|attr|on|loop|use|fragment)(?::[\\w-]+)?)\\s*(=)\\s*([\"'])",
+          "beginCaptures": {
+            "1": {
+              "name": "entity.other.attribute-name.velin"
+            },
+            "2": {
+              "name": "punctuation.separator.key-value.html"
+            },
+            "3": {
+              "name": "punctuation.definition.string.begin.html"
+            }
+          },
+          "end": "\\3",
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.string.end.html"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#velin-expression"
+            }
+          ]
+        }
+      ]
+    },
+    "velin-expression": {
+      "patterns": [
+        {
+          "name": "source.js.embedded.velin",
+          "match": ".*",
+          "captures": {
+            "0": {
+              "patterns": [
+                {
+                  "include": "source.js#expression"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "velin-schema-comments": {
+      "patterns": [
+        {
+          "name": "comment.block.velin-schema",
+          "begin": "<!--\\s*@velin-schema:",
+          "end": "-->",
+          "captures": {
+            "0": {
+              "name": "punctuation.definition.comment.html"
+            }
+          },
+          "patterns": [
+            {
+              "name": "string.unquoted.velin-schema",
+              "match": "\\s*(.+?)\\s*",
+              "captures": {
+                "1": {
+                  "name": "entity.name.type.velin-schema"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

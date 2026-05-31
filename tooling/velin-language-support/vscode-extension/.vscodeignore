@@ -1,0 +1,22 @@
+# Build outputs and development files
+src/
+tsconfig.json
+*.tsbuildinfo
+.vscode/
+node_modules/
+
+# Parent directory files
+../package.json
+../package-lock.json
+../node_modules/
+../README.md
+../build.sh
+../.gitignore
+../lsp-server/
+../shared/
+../examples/
+
+# Test files
+test/
+**/*.test.*
+**/*.spec.*
