@@ -67,10 +67,10 @@ function setupTemplatesAndFragments(vln) {
       return { templateId, varValues };
     },
 
-    destroy: ({ pluginState, reactiveState }) => {
+    destroy: ({ node, pluginState, reactiveState }) => {
       // Cleanup inner state
       if (pluginState?.innerState) {
-        vln.cleanupState(reactiveState, pluginState.innerState);
+        vln.cleanupState(reactiveState, pluginState.innerState, node);
       }
     },
 
@@ -117,7 +117,7 @@ function setupTemplatesAndFragments(vln) {
 
       // Template changed - cleanup and rebuild
       if (pluginState?.innerState) {
-        vln.cleanupState(reactiveState, pluginState.innerState);
+        vln.cleanupState(reactiveState, pluginState.innerState, node);
       }
       node.innerHTML = "";
 

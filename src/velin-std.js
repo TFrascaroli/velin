@@ -359,9 +359,9 @@ function setupVelinStd(vln) {
       const parent = pluginState?.placeholder?.parentNode;
       if (parent && pluginState) {
         if (pluginState.substates) {
-          pluginState.substates.forEach((sub) => {
+          pluginState.substates.forEach((sub, i) => {
             if (sub) {
-              vln.cleanupState(reactiveState, sub);
+              vln.cleanupState(reactiveState, sub, pluginState.children[i]);
             }
           });
         }
@@ -471,8 +471,9 @@ function setupVelinStd(vln) {
       };
 
       for (let i = tracked.length; i < oldChildren.length; i++) {
-        oldChildren[i].remove?.();
-        vln.cleanupState(reactiveState, oldSubstates[i]);
+        const childNode = oldChildren[i];
+        childNode.remove?.();
+        vln.cleanupState(reactiveState, oldSubstates[i], childNode);
       }
 
       pluginState.children = newChildren;

@@ -207,7 +207,7 @@ const DefaultPluginPriorities = {
 /** @typedef {(node: HTMLElement, attr: string, expr: string) => void} ConsumeAttribute */
 
 /** @typedef {(reactiveState: ReactiveState, interpolations: Map<string, Interpolation>) => ReactiveState} ComposeState */
-/** @typedef {(parentState: ReactiveState, innerState: ReactiveState) => void} CleanupState */
+/** @typedef {(parentState: ReactiveState, innerState: ReactiveState, node?: Node | null) => void} CleanupState */
 /** @typedef {<T extends object>(root?: Element | DocumentFragment, initialState?: T) => T} Bind */
 
 /** @typedef {(args: { reactiveState: ReactiveState, expr: string, compiledExpression: ASTNode }) => any} ExpressionTracker */
@@ -1034,14 +1034,12 @@ function evaluateAst(ast, reactiveState) {
       return Reflect.get(target, prop, receiver);
     },
     set(target, prop, value, receiver) {
-      // TODO: This optional chaining is a hack to prevent crashes when async functions
-      // mutate state after their evaluation context has been cleaned up (e.g., event handlers
-      // with async operations). We should instead:
-      // 1. Detect null ø__control and throw a helpful error explaining the async issue
-      // 2. Add explicit async support via vln-on:event|async modifier
-      // 3. Await async results before cleanup OR use different cleanup strategy
-      // For now, this silently allows mutations that should probably be flagged.
-      if (reactiveState.ø__control?.evaluating)
+      if (!reactiveState.ø__control) {
+        throw new Error(
+          `[VLN014] Async mutation error: Property '${String(prop)}' was mutated after the evaluation context was cleaned up. This usually happens when an async operation in an event handler (or similar) tries to update state after the element has been removed or the scope destroyed.`
+        );
+      }
+      if (reactiveState.ø__control.evaluating)
         throw new Error(
           "[VLN010] Setting values during evaluation is forbidden. Use Velin.getSetter"
         );
@@ -1081,6 +1079,11 @@ function evaluateAst(ast, reactiveState) {
  * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/getting-started.md#expressions-are-javascript|Getting Started: Expressions}
  */
 function evaluate(reactiveState, expr, allowMutations = false) {
+  if (!reactiveState.ø__control) {
+    throw new Error(
+      `[VLN014] Async mutation error: Expression "${expr}" evaluation was attempted after the state was cleaned up.`
+    );
+  }
   reactiveState.ø__control.evaluating = !allowMutations;
   try {
     const ast = compile(expr);
@@ -1091,7 +1094,9 @@ function evaluate(reactiveState, expr, allowMutations = false) {
     );
     throw err;
   } finally {
-    reactiveState.ø__control.evaluating = false;
+    if (reactiveState.ø__control) {
+      reactiveState.ø__control.evaluating = false;
+    }
   }
 }
 
@@ -1413,14 +1418,19 @@ function composeState(reactiveState, interpolations) {
  * - Recursively cleans child states
  * - Removes state from parent's tracking
  *
+ * @param {ReactiveState} parentState - Parent state
+ * @param {ReactiveState} innerState - Child state to cleanup
+ * @param {Node=} node - Optional node associated with this state for lifecycle event
+ *
  * @type {CleanupState}
  *
  * @example
  * // Used in vln-loop's destroy hook
  * destroy: ({ pluginState, reactiveState }) => {
  *   if (pluginState.substates) {
- *     pluginState.substates.forEach((substate) => {
- *       Velin.cleanupState(reactiveState, substate); // Clean each loop item's state
+ *     pluginState.substates.forEach((substate, i) => {
+ *       const node = pluginState.children[i];
+ *       Velin.cleanupState(reactiveState, substate, node); // Clean each loop item's state
  *     });
  *   }
  * }
@@ -1428,23 +1438,29 @@ function composeState(reactiveState, interpolations) {
  * @example
  * // Used in vln-fragment when template changes
  * if (pluginState?.innerState) {
- *   Velin.cleanupState(reactiveState, pluginState.innerState);
+ *   Velin.cleanupState(reactiveState, pluginState.innerState, node);
  * }
  * // Now safe to create new inner state
  *
  * @example
  * // Used in vln-loop when removing items
  * for (let i = tracked.length; i < oldChildren.length; i++) {
- *   oldChildren[i].remove();
- *   Velin.cleanupState(reactiveState, oldSubstates[i]); // Prevent memory leak
+ *   const node = oldChildren[i];
+ *   node.remove();
+ *   Velin.cleanupState(reactiveState, oldSubstates[i], node); // Prevent memory leak
  * }
  *
  * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/api-reference.md#velincleanupstate|API Reference}
  * @see {@link composeState} for creating scoped states
  * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/plugins.md|Creating Plugins Guide}
  */
-function cleanupState(parentState, innerState) {
+function cleanupState(parentState, innerState, node = null) {
   if (parentState === innerState) return;
+
+  if (node) {
+    emitLifecycle(node, "destroy", { state: innerState });
+  }
+
   // Clear interpolations
   if (innerState.interpolations) {
     /** @type Map<string, any> */ (innerState.interpolations).clear();
@@ -1493,6 +1509,21 @@ function consumeAttribute(node, attr, expr) {
 }
 
 /**
+ * Emits a lifecycle event on a node.
+ * @param {Node} node
+ * @param {string} eventName
+ * @param {any} detail
+ */
+function emitLifecycle(node, eventName, detail = {}) {
+  if (node instanceof HTMLElement) {
+    node.dispatchEvent(new CustomEvent(eventName, {
+      bubbles: true,
+      detail: { ...detail, node }
+    }));
+  }
+}
+
+/**
  * Recursively processes a DOM node and its children to apply Velin plugins.
  *
  * Scans for `vln-*` attributes, applies corresponding plugins in priority order,
@@ -1532,6 +1563,8 @@ function processNode(node, reactiveState) {
 
   // List all applicable plugins
   const applicable = [];
+  const seenPlugins = new Set();
+
   for (const { name, value } of Array.from(node.attributes)) {
     if (!name.startsWith("vln-")) continue;
 
@@ -1544,12 +1577,24 @@ function processNode(node, reactiveState) {
     }
 
     if (plugins.has(pluginKey)) {
+      const plugin = plugins.get(pluginKey);
+      const uniqueKey = `${plugin.name}${subcommand ? ":" + subcommand : ""}`;
+      
+      if (seenPlugins.has(uniqueKey)) {
+        throw new Error(
+          `[VLN013] Duplicate plugin application: '${plugin.name}' ${
+            subcommand ? "with subcommand '" + subcommand + "' " : ""
+          }is applied multiple times to the same node. Each plugin/subcommand pair must be unique per element.`
+        );
+      }
+      seenPlugins.add(uniqueKey);
+
       applicable.push({
         pluginKey,
         name,
         value,
         subcommand,
-        plugin: plugins.get(pluginKey),
+        plugin,
       });
     } else {
       // Unknown plugin - add error handler with lowest priority
@@ -1581,13 +1626,18 @@ function processNode(node, reactiveState) {
   for (const { plugin, name, value, subcommand } of applicable) {
     const control = processPlugin(plugin, reactiveState, value, node, name, subcommand);
     consumeAttribute(node, name, value);
-    if (control?.halt) return;
+    if (control?.halt) {
+      emitLifecycle(node, "init", { state: reactiveState });
+      return;
+    }
   }
 
   // Process tree
   for (const child of Array.from(node.children)) {
     processNode(child, reactiveState);
   }
+
+  emitLifecycle(node, "init", { state: reactiveState });
 }
 
 
