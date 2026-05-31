@@ -16,6 +16,20 @@ describe("Velin Public API", () => {
     Velin.processNode(node, Velin.ø__internal.boundState.root!);
     expect(mock.render).toHaveBeenCalled();
   });
+
+  it("should provide helpful error message for unknown plugins", () => {
+    node.setAttribute("vln-unknown-plugin", "true");
+    Velin.plugins.registerPlugin({ name: "known1", render: () => {} });
+    Velin.plugins.registerPlugin({ name: "known2", render: () => {} });
+
+    Velin.bind(document.createElement("div"), {});
+    const rootState = Velin.ø__internal.boundState.root!;
+    
+    // We expect an error containing "Available plugins"
+    expect(() => {
+        Velin.processNode(node, rootState);
+    }).toThrow(/Available plugins:.*known1, known2/);
+  });
 });
 
 // describe('Velin ø__internal', () => {
