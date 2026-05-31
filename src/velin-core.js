@@ -308,46 +308,15 @@ const trackers = {
 
 /**
  * Registers a Velin plugin to create custom directives.
- *
- * After registration, the plugin can be used as `vln-{name}` in HTML.
- * Plugins can have priorities, track dependencies, render DOM updates,
- * and cleanup resources.
- *
  * @type {RegisterPlugin}
- *
  * @example
- * // Simple text transformation plugin
  * Velin.plugins.registerPlugin({
  *   name: 'uppercase',
- *   track: Velin.trackers.expressionTracker,
  *   render: ({ node, tracked }) => {
  *     node.textContent = String(tracked).toUpperCase();
- *   }
- * });
- * // Usage: <div vln-uppercase="message"></div>
- *
- * @example
- * // Plugin with cleanup
- * Velin.plugins.registerPlugin({
- *   name: 'clickoutside',
- *   destroy: ({ node, pluginState }) => {
- *     if (pluginState.handler) {
- *       document.removeEventListener('click', pluginState.handler);
- *     }
  *   },
- *   render: ({ reactiveState, expr, node, pluginState = {} }) => {
- *     const handler = (e) => {
- *       if (!node.contains(e.target)) {
- *         Velin.evaluate(reactiveState, expr);
- *       }
- *     };
- *     document.addEventListener('click', handler);
- *     return { state: { handler } };
- *   }
+ *   track: Velin.trackers.expressionTracker
  * });
- *
- * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/plugins.md|Creating Plugins Guide}
- * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/api-reference.md#velinpluginsregisterplugin|API Reference}
  */
 function registerPlugin(def) {
   plugins.set(def.name, {
@@ -356,39 +325,8 @@ function registerPlugin(def) {
 }
 
 /**
- * Processes a plugin on a specific node with reactive state.
- *
- * This is an Advanced API typically called automatically by processNode(),
- * but can be called directly in custom plugins that need to manually invoke
- * other plugins.
- *
- * **What it does:**
- * - Sets up dependency tracking
- * - Calls plugin's track() function
- * - Creates reactive effect that calls plugin's render()
- * - Registers cleanup in plugin's destroy() hook
- * - Returns control object from render()
- *
+ * Processes a plugin on a specific node.
  * @type {ProcessPlugin}
- *
- * @example
- * // Manually calling another plugin from your plugin
- * Velin.plugins.registerPlugin({
- *   name: 'mycombo',
- *   render: ({ reactiveState, node }) => {
- *     const textPlugin = Velin.plugins.get('text');
- *     Velin.plugins.processPlugin(
- *       textPlugin,
- *       reactiveState,
- *       'message',
- *       node,
- *       'vln-text'
- *     );
- *   }
- * });
- *
- * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/api-reference.md#velinpluginsprocessplugin|API Reference}
- * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/plugins.md#accessing-other-plugins|Creating Plugins: Accessing Other Plugins}
  */
 function processPlugin(plugin, reactiveState, expr, node, attributeName, subkey = null) {
   /** @type {DepCapture} */
@@ -1404,55 +1342,10 @@ function composeState(reactiveState, interpolations) {
 
 /**
  * Clears a child reactive state and removes its bindings.
- *
- * **CRITICAL for memory management:** Always call this when removing nodes
- * created with composeState() to prevent memory leaks from stale bindings.
- *
- * This is a "Danger Zone" API used by structure-altering plugins to clean up
- * scoped states when DOM elements are removed or re-rendered.
- *
- * **What it cleans:**
- * - Interpolations (scoped variable mappings)
- * - Inner bindings (reactive effects from this scope)
- * - Finalizers (plugin cleanup functions)
- * - Recursively cleans child states
- * - Removes state from parent's tracking
- *
- * @param {ReactiveState} parentState - Parent state
- * @param {ReactiveState} innerState - Child state to cleanup
- * @param {Node=} node - Optional node associated with this state for lifecycle event
- *
+ * @param {ReactiveState} parentState
+ * @param {ReactiveState} innerState
+ * @param {Node=} node
  * @type {CleanupState}
- *
- * @example
- * // Used in vln-loop's destroy hook
- * destroy: ({ pluginState, reactiveState }) => {
- *   if (pluginState.substates) {
- *     pluginState.substates.forEach((substate, i) => {
- *       const node = pluginState.children[i];
- *       Velin.cleanupState(reactiveState, substate, node); // Clean each loop item's state
- *     });
- *   }
- * }
- *
- * @example
- * // Used in vln-fragment when template changes
- * if (pluginState?.innerState) {
- *   Velin.cleanupState(reactiveState, pluginState.innerState, node);
- * }
- * // Now safe to create new inner state
- *
- * @example
- * // Used in vln-loop when removing items
- * for (let i = tracked.length; i < oldChildren.length; i++) {
- *   const node = oldChildren[i];
- *   node.remove();
- *   Velin.cleanupState(reactiveState, oldSubstates[i], node); // Prevent memory leak
- * }
- *
- * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/api-reference.md#velincleanupstate|API Reference}
- * @see {@link composeState} for creating scoped states
- * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/plugins.md|Creating Plugins Guide}
  */
 function cleanupState(parentState, innerState, node = null) {
   if (parentState === innerState) return;
@@ -1524,37 +1417,9 @@ function emitLifecycle(node, eventName, detail = {}) {
 }
 
 /**
- * Recursively processes a DOM node and its children to apply Velin plugins.
- *
- * Scans for `vln-*` attributes, applies corresponding plugins in priority order,
- * and processes child nodes unless a plugin returns `{ halt: true }`.
- *
- * @param {Node} node - DOM node to process
- * @param {ReactiveState} reactiveState - The reactive state object
- *
- * @example
- * // Used in vln-loop to process cloned template
- * const clone = template.cloneNode(true);
- * const substate = Velin.composeState(reactiveState, interpolations);
- * Velin.processNode(clone, substate); // Sets up reactivity on clone
- *
- * @example
- * // Used in vln-fragment to process template content
- * const clone = template.content.cloneNode(true);
- * Array.from(clone.childNodes).forEach(child => {
- *   node.appendChild(child);
- *   Velin.processNode(child, innerState); // Process with scoped state
- * });
- *
- * @example
- * // Manual usage to make a new element reactive
- * const newElement = document.createElement('div');
- * newElement.setAttribute('vln-text', 'message');
- * document.body.appendChild(newElement);
- * Velin.processNode(newElement, reactiveState); // Apply Velin to new element
- *
- * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/api-reference.md#velinprocessnode|API Reference}
- * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/plugins.md|Creating Plugins Guide}
+ * Recursively processes a DOM node to apply Velin plugins.
+ * @param {Node} node
+ * @param {ReactiveState} reactiveState
  */
 function processNode(node, reactiveState) {
   if (!(node instanceof HTMLElement)) return;
@@ -1643,51 +1508,9 @@ function processNode(node, reactiveState) {
 
 /**
  * Initializes Velin reactivity on a DOM subtree.
- *
- * This is the main entry point for using Velin. Call it once per app/component
- * with your root element and initial state. Returns a reactive proxy of your state.
- *
- * @param {Element | DocumentFragment} [root] - The root element to make reactive
- * @param {object} [initialState] - Initial state object
- * @returns {object} Reactive proxy of the state
- *
- * @example
- * // Basic usage
- * const vln = Velin.bind(document.getElementById('app'), {
- *   count: 0,
- *   name: 'World'
- * });
- *
- * vln.count++; // Automatically updates DOM
- *
- * @example
- * // With methods and getters
- * const vln = Velin.bind(document.body, {
- *   todos: [],
- *
- *   get remaining() {
- *     return this.todos.filter(t => !t.done).length;
- *   },
- *
- *   addTodo(text) {
- *     this.todos.push({ text, done: false });
- *   }
- * });
- *
- * @example
- * // TypeScript usage
- * interface AppState {
- *   count: number;
- *   name: string;
- * }
- *
- * const vln = Velin.bind<AppState>(root, {
- *   count: 0,
- *   name: 'Alice'
- * });
- *
- * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/api-reference.md#velinbind|API Reference}
- * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/getting-started.md|Getting Started Guide}
+ * @param {Element|DocumentFragment} [root]
+ * @param {object} [initialState]
+ * @returns {any}
  */
 function bind(root, initialState) {
   if (root === undefined) root = document.body;
