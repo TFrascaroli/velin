@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <script src="../dist/build/velin-all.min.js"></script>
+  <style>
+    body { font-family: sans-serif; padding: 2rem; }
+    nav { margin-bottom: 1rem; border-bottom: 1px solid #ccc; padding-bottom: 1rem; }
+    .card { border: 1px solid #ddd; padding: 1rem; margin-top: 1rem; border-radius: 4px; }
+  </style>
+</head>
+<body>
+
+  <div id="app">
+    <nav>
+      <button vln-on:click="myApp.path = '/'">Docs</button>
+      <button vln-on:click="myApp.path = '/editor'">Editor</button>
+    </nav>
+
+    <!-- Router Container -->
+    <div vln-router="myApp" vln-watch:sync="blocks">
+      
+      <!-- Docs Route -->
+      <div vln-route="'/'">
+        <h1>Docs</h1>
+        <p>VelinPad Documentation</p>
+      </div>
+
+      <!-- Editor Route -->
+      <div vln-route="'/editor'">
+        <h1>Editor</h1>
+        <div vln-loop:block="blocks">
+           <div vln-fragment="'block-template'" vln-var:block="block"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <template id="block-template" vln-vars="block">
+    <div class="card" 
+         vln-on:init="console.log('Block mounted:', block.id)"
+         vln-on:destroy="console.log('Block destroyed:', block.id)">
+      <h3 vln-text="block.type"></h3>
+      <input vln-input="block.content" />
+      <button vln-on:click="removeBlock(block.id)">Delete</button>
+    </div>
+  </template>
+
+  <script type="module">
+    import state from './velinpad.js';
+    const vln = Velin.bind(document.getElementById('app'), state);
+  </script>
+</body>
+</html>
