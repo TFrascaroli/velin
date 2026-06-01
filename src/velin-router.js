@@ -10,18 +10,24 @@
 function setupVelinRouter(vln) {
   /**
    * vln-router="routeName"
-   * Syncs window.location with a reactive state object.
+   * Creates a scope with $route bound to 'routeName'.
    */
   vln.plugins.registerPlugin({
     name: "router",
-    render: ({ reactiveState, expr, node }) => {
-      // Initialize router state if not present
+    priority: vln.plugins.priorities.STOPPER,
+    render: ({ node, expr, reactiveState }) => {
+      // 1. Ensure the router state exists in the root
       if (!reactiveState.state[expr]) {
         reactiveState.state[expr] = { path: window.location.pathname, params: {}, query: {}, error: null, loading: false };
       }
 
-      const routerState = reactiveState.state[expr];
+      // 2. Compose a new scoped state with $route pointing to the router object
+      const interpolations = new Map();
+      interpolations.set("$route", expr);
+      const scopedState = vln.composeState(reactiveState, interpolations);
 
+      // 3. Set up path synchronization
+      const routerState = reactiveState.state[expr];
       const updatePath = () => {
         routerState.path = window.location.pathname;
         const query = {};
@@ -30,16 +36,14 @@ function setupVelinRouter(vln) {
         });
         routerState.query = query;
       };
-
-      // Sync state -> URL
-      // Watch path for changes
-      const unwatch = () => { /* no-op */ }; 
-      // Manual watch implementation using existing tracking if needed
-      
       window.addEventListener("popstate", updatePath);
-      
+
+      // 4. Process children with the new scoped state
+      Array.from(node.children).forEach(child => vln.processNode(child, scopedState));
+
       return {
-        state: { unwatch }
+        state: { unwatch: updatePath, scopedState },
+        halt: true // Children already processed
       };
     },
     destroy: ({ pluginState }) => {
@@ -48,29 +52,22 @@ function setupVelinRouter(vln) {
   });
 
   /**
-   * vln-route:routerKey="/path/:id"
-   * Conditional renderer based on route matching.
+   * vln-route="/path/:id"
+   * Conditional renderer based on $route.path.
    */
   vln.plugins.registerPlugin({
     name: "route",
     priority: vln.plugins.priorities.STOPPER,
-    track: ({ reactiveState, subkey }) => {
-      // Track the entire router state object
-      if (subkey && reactiveState.state[subkey]) {
-        return reactiveState.state[subkey];
-      }
-      return window.location.pathname;
+    track: ({ reactiveState }) => {
+      // Access $route.path through the interpolations/evaluator
+      const path = vln.evaluate(reactiveState, "$route.path");
+      return path || "";
     },
-    render: ({ node, expr, tracked, subkey, reactiveState }) => {
-      // Use the tracked path if available, otherwise fallback
-      const currentPath = subkey && reactiveState.state[subkey] 
-        ? reactiveState.state[subkey].path 
-        : window.location.pathname;
-
+    render: ({ node, expr, tracked }) => {
       const pathPattern = expr.replace(/^['"]|['"]$/g, '');
       const pattern = pathPattern.replace(/:([^\/]+)/g, '(?<$1>[^/]+)');
       const regex = new RegExp(`^${pattern}$`);
-      const match = currentPath.match(regex);
+      const match = (tracked || "").match(regex);
 
       if (match) {
         node.style.display = "";
@@ -79,7 +76,8 @@ function setupVelinRouter(vln) {
         node.style.display = "none";
         return { halt: true };
       }
-    }  });
+    }
+  });
 }
 
 // Auto-bootstrap

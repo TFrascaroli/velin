@@ -17,33 +17,32 @@ describe("Velin Router", () => {
   });
 
   it("should conditionally render based on vln-route", async () => {
+    // Manually trigger a path change
     window.history.pushState({}, "", "/test-route");
     window.dispatchEvent(new Event('popstate'));
     
     root.innerHTML = `
-      <div vln-router="myroute">
-        <div id="target" vln-route:myroute="'/other'">Content</div>
+      <div vln-router="myRoute">
+        <div id="target" vln-route="'/other'">Content</div>
       </div>
     `;
     
     Velin.bind(root, {
-      myroute: { path: '/test-route', params: {}, query: {}, error: null, loading: false }
+      myRoute: { path: '/test-route', params: {}, query: {}, error: null, loading: false }
     });
     const target = root.querySelector("#target") as HTMLElement;
     
     expect(target.style.display).toBe("none");
     
     // Update state
-    Velin.ø__internal.boundState.root.state.myroute.path = '/other';
-    // Sync browser URL for the plugin
-    Object.defineProperty(window, 'location', { value: { pathname: '/other' }, writable: true });
-    
-    // Force re-process
-    Velin.processNode(root, Velin.ø__internal.boundState.root);
+    Velin.ø__internal.boundState.root.state.myRoute.path = '/other';
+    // Manually trigger
+    Velin.ø__internal.triggerEffects('root.myRoute.path', Velin.ø__internal.boundState.root);
     
     // Allow reactivity to propagate
     await new Promise(resolve => setTimeout(resolve, 50));
     
+    console.log('Target Display:', target.style.display);
     expect(target.style.display).toBe("");
   });
 });
