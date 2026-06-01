@@ -7,6 +7,21 @@
     ".": {
       "import": "./dist/build/velin-all.min.js",
       "types": "./dist/types/velin-all.d.ts"
+    },
+    "./core": {
+      "import": "./src/velin-core.js"
+    },
+    "./std": {
+      "import": "./src/velin-std.js"
+    },
+    "./templates": {
+      "import": "./src/velin-templates-and-fragments.js"
+    },
+    "./events": {
+      "import": "./src/velin-events.js"
+    },
+    "./router": {
+      "import": "./src/velin-router.js"
     }
   },
   "files": [
