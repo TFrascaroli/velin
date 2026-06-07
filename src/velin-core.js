@@ -1005,75 +1005,24 @@ function evalSequence(ast, context, reactiveState) {
  * @param {any} [reactiveState]
  */
 function evalAst(ast, context, reactiveState = null) {
-  switch (ast.type) {
-    case "Literal":
-      return evalLiteral(/** @type {ASTLiteralNode} */ (ast));
-
-    case "Identifier":
-      return evalIdentifier(/** @type {ASTIdentifierNode} */ (ast), context);
-
-    case "Member":
-      return evalMember(
-        /** @type {ASTMemberNode} */ (ast),
-        context,
-        reactiveState,
-      );
-
-    case "Call":
-      return evalCall(/** @type {ASTCallNode} */ (ast), context, reactiveState);
-
-    case "Binary":
-      return evalBinary(
-        /** @type {ASTBinaryNode} */ (ast),
-        context,
-        reactiveState,
-      );
-
-    case "Unary":
-      return evalUnary(
-        /** @type {ASTUnaryNode} */ (ast),
-        context,
-        reactiveState,
-      );
-
-    case "Ternary":
-      return evalTernary(
-        /** @type {ASTTernaryNode} */ (ast),
-        context,
-        reactiveState,
-      );
-
-    case "ObjectLiteral":
-      return evalObjectLiteral(
-        /** @type {ASTObjectLiteralNode} */ (ast),
-        context,
-        reactiveState,
-      );
-
-    case "ArrayLiteral":
-      return evalArrayLiteral(
-        /** @type {ASTNode} */ (ast),
-        context,
-        reactiveState,
-      );
-
-    case "Assignment":
-      return evalAssignment(
-        /** @type {ASTAssignmentNode} */ (ast),
-        context,
-        reactiveState,
-      );
-
-    case "Sequence":
-      return evalSequence(
-        /** @type {ASTSequenceNode} */ (ast),
-        context,
-        reactiveState,
-      );
-
-    default:
-      throw new Error(`Bad AST: ${ast.type}`);
+  const evalVisitors = {
+    Literal: (ast, context, reactiveState) => evalLiteral(/** @type {ASTLiteralNode} */ (ast)),
+    Identifier: (ast, context, reactiveState) => evalIdentifier(/** @type {ASTIdentifierNode} */ (ast), context),
+    Member: (ast, context, reactiveState) => evalMember(/** @type {ASTMemberNode} */ (ast), context, reactiveState),
+    Call: (ast, context, reactiveState) => evalCall(/** @type {ASTCallNode} */ (ast), context, reactiveState),
+    Binary: (ast, context, reactiveState) => evalBinary(/** @type {ASTBinaryNode} */ (ast), context, reactiveState),
+    Unary: (ast, context, reactiveState) => evalUnary(/** @type {ASTUnaryNode} */ (ast), context, reactiveState),
+    Ternary: (ast, context, reactiveState) => evalTernary(/** @type {ASTTernaryNode} */ (ast), context, reactiveState),
+    ObjectLiteral: (ast, context, reactiveState) => evalObjectLiteral(/** @type {ASTObjectLiteralNode} */ (ast), context, reactiveState),
+    ArrayLiteral: (ast, context, reactiveState) => evalArrayLiteral(/** @type {ASTNode} */ (ast), context, reactiveState),
+    Assignment: (ast, context, reactiveState) => evalAssignment(/** @type {ASTAssignmentNode} */ (ast), context, reactiveState),
+    Sequence: (ast, context, reactiveState) => evalSequence(/** @type {ASTSequenceNode} */ (ast), context, reactiveState),
+  };
+  const visitor = evalVisitors[ast.type];
+  if (!visitor) {
+    throw new Error(`Bad AST: ${ast.type}`);
   }
+  return visitor(ast, context, reactiveState);
 }
 
 /**
@@ -1267,6 +1216,10 @@ function triggerEffects(prop, reactiveState) {
     );
   if (!reactiveState.bindings.has(prop)) return;
   for (const effect of reactiveState.bindings.get(prop) || []) {
+    if (__DEV__) {
+      // @ts-ignore
+      Velin.ø__updateCounter = (Velin.ø__updateCounter || 0) + 1;
+    }
     effect();
   }
 }

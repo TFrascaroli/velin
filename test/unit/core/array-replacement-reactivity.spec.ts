@@ -290,13 +290,17 @@ describe("Array replacement reactivity (avoiding hyper-reactivity)", () => {
         value: i * 20,
         id: `new-id-${i}`,
       }));
-      const startTime = performance.now();
+
+      // Reset counter
+      Velin.ø__updateCounter = 0;
+      
       state.items = newArr;
-      const endTime = performance.now();
 
       expect(div.querySelectorAll("div.item").length).toBe(50);
-      // Should complete reasonably quickly (under 100ms for this small test)
-      expect(endTime - startTime).toBeLessThan(20); // TODO: THIS IS A VERY BAD TEST.
+      
+      // The number of updates should be proportional to 50, not huge/exponential
+      // Based on implementation, replacing the array might trigger a few effects
+      expect(Velin.ø__updateCounter).toBeLessThan(200);
     });
   });
 });

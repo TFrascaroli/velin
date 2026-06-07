@@ -47,6 +47,7 @@ function setupVelinRouter(vln) {
 
       // 2. Initialize watchers only once
       if (!pluginState.initialized) {
+        console.log('Router plugin initializing - adding listener');
         const onHashChange = () => {
           const hashPath = globalThis.location.hash.startsWith('#') 
             ? globalThis.location.hash.slice(1) 
@@ -81,6 +82,7 @@ function setupVelinRouter(vln) {
       };
     },
     destroy: ({ pluginState }) => {
+      console.log('Destroy called, unwatch:', pluginState.unwatch);
       if (pluginState.unwatch) {
         globalThis.removeEventListener("hashchange", pluginState.unwatch);
       }

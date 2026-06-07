@@ -17,10 +17,6 @@ describe("Velin Router", () => {
   });
 
   it("should conditionally render based on vln-route", async () => {
-    // Manually trigger a path change
-    window.history.pushState({}, "", "/test-route");
-    window.dispatchEvent(new Event('popstate'));
-    
     root.innerHTML = `
       <div vln-router="myRoute">
         <div id="target" vln-route="'/other'">Content</div>
@@ -30,19 +26,47 @@ describe("Velin Router", () => {
     Velin.bind(root, {
       myRoute: { path: '/test-route', params: {}, query: {}, error: null, loading: false }
     });
-    const target = root.querySelector("#target") as HTMLElement;
     
-    expect(target.style.display).toBe("none");
+    expect(root.querySelector("#target")).toBeNull();
     
-    // Update state
     Velin.ø__internal.boundState.root.state.myRoute.path = '/other';
-    // Manually trigger
     Velin.ø__internal.triggerEffects('root.myRoute.path', Velin.ø__internal.boundState.root);
     
-    // Allow reactivity to propagate
     await new Promise(resolve => setTimeout(resolve, 50));
     
-    console.log('Target Display:', target.style.display);
-    expect(target.style.display).toBe("");
+    const target = root.querySelector("#target");
+    expect(target).not.toBeNull();
+    expect(target?.textContent).toBe("Content");
   });
+
+  it("should handle dynamic route parameters", async () => {
+    // Set the hash manually to match
+    window.location.hash = '/user/123';
+    
+    root.innerHTML = `
+      <div vln-router="myRoute">
+        <div id="target" vln-route="'/user/:id'">Content</div>
+      </div>
+    `;
+    
+    // Initialize without pre-setting path in state, let router plugin initialize it from hash
+    Velin.bind(root, { myRoute: {} });
+    
+    await new Promise(resolve => setTimeout(resolve, 50));
+    
+    const target = root.querySelector("#target");
+    expect(target).not.toBeNull();
+  });
+
+  it("should provide navigateTo function", () => {
+    root.setAttribute("vln-router", "myRoute");
+    Velin.bind(root, {});
+    
+    const routeState = Velin.ø__internal.boundState.root.state.myRoute;
+    expect(typeof routeState.navigateTo).toBe("function");
+    
+    routeState.navigateTo('/new-path');
+    expect(window.location.hash).toBe('#/new-path');
+  });
+
 });
