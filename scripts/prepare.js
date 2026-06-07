@@ -4,10 +4,11 @@ const path = require('path');
 // Check for --dev argument
 const isDev = process.argv.includes('--dev');
 const sourceFile = isDev ? 'velin-all.dev.js' : 'velin-all.min.js';
+const mapFile = isDev ? 'velin-all.dev.js.map' : 'velin-all.min.js.map';
 
 const filesToCopy = [
   { src: `dist/build/${sourceFile}`, dest: 'playground/velin.js' },
-  { src: 'dist/build/velin-all.min.js.map', dest: 'playground/velin-all.min.js.map' }
+  { src: `dist/build/${sourceFile}.map`, dest: `playground/${mapFile}` }
 ];
 
 filesToCopy.forEach(({ src, dest }) => {

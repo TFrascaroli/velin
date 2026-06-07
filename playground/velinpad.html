@@ -1,53 +1,399 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <script src="../dist/build/velin-all.min.js"></script>
-  <style>
-    body { font-family: sans-serif; padding: 2rem; }
-    nav { margin-bottom: 1rem; border-bottom: 1px solid #ccc; padding-bottom: 1rem; }
-    .card { border: 1px solid #ddd; padding: 1rem; margin-top: 1rem; border-radius: 4px; }
-  </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Velin · Live Reactive JavaScript Library Demo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="velin.js"></script>
 </head>
-<body>
-
-  <div id="app">
-    <nav>
-      <button vln-on:click="myApp.path = '/'">Docs</button>
-      <button vln-on:click="myApp.path = '/editor'">Editor</button>
-    </nav>
-
-    <!-- Router Container -->
-    <div vln-router="myApp" vln-watch:sync="blocks">
-      
-      <!-- Docs Route -->
-      <div vln-route="'/'">
-        <h1>Docs</h1>
-        <p>VelinPad Documentation</p>
-      </div>
-
-      <!-- Editor Route -->
-      <div vln-route="'/editor'">
-        <h1>Editor</h1>
-        <div vln-loop:block="blocks">
-           <div vln-fragment="'block-template'" vln-var:block="block"></div>
+<body class="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-slate-100">
+  <div id="app" class="min-h-screen">
+    <!-- Navigation Bar -->
+    <nav class="border-b border-slate-700 bg-slate-950/50 backdrop-blur sticky top-0 z-50">
+      <div class="max-w-7xl mx-auto px-6 py-4">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="text-2xl font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">Velin</div>
+            <div class="text-xs text-slate-400 font-mono">Reactive JavaScript</div>
+          </div>
+          <div class="flex gap-2">
+            <button vln-if="routeManager.path !== '/' && routeManager.path !== '/editor'"
+                    vln-on:click="toggleEditor()"
+                    vln-class="{ 'bg-teal-600 text-white': showEditor, 'text-slate-300 hover:text-slate-100 border border-slate-700': !showEditor }"
+                    class="px-4 py-2 rounded-lg transition-all duration-200 font-medium text-sm">
+              <span vln-text="showEditor ? 'Hide Editor' : 'Show Editor'"></span>
+            </button>
+            <button vln-on:click="routeManager.navigateTo('/')"
+                    vln-class="{ 'bg-blue-600 text-white shadow-lg shadow-blue-500/20': routeManager.path === '/', 'text-slate-300 hover:text-slate-100': routeManager.path !== '/' }"
+                    class="px-4 py-2 rounded-lg transition-all duration-200 font-medium text-sm">
+              ← Home
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+    </nav>
+
+    <!-- State Editor Template -->
+    <template id="state-editor-tpl">
+      <div class="mt-12 pt-12 border-t border-slate-700/50">
+        <div class="bg-slate-800/40 border border-slate-700/50 rounded-2xl p-8 backdrop-blur-sm">
+          <div class="flex items-center justify-between mb-6">
+            <div>
+              <h2 class="text-2xl font-bold text-teal-400">📊 Live State Editor</h2>
+              <p class="text-sm text-slate-500 mt-1">Modify the JSON below to see the UI update in real-time above.</p>
+            </div>
+            <div class="flex gap-3">
+              <button vln-on:click="resetVelinpadState()" class="px-3 py-1.5 text-xs bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded-lg transition-all font-medium uppercase tracking-wider">
+                Reset
+              </button>
+              <span class="text-[10px] px-2 py-1.5 bg-slate-900/50 text-slate-400 rounded-lg border border-slate-700/50 uppercase font-bold tracking-widest">Reactive</span>
+            </div>
+          </div>
+          <textarea vln-input="jsonState" spellcheck="false" class="min-h-[300px] w-full bg-slate-950/50 rounded-xl p-6 font-mono text-sm text-slate-300 focus:outline-none focus:ring-2 focus:ring-teal-500/50 border border-slate-700/50 resize-y shadow-inner"></textarea>
+          <div class="mt-4 flex items-center gap-2 text-[11px] text-slate-500 italic">
+            <span class="w-1.5 h-1.5 rounded-full bg-teal-500/50"></span>
+            Tip: You can also use the standalone <button vln-on:click="routeManager.navigateTo('/editor')" class="text-teal-400 hover:underline">Full-Page Editor</button> for more space.
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <!-- Main Content -->
+    <section vln-router="routeManager">
+      <!-- HOME PAGE -->
+      <div vln-route="'/'">
+        <div class="max-w-7xl mx-auto px-6 py-12">
+          <!-- Hero Section -->
+          <div class="mb-16 text-center">
+            <h1 class="text-5xl md:text-6xl font-black mb-4 bg-gradient-to-r from-blue-400 via-cyan-400 to-teal-400 bg-clip-text text-transparent">
+              Welcome to Velin
+            </h1>
+            <p class="text-xl text-slate-300 mb-8 max-w-2xl mx-auto">
+              A lightweight, reactive JavaScript library that makes building interactive UIs with plain HTML and vanilla JavaScript <span class="font-bold text-cyan-400">incredibly simple</span>.
+            </p>
+            <div class="flex flex-wrap gap-4 justify-center">
+              <button vln-on:click="routeManager.navigateTo('/features')" class="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg shadow-lg shadow-blue-500/30 transition-all duration-200">
+                Explore Features
+              </button>
+              <button vln-on:click="routeManager.navigateTo('/examples')" class="px-8 py-3 border-2 border-slate-500 hover:border-slate-300 text-slate-300 hover:text-slate-100 font-bold rounded-lg transition-all duration-200">
+                See Examples
+              </button>
+            </div>
+          </div>
+
+          <!-- What is Velin? -->
+          <div class="grid gap-8 mb-16">
+            <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-8 backdrop-blur">
+              <h2 class="text-3xl font-bold mb-4 text-cyan-400">What is Velin?</h2>
+              <p class="text-slate-300 text-lg mb-4">
+                Velin is a reactive state management library that lets you build dynamic, responsive applications using HTML directives and plain JavaScript—no build steps, no JSX, no complicated framework overhead.
+              </p>
+              <p class="text-slate-300 text-lg">
+                Just write <span class="font-mono text-emerald-400">vln-</span> directives in your HTML, connect them to your state, and Velin handles all the reactivity. When your state changes, the UI updates automatically.
+              </p>
+            </div>
+          </div>
+
+          <!-- Key Concepts -->
+          <div class="grid md:grid-cols-3 gap-6 mb-16">
+            <div class="bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-slate-700 rounded-xl p-6">
+              <div class="text-3xl mb-3">🎯</div>
+              <h3 class="text-xl font-bold mb-2 text-blue-400">Directives</h3>
+              <p class="text-slate-400">Add reactive behavior to your HTML with simple <span class="font-mono text-sm">vln-</span> attributes like <span class="font-mono text-sm">vln-text</span>, <span class="font-mono text-sm">vln-if</span>, <span class="font-mono text-sm">vln-on:click</span>.</p>
+            </div>
+
+            <div class="bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-slate-700 rounded-xl p-6">
+              <div class="text-3xl mb-3">⚡</div>
+              <h3 class="text-xl font-bold mb-2 text-cyan-400">Reactivity</h3>
+              <p class="text-slate-400">Your UI stays in sync with your state automatically. Change a value in JavaScript and watch your HTML update instantly.</p>
+            </div>
+
+            <div class="bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-slate-700 rounded-xl p-6">
+              <div class="text-3xl mb-3">🚀</div>
+              <h3 class="text-xl font-bold mb-2 text-teal-400">Simple</h3>
+              <p class="text-slate-400">No complex setup. No node_modules bloat. Load the script, write your HTML, and you're done. That's it.</p>
+            </div>
+          </div>
+
+          <!-- Call to Action -->
+          <div class="bg-gradient-to-r from-blue-600/20 to-cyan-600/20 border border-blue-500/30 rounded-xl p-12 text-center">
+            <h2 class="text-3xl font-bold mb-4">Ready to See It in Action?</h2>
+            <p class="text-slate-300 mb-8 text-lg">
+              This entire page is built with Velin. Click the buttons below to explore real working examples of its capabilities.
+            </p>
+            <div class="flex flex-wrap gap-4 justify-center">
+              <button vln-on:click="routeManager.navigateTo('/features')" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg">
+                Core Features
+              </button>
+              <button vln-on:click="routeManager.navigateTo('/examples')" class="px-6 py-2 bg-cyan-600 hover:bg-cyan-700 text-white font-bold rounded-lg">
+                Interactive Examples
+              </button>
+              <button vln-on:click="routeManager.navigateTo('/editor')" class="px-6 py-2 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-lg">
+                Live Editor
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- FEATURES PAGE -->
+      <div vln-route="'/features'">
+        <div class="max-w-7xl mx-auto px-6 py-12">
+          <h1 class="text-4xl font-bold mb-2 text-blue-400">Core Features</h1>
+          <p class="text-slate-400 mb-12">Everything you need to build reactive UIs</p>
+
+          <div class="grid gap-8">
+            <!-- Two-Way Binding -->
+            <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-8">
+              <h2 class="text-2xl font-bold text-cyan-400 mb-3">📝 Two-Way Input Binding</h2>
+              <p class="text-slate-300 mb-4">Use <span class="font-mono bg-slate-900 px-2 py-1 rounded">vln-input</span> to bind form inputs directly to your state. Type in the box and watch the value update below:</p>
+              <div class="bg-slate-900 rounded-lg p-4">
+                <input vln-input="editorText" placeholder="Type something..." class="w-full bg-slate-800 border border-slate-600 rounded px-4 py-2 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500" />
+                <p class="mt-4 text-slate-400">You typed: <span class="text-cyan-300 font-bold" vln-text="editorText || '(nothing yet)'"></span></p>
+              </div>
+            </div>
+
+            <!-- Conditionals -->
+            <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-8">
+              <h2 class="text-2xl font-bold text-cyan-400 mb-3">🎯 Conditional Rendering</h2>
+              <p class="text-slate-300 mb-4">Use <span class="font-mono bg-slate-900 px-2 py-1 rounded">vln-if</span> to show/hide elements based on your state:</p>
+              <button vln-on:click="showSecret = !showSecret" class="mb-4 px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded font-bold">
+                <span vln-text="showSecret ? 'Hide Secret' : 'Reveal Secret'"></span>
+              </button>
+              <div vln-if="showSecret" class="bg-slate-900 border-2 border-purple-500 rounded-lg p-4 text-purple-300 font-bold">
+                🎉 Velin makes building UIs this simple! Just write directives and watch the magic happen.
+              </div>
+            </div>
+
+            <!-- Text Interpolation -->
+            <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-8">
+              <h2 class="text-2xl font-bold text-cyan-400 mb-3">💬 Text & Attribute Binding</h2>
+              <p class="text-slate-300 mb-4">Use <span class="font-mono bg-slate-900 px-2 py-1 rounded">vln-text</span> and <span class="font-mono bg-slate-900 px-2 py-1 rounded">vln-attr</span> to display values anywhere:</p>
+              <div class="bg-slate-900 rounded-lg p-4">
+                <input type="number" vln-input="counter" min="0" max="10" class="w-24 bg-slate-800 border border-slate-600 rounded px-3 py-2 text-slate-100 focus:outline-none focus:border-cyan-500" />
+                <p class="mt-4 text-slate-300">Count: <span class="text-emerald-400 font-bold text-lg" vln-text="counter || 0"></span></p>
+                <div vln-attr:title="'Stars: ' + (counter || 0)" class="mt-4 inline-block px-4 py-2 bg-yellow-600/20 border border-yellow-600 rounded text-yellow-300 cursor-help">
+                  Hover me! (Check title attribute)
+                </div>
+              </div>
+            </div>
+
+            <!-- Event Handling -->
+            <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-8">
+              <h2 class="text-2xl font-bold text-cyan-400 mb-3">🖱️ Event Handling</h2>
+              <p class="text-slate-300 mb-4">Use <span class="font-mono bg-slate-900 px-2 py-1 rounded">vln-on:eventName</span> to respond to user interactions:</p>
+              <div class="bg-slate-900 rounded-lg p-4">
+                <button vln-on:click="clicks = (clicks || 0) + 1" class="mb-4 px-6 py-3 bg-orange-600 hover:bg-orange-700 rounded font-bold text-white">
+                  Click Me!
+                </button>
+                <p class="text-slate-300">You've clicked <span class="text-orange-300 font-bold" vln-text="clicks || 0"></span> times</p>
+              </div>
+            </div>
+
+            <!-- Client-Side Routing -->
+            <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-8">
+              <h2 class="text-2xl font-bold text-cyan-400 mb-3">🗺️ Built-In Router</h2>
+              <p class="text-slate-300 mb-4">Use <span class="font-mono bg-slate-900 px-2 py-1 rounded">vln-router</span> and <span class="font-mono bg-slate-900 px-2 py-1 rounded">vln-route</span> for SPA routing:</p>
+              <p class="text-slate-400">You're currently at: <span class="font-mono text-cyan-300" vln-text="routeManager.path || '/'"></span></p>
+            </div>
+
+            <!-- Expressions -->
+            <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-8">
+              <h2 class="text-2xl font-bold text-cyan-400 mb-3">🧮 JavaScript Expressions</h2>
+              <p class="text-slate-300 mb-4">All Velin directives support full JavaScript expressions (no CSP violations!):</p>
+              <div class="bg-slate-900 rounded-lg p-4">
+                <input type="number" vln-input="num1" placeholder="Number 1" class="w-full mb-2 bg-slate-800 border border-slate-600 rounded px-3 py-2 text-slate-100 focus:outline-none focus:border-cyan-500" />
+                <input type="number" vln-input="num2" placeholder="Number 2" class="w-full bg-slate-800 border border-slate-600 rounded px-3 py-2 text-slate-100 focus:outline-none focus:border-cyan-500" />
+                <p class="mt-4 text-slate-300"><span class="text-yellow-300 font-bold" vln-text="(num1 || 0) + (num2 || 0)"></span> = <span class="text-emerald-300">(sum)</span></p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom Editor (Same Page) -->
+          <div vln-if="showEditor" vln-fragment="'state-editor-tpl'"></div>
+
+          <div class="mt-12 text-center">
+            <button vln-on:click="routeManager.navigateTo('/examples')" class="px-8 py-3 bg-cyan-600 hover:bg-cyan-700 text-white font-bold rounded-lg">
+              See More Examples →
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- EXAMPLES PAGE -->
+      <div vln-route="'/examples'">
+        <div class="max-w-7xl mx-auto px-6 py-12">
+          <h1 class="text-4xl font-bold mb-2 text-cyan-400">Interactive Examples</h1>
+          <p class="text-slate-400 mb-12">Try these working examples to understand Velin's power</p>
+
+          <div class="grid gap-8">
+            <!-- Todo Counter -->
+            <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-8">
+              <h2 class="text-2xl font-bold text-emerald-400 mb-4">✅ Todo Counter</h2>
+              <div class="bg-slate-900 rounded-lg p-4">
+                <input vln-input="newTodo" placeholder="Add a new todo..." class="w-full bg-slate-800 border border-slate-600 rounded px-4 py-2 text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 mb-2" />
+                <button vln-on:click="todos = todos.concat([{text: newTodo, done: false}]), newTodo = ''" class="w-full px-4 py-2 bg-emerald-600 hover:bg-emerald-700 rounded font-bold">
+                  Add Todo
+                </button>
+                <div class="mt-4 space-y-2">
+                  <div vln-loop:todo="todos" class="flex items-center gap-3 bg-slate-800 p-3 rounded">
+                    <input type="checkbox" vln-input="todo.done" class="w-5 h-5 cursor-pointer" />
+                    <span vln-class="{ 'line-through text-slate-500': todo.done, 'text-slate-100': !todo.done }" vln-text="todo.text"></span>
+                  </div>
+                </div>
+                <p class="mt-4 text-slate-400">Total todos: <span class="text-emerald-300 font-bold" vln-text="todos.length"></span></p>
+              </div>
+            </div>
+
+            <!-- Color Mixer -->
+            <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-8">
+              <h2 class="text-2xl font-bold text-pink-400 mb-4">🎨 Color Mixer</h2>
+              <div class="bg-slate-900 rounded-lg p-4">
+                <div class="flex flex-col gap-4">
+                  <div>
+                    <label class="text-slate-300 text-sm font-bold">Red: <span class="text-red-400" vln-text="red"></span></label>
+                    <input type="range" vln-input="red" min="0" max="255" class="w-full" />
+                  </div>
+                  <div>
+                    <label class="text-slate-300 text-sm font-bold">Green: <span class="text-green-400" vln-text="green"></span></label>
+                    <input type="range" vln-input="green" min="0" max="255" class="w-full" />
+                  </div>
+                  <div>
+                    <label class="text-slate-300 text-sm font-bold">Blue: <span class="text-blue-400" vln-text="blue"></span></label>
+                    <input type="range" vln-input="blue" min="0" max="255" class="w-full" />
+                  </div>
+                </div>
+                <div vln-attr:style="'background-color: rgb(' + red + ', ' + green + ', ' + blue + '); margin-top: 1rem;'" class="w-full h-32 rounded-lg border-2 border-slate-600"></div>
+                <p class="mt-4 text-slate-300 font-mono text-sm text-center" vln-text="'rgb(' + red + ', ' + green + ', ' + blue + ')'"></p>
+              </div>
+            </div>
+
+            <!-- Tab Switcher -->
+            <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-8">
+              <h2 class="text-2xl font-bold text-purple-400 mb-4">📑 Tab Switcher</h2>
+              <div class="bg-slate-900 rounded-lg p-4">
+                <div class="flex gap-2 mb-4 border-b border-slate-700">
+                  <button vln-on:click="selectTab('info')" vln-class="{ 'border-b-2 border-purple-500 text-purple-400 font-bold': activeTab === 'info', 'text-slate-400': activeTab !== 'info' }" class="px-4 py-2 pb-3 transition-all">
+                    About
+                  </button>
+                  <button vln-on:click="selectTab('stats')" vln-class="{ 'border-b-2 border-purple-500 text-purple-400 font-bold': activeTab === 'stats', 'text-slate-400': activeTab !== 'stats' }" class="px-4 py-2 pb-3 transition-all">
+                    Stats
+                  </button>
+                  <button vln-on:click="selectTab('help')" vln-class="{ 'border-b-2 border-purple-500 text-purple-400 font-bold': activeTab === 'help', 'text-slate-400': activeTab !== 'help' }" class="px-4 py-2 pb-3 transition-all">
+                    Help
+                  </button>
+                </div>
+                <div vln-if="activeTab === 'info'" class="text-slate-300">
+                  <p>This is the Info tab. Tabs are a great way to organize content!</p>
+                </div>
+                <div vln-if="activeTab === 'stats'" class="text-slate-300">
+                  <p>📊 Statistics:</p>
+                  <p class="mt-2">Times you clicked: <span class="text-yellow-300 font-bold" vln-text="clicks || 0"></span></p>
+                  <p>Todos created: <span class="text-emerald-300 font-bold" vln-text="todos.length"></span></p>
+                </div>
+                <div vln-if="activeTab === 'help'" class="text-slate-300">
+                  <p>💡 Help: Click the tab buttons above to switch between tabs. This uses <span class="font-mono">vln-if</span> directives!</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom Editor (Same Page) -->
+          <div vln-if="showEditor" vln-fragment="'state-editor-tpl'"></div>
+
+          <div class="mt-12 text-center">
+            <button vln-on:click="routeManager.navigateTo('/editor')" class="px-8 py-3 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-lg">
+              Try the Live Editor →
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- EDITOR PAGE -->
+      <div vln-route="'/editor'">
+        <div class="max-w-7xl mx-auto px-6 py-12">
+          <h1 class="text-4xl font-bold mb-2 text-teal-400">Live Editor</h1>
+          <p class="text-slate-400 mb-12">Experiment with Velin on your own. Modify the state or HTML and see instant updates.</p>
+
+          <div class="grid lg:grid-cols-2 gap-8">
+            <!-- State Editor -->
+            <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-6 lg:row-span-2 flex flex-col">
+              <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-bold text-teal-400">📊 State Editor (JSON)</h2>
+                <span class="text-[10px] px-2 py-1 bg-slate-700 text-slate-300 rounded uppercase font-bold tracking-wider">Reactive</span>
+              </div>
+              <textarea vln-input="jsonState" spellcheck="false" class="flex-1 min-h-[450px] w-full bg-slate-900 rounded-lg p-4 font-mono text-sm text-slate-300 focus:outline-none focus:ring-2 focus:ring-teal-500 border border-slate-700 resize-none"></textarea>
+              <p class="mt-4 text-xs text-slate-500 italic leading-relaxed">
+                Tip: Edit the JSON above to update the state live across all examples. 
+                Invalid JSON is ignored while typing.
+              </p>
+            </div>
+
+            <!-- Quick Controls -->
+            <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-6">
+              <h2 class="text-xl font-bold text-teal-400 mb-4">🎮 Quick Actions</h2>
+              <div class="grid sm:grid-cols-2 lg:grid-cols-1 gap-3">
+                <button vln-on:click="routeManager.navigateTo('/examples')" class="w-full px-4 py-2 bg-emerald-600/20 hover:bg-emerald-600 border border-emerald-500/50 text-emerald-100 rounded font-bold transition-all">
+                  ← Check Examples
+                </button>
+                <button vln-on:click="routeManager.navigateTo('/features')" class="w-full px-4 py-2 bg-blue-600/20 hover:bg-blue-600 border border-blue-500/50 text-blue-100 rounded font-bold transition-all">
+                  ← Check Features
+                </button>
+                <div class="h-px bg-slate-700 my-1"></div>
+                <button vln-on:click="resetVelinpadState()" class="w-full px-4 py-2 bg-red-600/20 hover:bg-red-600 border border-red-500/50 text-red-100 rounded font-bold transition-all">
+                  Reset All State
+                </button>
+                <button vln-on:click="todos = []" class="w-full px-4 py-2 bg-orange-600/20 hover:bg-orange-600 border border-orange-500/50 text-orange-100 rounded font-bold transition-all">
+                  Clear Todos
+                </button>
+                <button vln-on:click="clicks = 0" class="w-full px-4 py-2 bg-yellow-600/20 hover:bg-yellow-600 border border-yellow-500/50 text-yellow-100 rounded font-bold transition-all">
+                  Reset Clicks
+                </button>
+              </div>
+            </div>
+
+            <!-- Tips moved into grid -->
+            <div class="bg-slate-800/50 border border-slate-700 rounded-xl p-6">
+              <h2 class="text-xl font-bold text-teal-400 mb-4">💡 Tips</h2>
+              <ul class="text-slate-300 space-y-3 text-sm">
+                <li class="flex gap-2">
+                  <span class="text-teal-400">✓</span>
+                  <span>Try editing numbers and inputs—they're all <span class="font-bold text-teal-300">two-way bound</span>!</span>
+                </li>
+                <li class="flex gap-2">
+                  <span class="text-teal-400">✓</span>
+                  <span>Your state is live here. Modify it and watch the UI update across all tabs.</span>
+                </li>
+                <li class="flex gap-2">
+                  <span class="text-teal-400">✓</span>
+                  <span>The URL hash updates automatically when you navigate.</span>
+                </li>
+                <li class="flex gap-2">
+                  <span class="text-teal-400">✓</span>
+                  <span>No build step, no compilation—Velin runs directly in the browser.</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
   </div>
 
-  <template id="block-template" vln-vars="block">
-    <div class="card" 
-         vln-on:init="console.log('Block mounted:', block.id)"
-         vln-on:destroy="console.log('Block destroyed:', block.id)">
-      <h3 vln-text="block.type"></h3>
-      <input vln-input="block.content" />
-      <button vln-on:click="removeBlock(block.id)">Delete</button>
-    </div>
-  </template>
-
-  <script type="module">
-    import state from './velinpad.js';
-    const vln = Velin.bind(document.getElementById('app'), state);
+  <script src="velinpad.js"></script>
+  <script>
+    globalThis.addEventListener('DOMContentLoaded', () => {
+      if (!globalThis.Velin) {
+        console.error('Velin did not load.');
+        return;
+      }
+      if (!globalThis.velinpadState) {
+        console.error('VelinPad state did not initialize.');
+        return;
+      }
+      globalThis.velinpadState = Velin.bind(document.getElementById('app'), globalThis.velinpadState);
+    });
   </script>
 </body>
 </html>

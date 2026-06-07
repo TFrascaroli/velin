@@ -14,7 +14,7 @@
  */
 
 /**
- * @typedef {() => void} VelinBindingEffect
+ * @typedef {() => PluginControl | void} VelinBindingEffect
  */
 
 /**
@@ -22,7 +22,7 @@
  * @typedef {ReadonlyMap<K, V>} ImmutableMap
  */
 
-/** 
+/**
  * @typedef {Object} ExpressionInterpolation
  * @property {string} expr The original expression string
  * @property {ASTNode} ast The compiled AST of the expression
@@ -57,17 +57,18 @@ const DefaultPluginPriorities = {
   /** Plugins that can be overridden by others */
   OVERRIDABLE: 10,
   /** Plugins that stop further processing */
-  STOPPER: 50
+  STOPPER: 50,
 };
 
 /** @typedef {(args: {node: HTMLElement, pluginState?: any, reactiveState: ReactiveState, subkey: string}) => void} PluginDestroyerFn*/
 
 /**
+ * @template Ttracked
  * @typedef {Object} VelinPlugin
  * @property {string} name
  * @property {number=} priority
- * @property {(args: {reactiveState: ReactiveState, compiledExpression: ASTNode, expr: string, node: Node, subkey: string | null}) => any} [track] Optional function to track dependencies from an expression
- * @property {(args: {reactiveState: ReactiveState, compiledExpression: ASTNode, expr: string, node: HTMLElement, subkey: string | null, tracked: any, pluginState?: any, attributeName: string}) => any} render Function to apply reactive updates to a node
+ * @property {(args: {reactiveState: ReactiveState, compiledExpression: ASTNode, expr: string, node: Node, subkey: string | null}) => Ttracked} [track] Optional function to track dependencies from an expression
+ * @property {(args: {reactiveState: ReactiveState, compiledExpression: ASTNode, expr: string, node: HTMLElement, subkey: string | null, tracked: Ttracked, pluginState?: any, attributeName: string}) => PluginControl | void} render Function to apply reactive updates to a node
  * @property {PluginDestroyerFn} [destroy]
  */
 
@@ -190,15 +191,28 @@ const DefaultPluginPriorities = {
  */
 
 /**
+ * @template Ttracked
  * @typedef {Object} VelinPluginManager
- * @property {RegisterPlugin} registerPlugin
- * @property {ProcessPlugin} processPlugin
- * @property {(pluginKey: string) => VelinPlugin} get
+ * @property {RegisterPlugin<Ttracked>} registerPlugin
+ * @property {ProcessPlugin<Ttracked>} processPlugin
+ * @property {(pluginKey: string) => VelinPlugin<Ttracked>} get
  * @property {{ [key in keyof typeof DefaultPluginPriorities]: number }} priorities
  */
 
-/** @typedef {(def: VelinPlugin) => void} RegisterPlugin */
-/** @typedef {(plugin: VelinPlugin, reactiveState: ReactiveState, expr: string, node: HTMLElement, attributeName: string, subkey?: string | null) => any} ProcessPlugin */
+/**
+ * @typedef {Object} PluginControl
+ * @property {any=} state Optional plugin state to persist across renders
+ * @property {boolean=} halt Optional signal whether to stop processing further plugins on this node
+ * @property {ReactiveState=} scopedState Optional scoped state to use for child nodes (e.g., for vln-fragment)
+ */
+
+/**
+ * @template Ttracked
+ * @typedef {(def: VelinPlugin<Ttracked>) => void} RegisterPlugin
+ * */
+/** 
+ * @template Ttracked
+ * @typedef {(plugin: VelinPlugin<Ttracked>, reactiveState: ReactiveState, expr: string, node: HTMLElement, attributeName: string, subkey?: string | null) => PluginControl | void} ProcessPlugin */
 
 /** @typedef {(reactiveState: ReactiveState, expr: string, allowMutations?: boolean) => any} Evaluate */
 /** @typedef {(reactiveState: ReactiveState, expr: string) => (value: any) => void} GetSetter */
@@ -212,16 +226,17 @@ const DefaultPluginPriorities = {
 
 /** @typedef {(args: { reactiveState: ReactiveState, expr: string, compiledExpression: ASTNode }) => any} ExpressionTracker */
 /** @typedef {(args: { reactiveState: ReactiveState, expr: string, compiledExpression: ASTNode }) => (value: any) => void} SetterTracker */
-/** 
+/**
  * @typedef {Object} Trackers
  * @property {ExpressionTracker} expressionTracker
  * @property {SetterTracker} setterTracker
+ * @property {() => void} noTracker
  */
 
 /**
  * @typedef {Object} VelinCore
  * @property {Bind} bind
- * @property {VelinPluginManager} plugins
+ * @property {VelinPluginManager<any>} plugins
  * @property {Evaluate} evaluate
  * @property {EvaluateAST} evaluateAst
  * @property {Compile} compile
@@ -233,7 +248,7 @@ const DefaultPluginPriorities = {
  * @property {VelinInternal} ø__internal
  */
 
-/** @type {Map<string, VelinPlugin>} */
+/** @type {Map<string, VelinPlugin<any>>} */
 const plugins = new Map();
 /** @type {WeakMap<Node, any>} */
 const pluginStates = new WeakMap();
@@ -247,6 +262,19 @@ const boundState = { root: undefined };
  */
 function peek(arr) {
   return arr[arr.length - 1];
+}
+
+function wrapE(fn, expr) {
+  try {
+    return fn();
+  } catch (error) {
+    const exprStr = typeof expr === 'string' ? expr : (expr && expr.type ? `AST:${expr.type}` : JSON.stringify(expr));
+    console.error(`Error evaluating expression '${exprStr}':`, error.message);
+    if (error.stack) {
+      console.error('Stack:', error.stack.split('\n').slice(0, 5).join('\n'));
+    }
+    return undefined;
+  }
 }
 
 /**
@@ -282,7 +310,8 @@ const trackers = {
    * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/plugins.md|Creating Plugins Guide}
    * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/api-reference.md#velintrackersexpressiontracker|API Reference}
    */
-  expressionTracker: ({ reactiveState, compiledExpression }) => evaluateAst(compiledExpression, reactiveState),
+  expressionTracker: ({ reactiveState, compiledExpression }) =>
+    wrapE(() => evaluateAst(compiledExpression, reactiveState), compiledExpression),
 
   /**
    * Returns a setter function for the expression's target property.
@@ -303,12 +332,17 @@ const trackers = {
    * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/plugins.md|Creating Plugins Guide}
    * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/api-reference.md#velintrackerssettertracker|API Reference}
    */
-  setterTracker: ({ reactiveState, expr }) => getSetter(reactiveState, expr),
+  setterTracker: ({ reactiveState, expr }) => wrapE(() => getSetter(reactiveState, expr), expr),
+
+  /**
+   * No-op tracker for plugins that don't need to track dependencies.
+   */
+  noTracker: () => {},
 };
 
 /**
  * Registers a Velin plugin to create custom directives.
- * @type {RegisterPlugin}
+ * @type {RegisterPlugin<any>}
  * @example
  * Velin.plugins.registerPlugin({
  *   name: 'uppercase',
@@ -326,38 +360,70 @@ function registerPlugin(def) {
 
 /**
  * Processes a plugin on a specific node.
- * @type {ProcessPlugin}
+ * @type {ProcessPlugin<any>}
  */
-function processPlugin(plugin, reactiveState, expr, node, attributeName, subkey = null) {
+function processPlugin(
+  plugin,
+  reactiveState,
+  expr,
+  node,
+  attributeName,
+  subkey = null,
+) {
   /** @type {DepCapture} */
   const depCapture = { capturingDeps: true, deps: new Set() };
   reactiveState.ø__depCaptures.push(depCapture);
   const nodeState = pluginStates.get(node) || {};
   const stateKey = plugin.name + (subkey ? "_" + subkey : "");
   nodeState[stateKey] = {};
-  nodeState["ø__exprAST"] = compile(expr);
-  nodeState["ø__originalNode"] = node.cloneNode(true);
-  nodeState["ø__lastTriggerID"] = null;
+
+  const compiledExpression = compile(expr);
+  nodeState[stateKey + "__ø__exprAST"] = compiledExpression;
+  if (!nodeState["ø__originalNode"]) {
+    nodeState["ø__originalNode"] = node.cloneNode(true);
+  }
+  nodeState[stateKey + "__ø__lastTriggerID"] = null;
+
   pluginStates.set(node, nodeState);
   if (__DEV__) console.log("  - Processing plugin", plugin, node);
   try {
     reactiveState.ø__finalizers.push(() => {
       if (plugin.destroy) {
-        plugin.destroy({node, pluginState: nodeState[stateKey], reactiveState, subkey});
-        nodeState[stateKey] = null;
-        if (Object.keys(nodeState).every(k => nodeState[k] === null)) {
-          pluginStates.delete(node);
-          }
-        }
+        plugin.destroy({
+          node,
+          pluginState: nodeState[stateKey],
+          reactiveState,
+          subkey,
+        });
+      }
+      nodeState[stateKey] = null;
+      nodeState[stateKey + "__ø__exprAST"] = null;
+      nodeState[stateKey + "__ø__lastTriggerID"] = null;
+
+      const isFullyCleaned = Object.keys(nodeState).every(
+        (k) => k === "ø__originalNode" || nodeState[k] === null,
+      );
+      if (isFullyCleaned) {
+        pluginStates.delete(node);
+      }
     });
     const track = () =>
       plugin.track
-        ? plugin.track({ reactiveState, compiledExpression: nodeState["ø__exprAST"], expr, node, subkey })
+        ? plugin.track({
+            reactiveState,
+            compiledExpression,
+            expr,
+            node,
+            subkey,
+          })
         : null;
     try {
       track();
     } catch (error) {
-      console.error(`Error occurred while tracking expression '${expr}' in plugin '${plugin.name}':`, error);
+      console.error(
+        `Error occurred while tracking expression '${expr}' in plugin '${plugin.name}':`,
+        error,
+      );
     }
     depCapture.capturingDeps = false;
     /** @type {VelinBindingEffect} */
@@ -366,15 +432,15 @@ function processPlugin(plugin, reactiveState, expr, node, attributeName, subkey 
       const tracked = track();
       const control = plugin.render({
         reactiveState,
-        compiledExpression: nodeState["ø__exprAST"],
+        compiledExpression,
         node,
         subkey,
         tracked,
         pluginState: nodeState[stateKey],
         attributeName,
-        expr
+        expr,
       });
-      if (control?.state) {
+      if (control && control.state) {
         nodeState[stateKey] = control.state;
         pluginStates.set(node, nodeState);
       }
@@ -387,8 +453,8 @@ function processPlugin(plugin, reactiveState, expr, node, attributeName, subkey 
       ? entries.filter((e) => {
           const tricklingRoot = reactiveState.tricklingRoot;
           // Dependencies are always in "root.*" format, so normalize tricklingRoot to match
-          const normalizedRoot = tricklingRoot.startsWith('root.') 
-            ? tricklingRoot 
+          const normalizedRoot = tricklingRoot.startsWith("root.")
+            ? tricklingRoot
             : `root.${tricklingRoot}`;
           // Remove dependencies that are upstream from or at the tricklingRoot level
           // (i.e., if normalizedRoot starts with e, then e is a branch upstream)
@@ -436,21 +502,21 @@ function tokenize(expr) {
 
     // Numbers
     if (/[0-9]/.test(char)) {
-      let num = '';
+      let num = "";
       while (i < expr.length && /[0-9.]/.test(expr[i])) {
         num += expr[i++];
       }
-      tokens.push({ type: 'NUMBER', value: parseFloat(num) });
+      tokens.push({ type: "NUMBER", value: parseFloat(num) });
       continue;
     }
 
     // Strings
     if (char === '"' || char === "'") {
       const quote = char;
-      let str = '';
+      let str = "";
       i++; // skip opening quote
       while (i < expr.length && expr[i] !== quote) {
-        if (expr[i] === '\\') {
+        if (expr[i] === "\\") {
           i++; // skip escape
           if (i < expr.length) str += expr[i++];
         } else {
@@ -458,31 +524,33 @@ function tokenize(expr) {
         }
       }
       i++; // skip closing quote
-      tokens.push({ type: 'STRING', value: str });
+      tokens.push({ type: "STRING", value: str });
       continue;
     }
 
     // Identifiers
     if (/[a-zA-Z_$]/.test(char)) {
-      let ident = '';
+      let ident = "";
       while (i < expr.length && /[a-zA-Z0-9_$]/.test(expr[i])) {
         ident += expr[i++];
       }
       // Handle keywords/literals
-      if (ident === 'true') tokens.push({ type: 'BOOLEAN', value: true });
-      else if (ident === 'false') tokens.push({ type: 'BOOLEAN', value: false });
-      else if (ident === 'null') tokens.push({ type: 'NULL', value: null });
-      else if (ident === 'undefined') tokens.push({ type: 'UNDEFINED', value: undefined });
-      else tokens.push({ type: 'IDENTIFIER', value: ident });
+      if (ident === "true") tokens.push({ type: "BOOLEAN", value: true });
+      else if (ident === "false")
+        tokens.push({ type: "BOOLEAN", value: false });
+      else if (ident === "null") tokens.push({ type: "NULL", value: null });
+      else if (ident === "undefined")
+        tokens.push({ type: "UNDEFINED", value: undefined });
+      else tokens.push({ type: "IDENTIFIER", value: ident });
       continue;
     }
 
     // Multi-char operators
-    const ops = ['===', '!==', '&&', '||', '>=', '<=', '==', '!='];
+    const ops = ["===", "!==", "&&", "||", ">=", "<=", "==", "!="];
     let matched = false;
     for (const op of ops) {
       if (expr.slice(i, i + op.length) === op) {
-        tokens.push({ type: 'OPERATOR', value: op });
+        tokens.push({ type: "OPERATOR", value: op });
         i += op.length;
         matched = true;
         break;
@@ -491,18 +559,18 @@ function tokenize(expr) {
     if (matched) continue;
 
     // Single = for assignment
-    if (char === '=') {
-      tokens.push({ type: 'ASSIGNMENT', value: '=' });
+    if (char === "=") {
+      tokens.push({ type: "ASSIGNMENT", value: "=" });
       i++;
       continue;
     }
 
     // Single-char tokens
-    if ('+-*/%><()[]{}.,?:!'.includes(char)) {
-      if ('+-*/%><!='.includes(char)) {
-        tokens.push({ type: 'OPERATOR', value: char });
+    if ("+-*/%><()[]{}.,?:!".includes(char)) {
+      if ("+-*/%><!=".includes(char)) {
+        tokens.push({ type: "OPERATOR", value: char });
       } else {
-        tokens.push({ type: 'PUNCTUATION', value: char });
+        tokens.push({ type: "PUNCTUATION", value: char });
       }
       i++;
       continue;
@@ -531,8 +599,14 @@ function parse(tokens) {
 
   function expect(type, value) {
     const token = next();
-    if (!token || token.type !== type || (value !== undefined && token.value !== value)) {
-      throw new Error(`Expected ${type} ${value || ''}, got ${token ? token.type : 'EOF'}`);
+    if (
+      !token ||
+      token.type !== type ||
+      (value !== undefined && token.value !== value)
+    ) {
+      throw new Error(
+        `Expected ${type} ${value || ""}, got ${token ? token.type : "EOF"}`,
+      );
     }
     return token;
   }
@@ -540,32 +614,43 @@ function parse(tokens) {
   // Helper to check if current token matches criteria
   const match = (type, val) => {
     const t = peek();
-    return t && t.type === type && (!val || t.value === val || val.includes?.(t.value));
+    return (
+      t &&
+      t.type === type &&
+      (!val || t.value === val || val.includes?.(t.value))
+    );
   };
 
   // Precedence table for binary operators
-  const prec = [[['||']], [['&&']], [['===', '!==', '==', '!=']], [['>', '<', '>=', '<=']], [['+', '-']], [['*', '/', '%']]];
+  const prec = [
+    [["||"]],
+    [["&&"]],
+    [["===", "!==", "==", "!="]],
+    [[">", "<", ">=", "<="]],
+    [["+", "-"]],
+    [["*", "/", "%"]],
+  ];
 
   function parseSequence() {
     let expressions = [parseAssignment()];
 
-    while (match('PUNCTUATION', ',')) {
+    while (match("PUNCTUATION", ",")) {
       next();
       expressions.push(parseAssignment());
     }
 
     return expressions.length === 1
       ? expressions[0]
-      : { type: 'Sequence', expressions };
+      : { type: "Sequence", expressions };
   }
 
   function parseAssignment() {
     let node = parseTernary();
 
-    if (match('ASSIGNMENT', '=')) {
+    if (match("ASSIGNMENT", "=")) {
       next();
       const right = parseAssignment(); // Right-associative
-      return { type: 'Assignment', left: node, right };
+      return { type: "Assignment", left: node, right };
     }
 
     return node;
@@ -574,12 +659,12 @@ function parse(tokens) {
   function parseTernary() {
     let node = parseBinary(0);
 
-    if (match('PUNCTUATION', '?')) {
+    if (match("PUNCTUATION", "?")) {
       next();
       const consequent = parseTernary();
-      expect('PUNCTUATION', ':');
+      expect("PUNCTUATION", ":");
       const alternate = parseTernary();
-      return { type: 'Ternary', test: node, consequent, alternate };
+      return { type: "Ternary", test: node, consequent, alternate };
     }
 
     return node;
@@ -590,10 +675,10 @@ function parse(tokens) {
     let left = p === 5 ? parseUnary() : parseBinary(p + 1);
 
     if (p < 6) {
-      while (match('OPERATOR', prec[p][0])) {
+      while (match("OPERATOR", prec[p][0])) {
         const op = next().value;
         const right = p === 5 ? parseUnary() : parseBinary(p + 1);
-        left = { type: 'Binary', operator: op, left, right };
+        left = { type: "Binary", operator: op, left, right };
       }
     }
 
@@ -601,10 +686,10 @@ function parse(tokens) {
   }
 
   function parseUnary() {
-    if (match('OPERATOR', ['!', '-', '+'])) {
+    if (match("OPERATOR", ["!", "-", "+"])) {
       const op = next().value;
       const argument = parseUnary();
-      return { type: 'Unary', operator: op, argument };
+      return { type: "Unary", operator: op, argument };
     }
 
     return parseCall();
@@ -613,17 +698,17 @@ function parse(tokens) {
   function parseCall() {
     let node = parseMember();
 
-    while (match('PUNCTUATION', '(')) {
+    while (match("PUNCTUATION", "(")) {
       next();
       const args = [];
 
-      while (!match('PUNCTUATION', ')')) {
+      while (!match("PUNCTUATION", ")")) {
         args.push(parseAssignment());
-        if (match('PUNCTUATION', ',')) next();
+        if (match("PUNCTUATION", ",")) next();
       }
 
-      expect('PUNCTUATION', ')');
-      node = { type: 'Call', callee: node, arguments: args };
+      expect("PUNCTUATION", ")");
+      node = { type: "Call", callee: node, arguments: args };
     }
 
     return node;
@@ -633,15 +718,20 @@ function parse(tokens) {
     let node = parsePrimary();
 
     while (true) {
-      if (match('PUNCTUATION', '.')) {
+      if (match("PUNCTUATION", ".")) {
         next();
-        const property = expect('IDENTIFIER');
-        node = { type: 'Member', object: node, property: property.value, computed: false };
-      } else if (match('PUNCTUATION', '[')) {
+        const property = expect("IDENTIFIER");
+        node = {
+          type: "Member",
+          object: node,
+          property: property.value,
+          computed: false,
+        };
+      } else if (match("PUNCTUATION", "[")) {
         next();
         const property = parseAssignment();
-        expect('PUNCTUATION', ']');
-        node = { type: 'Member', object: node, property, computed: true };
+        expect("PUNCTUATION", "]");
+        node = { type: "Member", object: node, property, computed: true };
       } else {
         break;
       }
@@ -654,38 +744,54 @@ function parse(tokens) {
     const token = peek();
 
     if (!token) {
-      throw new Error('Unexpected end');
+      throw new Error("Unexpected end of expression");
     }
 
-    if (['NUMBER', 'STRING', 'BOOLEAN', 'NULL', 'UNDEFINED'].includes(token.type)) {
+    if (
+      ["NUMBER", "STRING", "BOOLEAN", "NULL", "UNDEFINED"].includes(token.type)
+    ) {
       next();
-      return { type: 'Literal', value: token.value };
+      return { type: "Literal", value: token.value };
     }
 
-    if (token.type === 'IDENTIFIER') {
+    if (token.type === "IDENTIFIER") {
       next();
-      return { type: 'Identifier', name: token.value };
+      return { type: "Identifier", name: token.value };
     }
 
-    if (match('PUNCTUATION', '(')) {
+    if (match("PUNCTUATION", "(")) {
       next();
       const node = parseSequence();
-      expect('PUNCTUATION', ')');
+      expect("PUNCTUATION", ")");
       return node;
     }
 
+    // Array literal
+    if (match("PUNCTUATION", "[")) {
+      next();
+      const elements = [];
+
+      while (!match("PUNCTUATION", "]")) {
+        elements.push(parseAssignment());
+        if (match("PUNCTUATION", ",")) next();
+      }
+
+      expect("PUNCTUATION", "]");
+      return { type: "ArrayLiteral", elements };
+    }
+
     // Object literal
-    if (match('PUNCTUATION', '{')) {
+    if (match("PUNCTUATION", "{")) {
       next();
       const properties = [];
 
-      while (!match('PUNCTUATION', '}')) {
+      while (!match("PUNCTUATION", "}")) {
         // Parse property key
         let key;
         const keyToken = peek();
-        if (keyToken.type === 'IDENTIFIER') {
+        if (keyToken.type === "IDENTIFIER") {
           key = next().value;
-        } else if (keyToken.type === 'STRING') {
+        } else if (keyToken.type === "STRING") {
           key = next().value;
         } else {
           throw new Error(`Bad property name`);
@@ -693,28 +799,34 @@ function parse(tokens) {
 
         // Check for shorthand property syntax: { foo } instead of { foo: foo }
         let value;
-        if (match('PUNCTUATION', [',', '}'])) {
+        if (match("PUNCTUATION", [",", "}"])) {
           // Shorthand syntax: use key as identifier
-          if (keyToken.type !== 'IDENTIFIER') {
+          if (keyToken.type !== "IDENTIFIER") {
             throw new Error(`Bad shorthand`);
           }
-          value = { type: 'Identifier', name: key };
+          value = { type: "Identifier", name: key };
         } else {
           // Regular syntax: expect colon and value
-          expect('PUNCTUATION', ':');
+          expect("PUNCTUATION", ":");
           value = parseAssignment();
         }
 
         properties.push({ key, value });
 
-        if (match('PUNCTUATION', ',')) next();
+        if (match("PUNCTUATION", ",")) next();
       }
 
-      expect('PUNCTUATION', '}');
-      return { type: 'ObjectLiteral', properties };
+      expect("PUNCTUATION", "}");
+      return { type: "ObjectLiteral", properties };
     }
 
-    throw new Error(`Unexpected: ${token.type}`);
+    const contextTokens = tokens
+      .slice(Math.max(0, pos - 3), pos + 4)
+      .map((t) => `${t.type}:${t.value}`)
+      .join(" ");
+    throw new Error(
+      `Unexpected token in expression: ${token.type} "${token.value}" at position ${pos}. Context: ${contextTokens}`,
+    );
   }
 
   return parseSequence();
@@ -760,11 +872,12 @@ function evalMember(ast, context, reactiveState) {
  */
 function evalCall(ast, context, reactiveState) {
   const fn = evalAst(ast.callee, context, reactiveState);
-  if (typeof fn !== 'function') throw new TypeError('Not a function');
-  const args = ast.arguments.map(arg => evalAst(arg, context, reactiveState));
-  const thisArg = ast.callee.type === 'Member'
-    ? evalAst(ast.callee.object, context, reactiveState)
-    : context;
+  if (typeof fn !== "function") throw new TypeError("Not a function");
+  const args = ast.arguments.map((arg) => evalAst(arg, context, reactiveState));
+  const thisArg =
+    ast.callee.type === "Member"
+      ? evalAst(ast.callee.object, context, reactiveState)
+      : context;
   return fn.apply(thisArg, args);
 }
 
@@ -777,21 +890,21 @@ function evalBinary(ast, context, reactiveState) {
   const left = evalAst(ast.left, context, reactiveState);
   const right = evalAst(ast.right, context, reactiveState);
   const ops = {
-    '+':  (a, b) => a + b,
-    '-':  (a, b) => a - b,
-    '*':  (a, b) => a * b,
-    '/':  (a, b) => a / b,
-    '%':  (a, b) => a % b,
-    '>':  (a, b) => a > b,
-    '<':  (a, b) => a < b,
-    '>=': (a, b) => a >= b,
-    '<=': (a, b) => a <= b,
-    '===':(a, b) => a === b,
-    '!==':(a, b) => a !== b,
-    '==': (a, b) => a == b,
-    '!=': (a, b) => a != b,
-    '&&': (a, b) => a && b,
-    '||': (a, b) => a || b,
+    "+": (a, b) => a + b,
+    "-": (a, b) => a - b,
+    "*": (a, b) => a * b,
+    "/": (a, b) => a / b,
+    "%": (a, b) => a % b,
+    ">": (a, b) => a > b,
+    "<": (a, b) => a < b,
+    ">=": (a, b) => a >= b,
+    "<=": (a, b) => a <= b,
+    "===": (a, b) => a === b,
+    "!==": (a, b) => a !== b,
+    "==": (a, b) => a == b,
+    "!=": (a, b) => a != b,
+    "&&": (a, b) => a && b,
+    "||": (a, b) => a || b,
   };
   return (ops[ast.operator] || (() => undefined))(left, right);
 }
@@ -804,8 +917,8 @@ function evalBinary(ast, context, reactiveState) {
 function evalUnary(ast, context, reactiveState) {
   const arg = evalAst(ast.argument, context, reactiveState);
   const ops = {
-    '!': a => !a,
-    '-': a => -a,
+    "!": (a) => !a,
+    "-": (a) => -a,
   };
   return (ops[ast.operator] || (() => undefined))(arg);
 }
@@ -831,11 +944,21 @@ function evalObjectLiteral(ast, context, reactiveState) {
   const result = {};
   for (const prop of ast.properties) {
     const value = evalAst(prop.value, context, reactiveState);
-    result[prop.key] = value && typeof value === 'object' && value.constructor === Object
-      ? {...value, constructor: undefined} // Unwrap the object
-      : value;
+    result[prop.key] =
+      value && typeof value === "object" && value.constructor === Object
+        ? { ...value, constructor: undefined } // Unwrap the object
+        : value;
   }
   return result;
+}
+
+/**
+ * @param {any} ast
+ * @param {Record<string, any>} context
+ * @param {any} reactiveState
+ */
+function evalArrayLiteral(ast, context, reactiveState) {
+  return ast.elements.map((elem) => evalAst(elem, context, reactiveState));
 }
 
 /**
@@ -846,17 +969,18 @@ function evalObjectLiteral(ast, context, reactiveState) {
 function evalAssignment(ast, context, reactiveState) {
   const value = evalAst(ast.right, context, reactiveState);
 
-  if (ast.left.type === 'Identifier') {
+  if (ast.left.type === "Identifier") {
     context[ast.left.name] = value;
-  } else if (ast.left.type === 'Member') {
+  } else if (ast.left.type === "Member") {
     const obj = evalAst(ast.left.object, context, reactiveState);
-    if (obj == null) throw new TypeError('Cannot set property on null or undefined');
+    if (obj == null)
+      throw new TypeError("Cannot set property on null or undefined");
     const key = ast.left.computed
       ? evalAst(ast.left.property, context, reactiveState)
       : ast.left.property;
     obj[key] = value;
   } else {
-    throw new Error('Invalid assignment target');
+    throw new Error("Invalid assignment target");
   }
 
   return value;
@@ -882,56 +1006,89 @@ function evalSequence(ast, context, reactiveState) {
  */
 function evalAst(ast, context, reactiveState = null) {
   switch (ast.type) {
-    case 'Literal':
+    case "Literal":
       return evalLiteral(/** @type {ASTLiteralNode} */ (ast));
 
-    case 'Identifier':
+    case "Identifier":
       return evalIdentifier(/** @type {ASTIdentifierNode} */ (ast), context);
 
-    case 'Member':
-      return evalMember(/** @type {ASTMemberNode} */ (ast), context, reactiveState);
+    case "Member":
+      return evalMember(
+        /** @type {ASTMemberNode} */ (ast),
+        context,
+        reactiveState,
+      );
 
-    case 'Call':
+    case "Call":
       return evalCall(/** @type {ASTCallNode} */ (ast), context, reactiveState);
 
-    case 'Binary':
-      return evalBinary(/** @type {ASTBinaryNode} */ (ast), context, reactiveState);
+    case "Binary":
+      return evalBinary(
+        /** @type {ASTBinaryNode} */ (ast),
+        context,
+        reactiveState,
+      );
 
-    case 'Unary':
-      return evalUnary(/** @type {ASTUnaryNode} */ (ast), context, reactiveState);
+    case "Unary":
+      return evalUnary(
+        /** @type {ASTUnaryNode} */ (ast),
+        context,
+        reactiveState,
+      );
 
-    case 'Ternary':
-      return evalTernary(/** @type {ASTTernaryNode} */ (ast), context, reactiveState);
+    case "Ternary":
+      return evalTernary(
+        /** @type {ASTTernaryNode} */ (ast),
+        context,
+        reactiveState,
+      );
 
-    case 'ObjectLiteral':
-      return evalObjectLiteral(/** @type {ASTObjectLiteralNode} */ (ast), context, reactiveState);
+    case "ObjectLiteral":
+      return evalObjectLiteral(
+        /** @type {ASTObjectLiteralNode} */ (ast),
+        context,
+        reactiveState,
+      );
 
-    case 'Assignment':
-      return evalAssignment(/** @type {ASTAssignmentNode} */ (ast), context, reactiveState);
+    case "ArrayLiteral":
+      return evalArrayLiteral(
+        /** @type {ASTNode} */ (ast),
+        context,
+        reactiveState,
+      );
 
-    case 'Sequence':
-      return evalSequence(/** @type {ASTSequenceNode} */ (ast), context, reactiveState);
+    case "Assignment":
+      return evalAssignment(
+        /** @type {ASTAssignmentNode} */ (ast),
+        context,
+        reactiveState,
+      );
+
+    case "Sequence":
+      return evalSequence(
+        /** @type {ASTSequenceNode} */ (ast),
+        context,
+        reactiveState,
+      );
 
     default:
       throw new Error(`Bad AST: ${ast.type}`);
   }
 }
 
-
-
 /**
- * 
- * @param {string} intKey 
- * @param {ReactiveState} reactiveState 
- * @returns 
+ *
+ * @param {string} intKey
+ * @param {ReactiveState} reactiveState
+ * @returns
  */
-function lerp(intKey, reactiveState){
+function lerp(intKey, reactiveState) {
   const inter = reactiveState.interpolations;
   if (inter?.has(intKey)) {
     const interp = inter.get(intKey);
     // If interpolation is a string, evaluate it as an expression
     // Otherwise, return the value directly (e.g., event objects)
-    if (interp.type === 'EXPR') {
+    if (interp.type === "EXPR") {
       return evaluateAst(interp.value.ast, reactiveState);
     } else {
       return interp.value;
@@ -951,9 +1108,9 @@ function lerp(intKey, reactiveState){
  *
  */
 function compile(expr) {
-    const tokens = tokenize(expr);
-    const ast = parse(tokens);
-    return ast;
+  const tokens = tokenize(expr);
+  const ast = parse(tokens);
+  return ast;
 }
 
 /**
@@ -974,14 +1131,15 @@ function evaluateAst(ast, reactiveState) {
     set(target, prop, value, receiver) {
       if (!reactiveState.ø__control) {
         throw new Error(
-          `[VLN014] Async mutation error: Property '${String(prop)}' was mutated after the evaluation context was cleaned up. This usually happens when an async operation in an event handler (or similar) tries to update state after the element has been removed or the scope destroyed.`
+          `[VLN014] Async mutation error: Property '${String(prop)}' was mutated after the evaluation context was cleaned up. This usually happens when an async operation in an event handler (or similar) tries to update state after the element has been removed or the scope destroyed.`,
         );
       }
       if (reactiveState.ø__control.evaluating)
         throw new Error(
-          "[VLN010] Setting values during evaluation is forbidden. Use Velin.getSetter"
+          "[VLN010] Setting values during evaluation is forbidden. Use Velin.getSetter",
         );
-      return Reflect.set(target, prop, value, receiver);
+      // Targeting target directly to avoid triggering traps recursively
+      return Reflect.set(target, prop, value);
     },
   });
   return evalAst(ast, contextualizedProxy, reactiveState);
@@ -1019,7 +1177,7 @@ function evaluateAst(ast, reactiveState) {
 function evaluate(reactiveState, expr, allowMutations = false) {
   if (!reactiveState.ø__control) {
     throw new Error(
-      `[VLN014] Async mutation error: Expression "${expr}" evaluation was attempted after the state was cleaned up.`
+      `[VLN014] Async mutation error: Expression "${expr}" evaluation was attempted after the state was cleaned up.`,
     );
   }
   reactiveState.ø__control.evaluating = !allowMutations;
@@ -1027,9 +1185,7 @@ function evaluate(reactiveState, expr, allowMutations = false) {
     const ast = compile(expr);
     return evaluateAst(ast, reactiveState);
   } catch (err) {
-    console.error(
-      `Velin evaluate() error in expression "${expr}".`
-    );
+    console.error(`Velin evaluate() error in expression "${expr}".`);
     throw err;
   } finally {
     if (reactiveState.ø__control) {
@@ -1071,7 +1227,10 @@ function evaluate(reactiveState, expr, allowMutations = false) {
 function getSetter(reactiveState, expr) {
   const inter = reactiveState.interpolations;
   // If it's an expression interpolation, grab the original expression from it
-  const property = inter?.has(expr) && inter?.get(expr).type == 'EXPR' ? inter.get(expr).value.expr : expr;
+  const property =
+    inter?.has(expr) && inter?.get(expr).type == "EXPR"
+      ? inter.get(expr).value.expr
+      : expr;
   const lastDotIndex = property.lastIndexOf(".");
 
   // Handle root-level properties (no dots)
@@ -1079,9 +1238,15 @@ function getSetter(reactiveState, expr) {
     return (value) => (reactiveState.state[property] = value);
   }
 
-  const parent = evaluate(reactiveState, property.slice(0, lastDotIndex));
+  const parentPath = property.slice(0, lastDotIndex);
   const key = property.slice(lastDotIndex + 1);
-  return (value) => (parent[key] = value);
+
+  return (value) => {
+    const parent = evaluate(reactiveState, parentPath);
+    if (parent == null)
+      throw new TypeError("Cannot set property on null or undefined");
+    parent[key] = value;
+  };
 }
 
 /**
@@ -1098,7 +1263,7 @@ function triggerEffects(prop, reactiveState) {
         (reactiveState.bindings.get(prop)
           ? reactiveState.bindings.get(prop).size
           : 0) +
-        " found"
+        " found",
     );
   if (!reactiveState.bindings.has(prop)) return;
   for (const effect of reactiveState.bindings.get(prop) || []) {
@@ -1144,28 +1309,36 @@ function setupState(obj) {
         if (depCapture?.capturingDeps)
           depCapture.deps.add(path + "." + prop.toString());
         const value = Reflect.get(target, prop, receiver);
-        const wrappedValue = wrap(value, path + "." + prop.toString());
-        Reflect.set(
-          target,
-          prop,
-          wrappedValue,
-          receiver
-        );
-        return wrappedValue;
+
+        const dnm = ø__control.wrapping;
+        ø__control.wrapping = true;
+        try {
+          const wrappedValue = wrap(value, path + "." + prop.toString());
+          if (wrappedValue !== value) {
+            // Targeting target directly to avoid triggering traps recursively
+            Reflect.set(target, prop, wrappedValue);
+          }
+          return wrappedValue;
+        } finally {
+          if (!dnm) ø__control.wrapping = false;
+        }
       },
       set(target, prop, value, receiver) {
         if (!init && ø__control.evaluating && !ø__control.wrapping)
           throw new Error(
-            "[VLN010] Setting values during evaluation is forbidden. Use Velin.getSetter"
+            "[VLN010] Setting values during evaluation is forbidden. Use Velin.getSetter",
           );
+
+        const desc = Object.getOwnPropertyDescriptor(target, prop);
+        if (desc?.set) {
+          desc.set.call(receiver, value);
+          return true;
+        }
+
         const old = target[prop];
-        const result = Reflect.set(
-          target,
-          prop,
-          value,
-          receiver
-        );
-        if (old !== value && !init) {
+        const result = Reflect.set(target, prop, value);
+
+        if (old !== value && !init && !ø__control.wrapping) {
           triggerEffects(path + "." + prop.toString(), reactiveState);
         }
         return result;
@@ -1216,35 +1389,51 @@ function setupState(obj) {
             return result;
           };
         }
-        const wrappedValue = wrap(value, innerPath);
-        Reflect.set(
-          target,
-          prop,
-          wrappedValue,
-          receiver
-        );
-        return wrappedValue;
+        const dnm = ø__control.wrapping;
+        ø__control.wrapping = true;
+        try {
+          const wrappedValue = wrap(value, innerPath);
+          if (wrappedValue !== value) {
+            // Targeting target directly to avoid triggering traps recursively
+            Reflect.set(target, prop, wrappedValue);
+          }
+          return wrappedValue;
+        } finally {
+          if (!dnm) ø__control.wrapping = false;
+        }
       },
       set(target, prop, value, receiver) {
         if (!init && ø__control.evaluating && !ø__control.wrapping)
           throw new Error(
-            "[VLN010] Setting values during evaluation is forbidden. Use Velin.getSetter"
+            "[VLN010] Setting values during evaluation is forbidden. Use Velin.getSetter",
           );
-        if ((typeof prop === 'number' && !isNaN(prop)) || /^\d+$/.test(prop.toString())) {
+
+        const old = target[prop];
+
+        const desc = Object.getOwnPropertyDescriptor(target, prop);
+        let result;
+        if (desc?.set) {
+          desc.set.call(receiver, value);
+          result = true;
+        } else {
+          result = Reflect.set(target, prop, value);
+        }
+
+        if (
+          (typeof prop === "number" && !isNaN(prop)) ||
+          /^\d+$/.test(prop.toString())
+        ) {
           const innerPath = path + "[" + prop.toString() + "]";
-          const old = target[prop];
-          const result = Reflect.set(
-            target,
-            prop,
-            value,
-            receiver
-          );
           if (old !== value && !init) {
             triggerEffects(innerPath, reactiveState);
           }
-          return result;
+        } else if (old !== value && !init && !ø__control.wrapping) {
+          triggerEffects(path + "." + prop.toString(), reactiveState);
+          if (prop === "length") {
+            triggerEffects(path, reactiveState);
+          }
         }
-        return Reflect.set(target, prop, value, receiver);
+        return result;
       },
     });
     return arrayProxy;
@@ -1289,10 +1478,15 @@ function composeState(reactiveState, interpolations) {
   /** @type {[string, Interpolation][]} */
   const lerps = [];
   for (const [k, v] of interpolations) {
-    if (v.type === 'EXPR')
-      lerps.push([k, { type: 'EXPR', value: { expr: v.value.expr, ast: compile(v.value.expr) } }]);
-    else
-      lerps.push([k, v]);
+    if (v.type === "EXPR")
+      lerps.push([
+        k,
+        {
+          type: "EXPR",
+          value: { expr: v.value.expr, ast: compile(v.value.expr) },
+        },
+      ]);
+    else lerps.push([k, v]);
   }
   /** @type {ReactiveState} */
   const inner = {
@@ -1303,7 +1497,7 @@ function composeState(reactiveState, interpolations) {
     ]),
     ø__innerBindings: new Map(),
     ø__innerStates: new Set(),
-    ø__finalizers: []
+    ø__finalizers: [],
   };
   reactiveState.ø__innerStates.add(inner);
   return inner;
@@ -1330,7 +1524,7 @@ function cleanupState(parentState, innerState, node = null) {
   // Clear inner bindings
   if (innerState.ø__innerBindings) {
     for (const [property, effects] of Array.from(
-      innerState.ø__innerBindings.entries()
+      innerState.ø__innerBindings.entries(),
     )) {
       if (innerState.bindings.has(property)) {
         for (const effect of effects) {
@@ -1343,12 +1537,14 @@ function cleanupState(parentState, innerState, node = null) {
     innerState.ø__innerBindings.clear();
   }
   // Clear finalizers
-  innerState.ø__finalizers.forEach(fn => fn());
+  innerState.ø__finalizers.forEach((fn) => fn());
   // Recursively clear child states
   innerState.ø__innerStates.forEach((inner) => cleanupState(innerState, inner));
   // Delete from chain
   if (!parentState.ø__innerStates.delete(innerState)) {
-    throw new Error("[VLN011] Failed to delete inner state from parent. This indicates a state management corruption.");
+    throw new Error(
+      "[VLN011] Failed to delete inner state from parent. This indicates a state management corruption.",
+    );
   }
   // De-ref
   innerState.bindings = null;
@@ -1378,10 +1574,12 @@ function consumeAttribute(node, attr, expr) {
  */
 function emitLifecycle(node, eventName, detail = {}) {
   if (node instanceof HTMLElement) {
-    node.dispatchEvent(new CustomEvent(eventName, {
-      bubbles: true,
-      detail: { ...detail, node }
-    }));
+    node.dispatchEvent(
+      new CustomEvent(eventName, {
+        bubbles: true,
+        detail: { ...detail, node },
+      }),
+    );
   }
 }
 
@@ -1403,6 +1601,7 @@ function processNode(node, reactiveState) {
     if (!name.startsWith("vln-")) continue;
 
     const key = name.slice(4);
+
     let pluginKey = key;
     let subcommand = null;
 
@@ -1413,12 +1612,12 @@ function processNode(node, reactiveState) {
     if (plugins.has(pluginKey)) {
       const plugin = plugins.get(pluginKey);
       const uniqueKey = `${plugin.name}${subcommand ? ":" + subcommand : ""}`;
-      
+
       if (seenPlugins.has(uniqueKey)) {
         throw new Error(
           `[VLN013] Duplicate plugin application: '${plugin.name}' ${
             subcommand ? "with subcommand '" + subcommand + "' " : ""
-          }is applied multiple times to the same node. Each plugin/subcommand pair must be unique per element.`
+          }is applied multiple times to the same node. Each plugin/subcommand pair must be unique per element.`,
         );
       }
       seenPlugins.add(uniqueKey);
@@ -1439,41 +1638,58 @@ function processNode(node, reactiveState) {
         value,
         subcommand,
         plugin: {
-          name: '__error__',
+          name: "__error__",
           priority: -Infinity,
           render: () => {
-            const availablePlugins = Array.from(plugins.keys()).join(', ');
+            const availablePlugins = Array.from(plugins.keys()).join(", ");
             throw new Error(
               `[Velin] Plugin '${pluginKey}' is not registered. ` +
-              `Available plugins: ${availablePlugins}`
+                `Available plugins: ${availablePlugins}`,
             );
-          }
-        }
+          },
+        },
       });
     }
   }
 
   // Sort by priorities (highest = first)
-  applicable.sort((a, b) => (b.plugin.priority || 0) - (a.plugin.priority || 0));
-
+  applicable.sort(
+    (a, b) => (b.plugin.priority || 0) - (a.plugin.priority || 0),
+  );
+  /** {ReactiveState | null} */
+  let scopedReactiveState = null;
   // Apply
   for (const { plugin, name, value, subcommand } of applicable) {
-    const control = processPlugin(plugin, reactiveState, value, node, name, subcommand);
+    const control = processPlugin(
+      plugin,
+      reactiveState,
+      value,
+      node,
+      name,
+      subcommand,
+    );
     consumeAttribute(node, name, value);
-    if (control?.halt) {
+    if (!control) continue;
+    if (control.halt) {
       emitLifecycle(node, "init", { state: reactiveState });
       return;
+    }
+    if (control.scopedState) {
+      if (!scopedReactiveState) scopedReactiveState = control.scopedState;
+      else
+        throw new Error(
+          `[VLN012] Multiple plugins on the same node cannot create scoped states. Plugin '${plugin.name}' attempted to create a scoped state, but one already exists from a previous plugin.`,
+        );
     }
   }
 
   // Process tree
   for (const child of Array.from(node.children)) {
-    processNode(child, reactiveState);
+    processNode(child, scopedReactiveState || reactiveState);
   }
 
-  emitLifecycle(node, "init", { state: reactiveState });
+  emitLifecycle(node, "init", { state: scopedReactiveState || reactiveState });
 }
-
 
 /**
  * Initializes Velin reactivity on a DOM subtree.
@@ -1504,7 +1720,7 @@ const Velin = {
     registerPlugin,
     processPlugin,
     get: plugins.get.bind(plugins),
-    priorities: DefaultPluginPriorities
+    priorities: DefaultPluginPriorities,
   },
   trackers,
   ø__internal: {
@@ -1522,6 +1738,6 @@ export default Velin;
 /** @type {any} */
 const __win = window;
 
-if (typeof window !== 'undefined' && !__win.Velin) {
+if (typeof window !== "undefined" && !__win.Velin) {
   __win.Velin = Velin;
 }

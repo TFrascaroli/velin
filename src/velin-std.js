@@ -257,12 +257,13 @@ function setupVelinStd(vln) {
     track: vln.trackers.expressionTracker,
     render: ({ node, tracked, expr, reactiveState, pluginState = {} }) => {
       const isInput = node instanceof HTMLInputElement;
+      const isTextArea = node instanceof HTMLTextAreaElement;
       const isSelect = node instanceof HTMLSelectElement;
       const isContentEditable = node.isContentEditable;
 
-      if (!isInput && !isSelect && !isContentEditable) {
+      if (!isInput && !isTextArea && !isSelect && !isContentEditable) {
         console.warn(
-          "[VLN006] Target is not input, select, or contenteditable element"
+          "[VLN006] Target is not input, textarea, select, or contenteditable element"
         );
         return;
       }
@@ -288,6 +289,11 @@ function setupVelinStd(vln) {
               setter(e.target.checked);
             });
           }
+        } else if (isTextArea) {
+          node.addEventListener("input", (e) => {
+            if (!(e.target instanceof HTMLTextAreaElement)) return;
+            setter(e.target.value);
+          });
         } else if (isSelect) {
           node.addEventListener("change", (e) => {
             if (!(e.target instanceof HTMLSelectElement)) return;
@@ -309,6 +315,8 @@ function setupVelinStd(vln) {
           default:
             if (node.value !== tracked) node.value = tracked;
         }
+      } else if (isTextArea) {
+        if (node.value !== tracked) node.value = tracked;
       } else if (isSelect) {
         if (node.value !== tracked) node.value = tracked;
       } else if (isContentEditable) {
