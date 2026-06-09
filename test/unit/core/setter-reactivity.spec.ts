@@ -1,5 +1,5 @@
 import Velin from "../../../src/velin-core";
-import setupVelinStd from "../../../src/velin-std";
+import setupVelinStd from "../../../src/velin-standard";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
 // Initialize standard plugins for the test

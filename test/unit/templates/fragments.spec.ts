@@ -58,26 +58,6 @@ describe("Templates and Fragments", () => {
     expect(container.querySelector('.admin')?.textContent).toContain("Admin: Alice");
   });
 
-  it("should work with vln-use alias", () => {
-    container.innerHTML = `
-      <template id="testCard" vln-vars="name">
-        <div class="card">
-          <span vln-text="name"></span>
-        </div>
-      </template>
-      <div vln-use="'testCard'" vln-var:name="userName"></div>
-    `;
-
-    const state = Velin.bind(container, {
-      userName: "Charlie"
-    });
-
-    const card = container.querySelector('.card');
-    expect(card).toBeTruthy();
-    expect(card?.textContent?.trim()).toBe("Charlie");
-  });
-
-
   // TODO: Fix validation test - error is being logged but render still happens
   it.skip("should handle missing template variables gracefully", () => {
     container.innerHTML = `

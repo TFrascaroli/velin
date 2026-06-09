@@ -12,7 +12,7 @@
       "import": "./src/velin-core.js"
     },
     "./std": {
-      "import": "./src/velin-std.js"
+      "import": "./src/velin-standard.js"
     },
     "./templates": {
       "import": "./src/velin-templates-and-fragments.js"

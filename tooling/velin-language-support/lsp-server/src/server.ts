@@ -321,7 +321,6 @@ function getBasicDirectiveCompletions(): LSPCompletionItem[] {
     'vln-attr',
     'vln-on',
     'vln-loop',
-    'vln-use',
     'vln-fragment'
   ];
 
@@ -376,8 +375,7 @@ function getDirectiveDocumentation(directive: string): string {
     'vln-attr': 'Sets HTML attributes dynamically. Usage: vln-attr:attrName="value"',
     'vln-on': 'Binds event handlers. Usage: vln-on:eventName="handler"',
     'vln-loop': 'Repeats element for each array item. Usage: vln-loop:item="arrayExpression"',
-    'vln-use': 'Renders template by ID. Usage: vln-use="templateId"',
-    'vln-fragment': 'Alias for vln-use. Usage: vln-fragment="templateId"'
+    'vln-fragment': 'Renders template by ID. Usage: vln-fragment="templateId"'
   };
   return docs[directive] || '';
 }

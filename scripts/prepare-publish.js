@@ -12,19 +12,19 @@ const filesToCopy = [
   // JS bundles
   'velin-all.min.js',
   'velin-core.min.js',
-  'velin-std.min.js',
+  'velin-standard.min.js',
   'velin-templates-and-fragments.min.js',
   // Source maps
   'velin-all.min.js.map',
   'velin-core.min.js.map',
-  'velin-std.min.js.map',
+  'velin-standard.min.js.map',
   'velin-templates-and-fragments.min.js.map',
 ];
 
 const typeFiles = [
   'velin-all.d.ts',
   'velin-core.d.ts',
-  'velin-std.d.ts',
+  'velin-standard.d.ts',
   'velin-templates-and-fragments.d.ts',
 ];
 

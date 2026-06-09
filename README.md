@@ -59,7 +59,7 @@ Velin is under active development. Current priorities:
 Velin is split into modules for optimal bundle size:
 
 -   **`velin-core.js`** (~4.9KB gzipped) - Core reactivity, expression evaluator, plugin system.
--   **`velin-std.js`** (~2.0KB gzipped) - Standard directives (text, if, loop, input, on, attr, class).
+-   **`velin-standard.js`** (~2.0KB gzipped) - Standard directives (text, if, loop, input, on, attr, class).
 -   **`velin-templates-and-fragments.js`** (~1.0KB gzipped) - Template and Fragment support.
 -   **`velin-events.js`** (~0.6KB gzipped) - Event orchestration (alias, contain).
 -   **`velin-all.js`** (~7.4KB gzipped) - Everything bundled (recommended).

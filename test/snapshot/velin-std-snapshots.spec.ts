@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import Velin from '../../src/velin-core.js'
-import setupVelinStd from '../../src/velin-std.js';
+import setupVelinStd from '../../src/velin-standard.js';
 setupVelinStd(Velin);
 
 

@@ -168,37 +168,6 @@ function setupTemplatesAndFragments(vln) {
       };
     },
   });
-
-  /**
-   * vln-use: Alias for vln-fragment.
-   * Some developers prefer this naming convention.
-   *
-   * @example
-   * // These are equivalent:
-   * <div vln-fragment="'userCard'" vln-var:user="currentUser"></div>
-   * <div vln-use="'userCard'" vln-var:user="currentUser"></div>
-   *
-   * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/templates.md#alternative-vln-use|Templates Guide: vln-use}
-   */
-  vln.plugins.registerPlugin({
-    name: "use",
-    priority: vln.plugins.priorities.LATE,
-    track: ({ reactiveState, compiledExpression }) => {
-      return vln.evaluateAst(compiledExpression, reactiveState);
-    },
-    destroy: ({ node, pluginState, reactiveState, subkey }) => {
-      // Delegate to fragment plugin
-      const fragmentPlugin = vln.plugins.get('fragment');
-      if (fragmentPlugin?.destroy) {
-        fragmentPlugin.destroy({ node, pluginState, reactiveState, subkey });
-      }
-    },
-    render: (args) => {
-      // Delegate to fragment plugin
-      const fragmentPlugin = vln.plugins.get('fragment');
-      return fragmentPlugin.render(args);
-    }
-  });
 }
 
 // Auto-bootstrap in browser

@@ -1,5 +1,5 @@
 export default {
-  currentTheme: 'modern', // Controls which template is displayed via vln-use
+  currentTheme: 'modern', // Controls which template is displayed via vln-fragment
 
   blog: {
     title: 'The Design Chronicle',

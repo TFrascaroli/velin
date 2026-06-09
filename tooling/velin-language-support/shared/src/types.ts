@@ -62,7 +62,6 @@ export const VELIN_DIRECTIVES = [
   'vln-attr',
   'vln-on',
   'vln-loop',
-  'vln-use',
   'vln-fragment'
 ] as const;
 

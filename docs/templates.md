@@ -205,16 +205,6 @@ Add a comment at the top of your `<template>` to link it to a JavaScript type (d
 
 The IDE will now provide autocomplete for `name` and `role` inside the template expressions and when using `vln-var:name` on a fragment.
 
-## Alternative: `vln-use`
-
-`vln-use` is an alias for `vln-fragment`. Some developers prefer this naming:
-
-```html
-<!-- These are equivalent -->
-<div vln-fragment="'userCard'" vln-var:user="currentUser"></div>
-<div vln-use="'userCard'" vln-var:user="currentUser"></div>
-```
-
 ## Complete Example
 
 Here's a complete example of a user management interface using the "Component Pattern":
@@ -252,7 +242,7 @@ Here's a complete example of a user management interface using the "Component Pa
     <h1>Users</h1>
 
     <div vln-loop:user="users"
-         vln-use="'userCard'"
+         vln-fragment="'userCard'"
          vln-var:user="user"
          vln-var:actions="createUserActions(user)">
     </div>

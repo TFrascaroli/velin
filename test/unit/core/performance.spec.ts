@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import Velin from "../../../src/velin-core";
-import setupVelinStd from "../../../src/velin-std";
+import setupVelinStd from "../../../src/velin-standard";
 
 describe("Performance Backstops", () => {
   beforeEach(() => {
