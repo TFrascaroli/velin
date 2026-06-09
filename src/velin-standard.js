@@ -338,17 +338,13 @@ function setupVelinStd(vln) {
   vln.plugins.registerPlugin({
     name: "watch",
     track: vln.trackers.expressionTracker,
-    render: ({ reactiveState, tracked, subkey }) => {
-      if (!subkey) {
+    render: ({ tracked, subkey }) => {
+      const handler = tracked;
+      if (!subkey || typeof handler !== "function") {
         console.warn("[VLN007] Expected method name 'watch:methodName'");
         return;
       }
-      const handler = reactiveState.state[subkey];
-      if (typeof handler === "function") {
-        handler(tracked);
-      } else {
-        console.warn(`[VLN008] Watch handler '${subkey}' not found or not a function`);
-      }
+      handler(tracked);
     },
   });
 
