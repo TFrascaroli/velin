@@ -511,6 +511,27 @@ function setupVelinStd(vln) {
       return { halt: true, state: pluginState };
     },
   });
+
+  /**
+   * vln-use:alias: Creates a new alias for a property in the state, allowing it to be referenced by a different name.
+   * Useful for avoiding naming conflicts or providing more context-specific names for properties, as well as shorthand access to deeply nested properties.
+   *
+   * @example
+   * <div vln-use:user="generalState.identity.local.currentUser">
+   *   <h1 vln-text="user.name"></h1>
+   * </div>
+   *
+   * @see {@link
+   */
+  vln.plugins.registerPlugin({
+    name: "use",
+    priority: vln.plugins.priorities.STOPPER,
+    track: vln.trackers.expressionTracker,
+    render: ({reactiveState, subkey, expr}) => {
+      const scopedState = vln.composeState(reactiveState, new Map([[subkey, {type: 'EXPR', value: {expr}}]]));
+      return { scopedState };
+    }
+  });
 }
 
 // Auto-bootstrap in browser
