@@ -525,7 +525,7 @@ function setupVelinStd(vln) {
    */
   vln.plugins.registerPlugin({
     name: "use",
-    priority: vln.plugins.priorities.STOPPER,
+    priority: vln.plugins.priorities.STOPPER + 100,
     track: vln.trackers.expressionTracker,
     render: ({reactiveState, subkey, expr}) => {
       const scopedState = vln.composeState(reactiveState, new Map([[subkey, {type: 'EXPR', value: {expr}}]]));

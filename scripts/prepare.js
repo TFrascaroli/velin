@@ -7,14 +7,14 @@ const sourceFile = isDev ? 'velin-all.dev.js' : 'velin-all.min.js';
 const mapFile = isDev ? 'velin-all.dev.js.map' : 'velin-all.min.js.map';
 
 const filesToCopy = [
-  { src: `dist/build/${sourceFile}`, dest: 'playground/velin.js' },
-  { src: `dist/build/${sourceFile}.map`, dest: `playground/${mapFile}` }
+  { src: `dist/build/${sourceFile}`, dest: 'playground/vendor/velin.js' },
+  { src: `dist/build/${sourceFile}.map`, dest: `playground/vendor/${mapFile}` }
 ];
 
 filesToCopy.forEach(({ src, dest }) => {
   const srcPath = path.resolve(__dirname, '..', src);
   const destPath = path.resolve(__dirname, '..', dest);
-
+  fs.mkdirSync(path.dirname(destPath), { recursive: true });
   if (fs.existsSync(srcPath)) {
     fs.copyFileSync(srcPath, destPath);
     console.log(`Copied ${src} to ${dest}`);

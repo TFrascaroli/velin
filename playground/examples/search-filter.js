@@ -1,7 +1,10 @@
+/**
+ * @typedef {import('../../src/velin-core').VelinCore} VelinCore
+ */
 import { registerHighlightPlugin } from './search-filter-plugin.js';
 
 // Register the custom highlight plugin
-registerHighlightPlugin(window.Velin);
+registerHighlightPlugin(/** @type {window & {Velin: VelinCore}} */ (window).Velin);
 
 export default function() {
   return {

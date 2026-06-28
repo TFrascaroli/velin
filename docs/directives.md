@@ -160,6 +160,28 @@ Inside a loop, you can access `$index` (0-based):
 - `$index` is automatically provided.
 - Reactive: adding/removing array items updates the DOM.
 
+## Aliasing
+
+### `vln-use:alias`
+
+Creates a scoped alias for a property in the state. The alias is available to the element and its children and behaves like a reference to the original expression (reads and writes affect the underlying state).
+
+**Syntax:** `vln-use:alias="expression"`
+
+**Example:**
+```html
+<div vln-use:user="generalState.identity.local.currentUser">
+  <h1 vln-text="user.name"></h1>
+  <p vln-text="user.email"></p>
+</div>
+```
+
+**Notes:**
+- The alias (`user` in the example) is scoped to the element and its descendants.
+- The alias points to the evaluated expression (`generalState.identity.local.currentUser`) — reading or writing through the alias updates the original value.
+- Useful for creating short, context-specific names for deeply nested properties or avoiding naming collisions.
+
+
 ## Side-Effects
 
 ### `vln-watch`

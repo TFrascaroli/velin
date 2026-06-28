@@ -1,0 +1,23 @@
+  <template id="efficient-table" vln-var:tabledata>
+    <table>
+      <thead>
+        <tr>
+          <th vln-loop:col="tabledata.columns" vln-text="tabledata.colIndex[col].label"></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr vln-loop:row="tabledata.rows">
+          <td 
+            vln-loop:col="tabledata.columns"
+            vln-fragment="tabledata.colIndex[col].template || 'efficient-table-default-cell'"
+            vln-var:row="row"
+            vln-var:column="tabledata.colIndex[col]">
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </template>
+
+  <template id="efficient-table-default-cell" vln-vars="row, column">
+    <span vln-text="row[column.id]"></span>
+  </template>

@@ -68,7 +68,7 @@ const DefaultPluginPriorities = {
  * @property {string} name
  * @property {number=} priority
  * @property {(args: {reactiveState: ReactiveState, compiledExpression: ASTNode, expr: string, node: Node, subkey: string | null}) => Ttracked} [track] Optional function to track dependencies from an expression
- * @property {(args: {reactiveState: ReactiveState, compiledExpression: ASTNode, expr: string, node: HTMLElement, subkey: string | null, tracked: Ttracked, pluginState?: any, attributeName: string}) => PluginControl | void} render Function to apply reactive updates to a node
+ * @property {(args: {reactiveState: ReactiveState, compiledExpression: ASTNode, expr: string, node: HTMLElement, subkey: string | null, tracked: Ttracked, pluginState?: any, attributeName: string, attributeValue: string}) => PluginControl | void} render Function to apply reactive updates to a node
  * @property {PluginDestroyerFn} [destroy]
  */
 
@@ -195,6 +195,7 @@ const DefaultPluginPriorities = {
  * @typedef {Object} VelinPluginManager
  * @property {RegisterPlugin<Ttracked>} registerPlugin
  * @property {ProcessPlugin<Ttracked>} processPlugin
+ * @property {LookupPlugin<Ttracked>} lookupPlugin
  * @property {(pluginKey: string) => VelinPlugin<Ttracked>} get
  * @property {{ [key in keyof typeof DefaultPluginPriorities]: number }} priorities
  */
@@ -204,15 +205,24 @@ const DefaultPluginPriorities = {
  * @property {any=} state Optional plugin state to persist across renders
  * @property {boolean=} halt Optional signal whether to stop processing further plugins on this node
  * @property {ReactiveState=} scopedState Optional scoped state to use for child nodes (e.g., for vln-fragment)
+ * @property {Array<{name: string, value: string}>=} plugins Optional 
  */
 
 /**
  * @template Ttracked
  * @typedef {(def: VelinPlugin<Ttracked>) => void} RegisterPlugin
- * */
+ */
+
 /** 
  * @template Ttracked
- * @typedef {(plugin: VelinPlugin<Ttracked>, reactiveState: ReactiveState, expr: string, node: HTMLElement, attributeName: string, subkey?: string | null) => PluginControl | void} ProcessPlugin */
+ * @typedef {(plugin: VelinPlugin<Ttracked>, reactiveState: ReactiveState, expr: string, node: HTMLElement, attributeName: string, attributeValue: string, subkey?: string | null) => PluginControl | void} ProcessPlugin
+ */
+
+/** 
+ * @template Ttracked
+ * @typedef {(pluginKey: string) => VelinPlugin<Ttracked>} LookupPlugin
+ */
+
 
 /** @typedef {(reactiveState: ReactiveState, expr: string, allowMutations?: boolean) => any} Evaluate */
 /** @typedef {(reactiveState: ReactiveState, expr: string) => (value: any) => void} GetSetter */
@@ -368,6 +378,7 @@ function processPlugin(
   expr,
   node,
   attributeName,
+  attributeValue,
   subkey = null,
 ) {
   /** @type {DepCapture} */
@@ -438,6 +449,7 @@ function processPlugin(
         tracked,
         pluginState: nodeState[stateKey],
         attributeName,
+        attributeValue,
         expr,
       });
       if (control && control.state) {
@@ -1035,8 +1047,6 @@ function lerp(intKey, reactiveState) {
   const inter = reactiveState.interpolations;
   if (inter?.has(intKey)) {
     const interp = inter.get(intKey);
-    // If interpolation is a string, evaluate it as an expression
-    // Otherwise, return the value directly (e.g., event objects)
     if (interp.type === "EXPR") {
       return evaluateAst(interp.value.ast, reactiveState);
     } else {
@@ -1537,23 +1547,20 @@ function emitLifecycle(node, eventName, detail = {}) {
 }
 
 /**
- * Recursively processes a DOM node to apply Velin plugins.
- * @param {Node} node
- * @param {ReactiveState} reactiveState
+ * Lookup plugins in the plugin catalog
+ * @type {LookupPlugin<any>}
  */
-function processNode(node, reactiveState) {
-  if (!(node instanceof HTMLElement)) return;
-  if (node instanceof HTMLTemplateElement) return;
-  if (__DEV__) console.log("Processing node", node);
+function lookupPlugin(pluginKey) {
+  if (plugins.has(pluginKey)) {
+    return plugins.get(pluginKey);
+  } else {
+    return null;
+  }
+}
 
-  // List all applicable plugins
-  const applicable = [];
-  const seenPlugins = new Set();
-
-  for (const { name, value } of Array.from(node.attributes)) {
-    if (!name.startsWith("vln-")) continue;
-
-    const key = name.slice(4);
+function parsePluginFromAttribute(name, value) {
+  if (!name.startsWith("vln-")) return null;
+  const key = name.slice(4);
 
     let pluginKey = key;
     let subcommand = null;
@@ -1562,30 +1569,19 @@ function processNode(node, reactiveState) {
       [pluginKey, subcommand] = key.split(":");
     }
 
-    if (plugins.has(pluginKey)) {
-      const plugin = plugins.get(pluginKey);
-      const uniqueKey = `${plugin.name}${subcommand ? ":" + subcommand : ""}`;
-
-      if (seenPlugins.has(uniqueKey)) {
-        throw new Error(
-          `[VLN013] Duplicate plugin application: '${plugin.name}' ${
-            subcommand ? "with subcommand '" + subcommand + "' " : ""
-          }is applied multiple times to the same node. Each plugin/subcommand pair must be unique per element.`,
-        );
-      }
-      seenPlugins.add(uniqueKey);
-
-      applicable.push({
+    const plugin = lookupPlugin(pluginKey);
+    if (plugin) {
+      return {
         pluginKey,
         name,
         value,
         subcommand,
         plugin,
-      });
+      };
     } else {
       // Unknown plugin - add error handler with lowest priority
       // If another plugin halts before this, error won't be thrown
-      applicable.push({
+      return {
         pluginKey: null,
         name,
         value,
@@ -1601,38 +1597,103 @@ function processNode(node, reactiveState) {
             );
           },
         },
-      });
+      };
     }
   }
+
+/**
+ * Recursively processes a DOM node to apply Velin plugins.
+ * @param {Node} node
+ * @param {ReactiveState} reactiveState
+ */
+function processNode(node, reactiveState) {
+  if (!(node instanceof HTMLElement)) return;
+  if (node instanceof HTMLTemplateElement) return;
+  if (__DEV__) console.log("Processing node", node);
+
+  // List all applicable plugins
+  const seenPlugins = new Set();
+
+  function processPluginsFromAttributes(attributes) {
+    const applicable = [];
+    for (const { name, value } of attributes) {
+      const parsedPlugin = parsePluginFromAttribute(name, value);
+      if (!parsedPlugin) continue;
+      const uniqueKey = `${parsedPlugin.name}${parsedPlugin.subcommand ? ":" + parsedPlugin.subcommand : ""}`;
+      if (seenPlugins.has(uniqueKey)) {
+        throw new Error(
+          `[VLN013] Duplicate plugin application: '${parsedPlugin.plugin.name}' ${
+            parsedPlugin.subcommand ? "with subcommand '" + parsedPlugin.subcommand + "' " : ""
+          }is applied multiple times to the same node. Each plugin/subcommand pair must be unique per element.`,
+        );
+      }
+
+      seenPlugins.add(uniqueKey);
+      applicable.push(parsedPlugin);
+    }
 
   // Sort by priorities (highest = first)
   applicable.sort(
     (a, b) => (b.plugin.priority || 0) - (a.plugin.priority || 0),
   );
+  return applicable
+  }
+  const applicable = processPluginsFromAttributes(Array.from(node.attributes));
   /** {ReactiveState | null} */
   let scopedReactiveState = null;
-  // Apply
-  for (const { plugin, name, value, subcommand } of applicable) {
-    const control = processPlugin(
-      plugin,
-      reactiveState,
-      value,
-      node,
-      name,
-      subcommand,
-    );
-    consumeAttribute(node, name, value);
-    if (!control) continue;
-    if (control.halt) {
-      emitLifecycle(node, "init", { state: reactiveState });
-      return;
+
+  if (applicable?.length > 0) {
+    const applicableList = {
+      plugin: applicable[0],
+      next: null
+    };
+    let head = applicableList;
+    for (let i = 1; i < applicable.length; i++) {
+      head.next = {
+        plugin: applicable[i],
+        next: null
+      };
+      head = head.next;
     }
-    if (control.scopedState) {
-      if (!scopedReactiveState) scopedReactiveState = control.scopedState;
-      else
-        throw new Error(
-          `[VLN012] Multiple plugins on the same node cannot create scoped states. Plugin '${plugin.name}' attempted to create a scoped state, but one already exists from a previous plugin.`,
-        );
+    head = applicableList;
+    // Apply
+    while(head) {
+      const { plugin, name, value, subcommand } = head.plugin;
+      const control = processPlugin(
+        plugin,
+        reactiveState,
+        value,
+        node,
+        name,
+        value,
+        subcommand,
+      );
+      consumeAttribute(node, name, value);
+      if (control && control.halt) {
+        emitLifecycle(node, "init", { state: reactiveState });
+        return;
+      }
+      if (control && control.scopedState) {
+        if (!scopedReactiveState) scopedReactiveState = control.scopedState;
+        else
+          throw new Error(
+            `[VLN012] Multiple plugins on the same node cannot create scoped states. Plugin '${plugin.name}' attempted to create a scoped state, but one already exists from a previous plugin.`,
+          );
+      }
+      if (control && control.plugins && control.plugins.length > 0) {
+        // If plugin returns additional plugins to apply, insert them into the chain immediately after the current plugin
+        let current = head;
+        const newPlugins = processPluginsFromAttributes(control.plugins);
+        for (const newPlugin of newPlugins) {
+          const newNode = {
+            plugin: newPlugin,
+            next: current.next
+          };
+          current.next = newNode;
+          current = newNode;
+        }
+      }
+      head = head.next;
     }
   }
 
@@ -1672,6 +1733,7 @@ const Velin = {
   plugins: {
     registerPlugin,
     processPlugin,
+    lookupPlugin,
     get: plugins.get.bind(plugins),
     priorities: DefaultPluginPriorities,
   },

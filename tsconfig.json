@@ -7,8 +7,8 @@
     "outDir": "dist/types",
     "declarationMap": true,
     "lib": ["ES2022", "dom"],
-    "target": "ES2022"
-  },
-  "include": ["src/**/*.js", "global.d.ts"],
-  "exclude": ["dist"]
+      "target": "ES2022"
+    },
+  "include": ["src/**/*.js", "global.d.ts", "playground/**/*.js"],
+  "exclude": ["dist", "playground/vendor", "node_modules"]
 }
