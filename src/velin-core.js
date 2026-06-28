@@ -44,7 +44,7 @@
  * @property {Map<string, Set<VelinBindingEffect>>} ø__innerBindings Optional map of inner bindings (for cleanup)
  * @property {Set<ReactiveState>} ø__innerStates Optional set of inner states (for cleanup)
  * @property {Array<() => void>} ø__finalizers Optional array of plugin finalizers attached to this state (for cleanup)
- * @property {string=} tricklingRoot Optional root path for dependency filtering. Dependencies at or above this level will be filtered out (used by vln-loop to prevent unnecessary recalculations)
+ * @property {string[]=} tricklingRoots Stack of root paths for dependency filtering. Dependencies at or above any of these levels are filtered out (used by vln-loop, nested loops stack their roots so the outer one isn't lost).
  */
 
 /**
@@ -205,7 +205,7 @@ const DefaultPluginPriorities = {
  * @property {any=} state Optional plugin state to persist across renders
  * @property {boolean=} halt Optional signal whether to stop processing further plugins on this node
  * @property {ReactiveState=} scopedState Optional scoped state to use for child nodes (e.g., for vln-fragment)
- * @property {Array<{name: string, value: string}>=} plugins Optional 
+ * @property {Array<{name: string, value: string}>=} plugins Optional list of attribute-shaped directives to inject into the current node's plugin chain immediately after this plugin. Useful for "macro" plugins that expand into a small set of plumbing directives (e.g. a `vln-table` that emits `vln-fragment` + scoped vars). Injected entries do not leave a `reflect-*` attribute since they were never on the DOM.
  */
 
 /**
@@ -460,18 +460,15 @@ function processPlugin(
       return control;
     };
     const entries = [...depCapture.deps];
-    // Filter dependencies only if tricklingRoot is set, otherwise keep all
-    const deps = reactiveState.tricklingRoot
-      ? entries.filter((e) => {
-          const tricklingRoot = reactiveState.tricklingRoot;
-          // Dependencies are always in "root.*" format, so normalize tricklingRoot to match
-          const normalizedRoot = tricklingRoot.startsWith("root.")
-            ? tricklingRoot
-            : `root.${tricklingRoot}`;
-          // Remove dependencies that are upstream from or at the tricklingRoot level
-          // (i.e., if normalizedRoot starts with e, then e is a branch upstream)
-          return !normalizedRoot.startsWith(e);
-        })
+    // Filter out any dep that is at or above ANY trickling root in the stack.
+    // Stacking matters for nested loops: the inner loop must not lose the outer
+    // loop's anchor, otherwise cells re-register on the outer array (see ADR-0001).
+    const roots = reactiveState.tricklingRoots;
+    const deps = roots && roots.length
+      ? entries.filter((e) => !roots.some((r) => {
+          const normalizedRoot = r.startsWith("root.") ? r : `root.${r}`;
+          return normalizedRoot.startsWith(e);
+        }))
       : entries;
     if (deps.length && __DEV__)
       console.log("Dependencies tracked: " + deps.join(", "));
@@ -1562,44 +1559,37 @@ function parsePluginFromAttribute(name, value) {
   if (!name.startsWith("vln-")) return null;
   const key = name.slice(4);
 
-    let pluginKey = key;
-    let subcommand = null;
-
-    if (key.includes(":")) {
-      [pluginKey, subcommand] = key.split(":");
-    }
-
-    const plugin = lookupPlugin(pluginKey);
-    if (plugin) {
-      return {
-        pluginKey,
-        name,
-        value,
-        subcommand,
-        plugin,
-      };
-    } else {
-      // Unknown plugin - add error handler with lowest priority
-      // If another plugin halts before this, error won't be thrown
-      return {
-        pluginKey: null,
-        name,
-        value,
-        subcommand,
-        plugin: {
-          name: "__error__",
-          priority: -Infinity,
-          render: () => {
-            const availablePlugins = Array.from(plugins.keys()).join(", ");
-            throw new Error(
-              `[Velin] Plugin '${pluginKey}' is not registered. ` +
-                `Available plugins: ${availablePlugins}`,
-            );
-          },
-        },
-      };
-    }
+  let pluginKey = key;
+  let subcommand = null;
+  if (key.includes(":")) {
+    [pluginKey, subcommand] = key.split(":");
   }
+
+  const plugin = lookupPlugin(pluginKey);
+  if (plugin) {
+    return { pluginKey, name, value, subcommand, plugin };
+  }
+
+  // Unknown plugin: insert a synthetic error plugin at the lowest priority so a
+  // higher-priority plugin can still halt before it throws.
+  return {
+    pluginKey: null,
+    name,
+    value,
+    subcommand,
+    plugin: {
+      name: "__error__",
+      priority: -Infinity,
+      render: () => {
+        const availablePlugins = Array.from(plugins.keys()).join(", ");
+        throw new Error(
+          `[Velin] Plugin '${pluginKey}' is not registered. ` +
+            `Available plugins: ${availablePlugins}`,
+        );
+      },
+    },
+  };
+}
 
 /**
  * Recursively processes a DOM node to apply Velin plugins.
@@ -1611,89 +1601,76 @@ function processNode(node, reactiveState) {
   if (node instanceof HTMLTemplateElement) return;
   if (__DEV__) console.log("Processing node", node);
 
-  // List all applicable plugins
+  // Track duplicate application per plugin/subcommand (only for real plugins;
+  // synthetic error plugins for unknown attributes are intentionally allowed
+  // to coexist so each unknown attribute reports independently).
   const seenPlugins = new Set();
 
-  function processPluginsFromAttributes(attributes) {
+  /**
+   * Parse a set of attribute-shaped entries into the sorted plugin list. Used
+   * both for the node's own attributes and for plugins injected by a previous
+   * plugin via `PluginControl.plugins`.
+   * @param {Array<{name: string, value: string}>} attributes
+   * @param {boolean} injected entries flagged as not present on the DOM
+   */
+  function parsePlugins(attributes, injected) {
     const applicable = [];
     for (const { name, value } of attributes) {
-      const parsedPlugin = parsePluginFromAttribute(name, value);
-      if (!parsedPlugin) continue;
-      const uniqueKey = `${parsedPlugin.name}${parsedPlugin.subcommand ? ":" + parsedPlugin.subcommand : ""}`;
-      if (seenPlugins.has(uniqueKey)) {
-        throw new Error(
-          `[VLN013] Duplicate plugin application: '${parsedPlugin.plugin.name}' ${
-            parsedPlugin.subcommand ? "with subcommand '" + parsedPlugin.subcommand + "' " : ""
-          }is applied multiple times to the same node. Each plugin/subcommand pair must be unique per element.`,
-        );
+      const parsed = parsePluginFromAttribute(name, value);
+      if (!parsed) continue;
+      if (parsed.pluginKey !== null) {
+        const uniqueKey = parsed.pluginKey + (parsed.subcommand ? ":" + parsed.subcommand : "");
+        if (seenPlugins.has(uniqueKey)) {
+          throw new Error(
+            `[VLN013] Duplicate plugin application: '${parsed.plugin.name}' ${
+              parsed.subcommand ? "with subcommand '" + parsed.subcommand + "' " : ""
+            }is applied multiple times to the same node. Each plugin/subcommand pair must be unique per element.`,
+          );
+        }
+        seenPlugins.add(uniqueKey);
       }
-
-      seenPlugins.add(uniqueKey);
-      applicable.push(parsedPlugin);
+      parsed.injected = injected;
+      applicable.push(parsed);
     }
-
-  // Sort by priorities (highest = first)
-  applicable.sort(
-    (a, b) => (b.plugin.priority || 0) - (a.plugin.priority || 0),
-  );
-  return applicable
+    applicable.sort((a, b) => (b.plugin.priority || 0) - (a.plugin.priority || 0));
+    return applicable;
   }
-  const applicable = processPluginsFromAttributes(Array.from(node.attributes));
-  /** {ReactiveState | null} */
+
+  const applicable = parsePlugins(Array.from(node.attributes), false);
+  /** @type {ReactiveState | null} */
   let scopedReactiveState = null;
 
-  if (applicable?.length > 0) {
-    const applicableList = {
-      plugin: applicable[0],
-      next: null
-    };
-    let head = applicableList;
-    for (let i = 1; i < applicable.length; i++) {
-      head.next = {
-        plugin: applicable[i],
-        next: null
-      };
-      head = head.next;
+  // Walk the chain by index so a plugin can inject more plugins (via
+  // PluginControl.plugins) and have them run right after the current one,
+  // ahead of any remaining lower-priority entries already in the chain.
+  for (let i = 0; i < applicable.length; i++) {
+    const entry = applicable[i];
+    const { plugin, name, value, subcommand, injected } = entry;
+    const control = processPlugin(
+      plugin,
+      reactiveState,
+      value,
+      node,
+      name,
+      value,
+      subcommand,
+    );
+    // Only DOM-sourced attributes should leave a `reflect-*` breadcrumb.
+    if (!injected) consumeAttribute(node, name, value);
+    if (control && control.halt) {
+      emitLifecycle(node, "init", { state: reactiveState });
+      return;
     }
-    head = applicableList;
-    // Apply
-    while(head) {
-      const { plugin, name, value, subcommand } = head.plugin;
-      const control = processPlugin(
-        plugin,
-        reactiveState,
-        value,
-        node,
-        name,
-        value,
-        subcommand,
-      );
-      consumeAttribute(node, name, value);
-      if (control && control.halt) {
-        emitLifecycle(node, "init", { state: reactiveState });
-        return;
-      }
-      if (control && control.scopedState) {
-        if (!scopedReactiveState) scopedReactiveState = control.scopedState;
-        else
-          throw new Error(
-            `[VLN012] Multiple plugins on the same node cannot create scoped states. Plugin '${plugin.name}' attempted to create a scoped state, but one already exists from a previous plugin.`,
-          );
-      }
-      if (control && control.plugins && control.plugins.length > 0) {
-        // If plugin returns additional plugins to apply, insert them into the chain immediately after the current plugin
-        let current = head;
-        const newPlugins = processPluginsFromAttributes(control.plugins);
-        for (const newPlugin of newPlugins) {
-          const newNode = {
-            plugin: newPlugin,
-            next: current.next
-          };
-          current.next = newNode;
-          current = newNode;
-        }
-      }
-      head = head.next;
+    if (control && control.scopedState) {
+      if (!scopedReactiveState) scopedReactiveState = control.scopedState;
+      else
+        throw new Error(
+          `[VLN012] Multiple plugins on the same node cannot create scoped states. Plugin '${plugin.name}' attempted to create a scoped state, but one already exists from a previous plugin.`,
+        );
+    }
+    if (control && control.plugins && control.plugins.length > 0) {
+      const injectedEntries = parsePlugins(control.plugins, true);
+      applicable.splice(i + 1, 0, ...injectedEntries);
     }
   }
 

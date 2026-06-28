@@ -461,8 +461,11 @@ function setupVelinStd(vln) {
             substate.interpolations.set('$index', {type: 'LITERAL', value: i});
           }
 
-          // Ensure tricklingRoot is set for reused substates
-          substate.tricklingRoot = expr;
+          // Ensure trickling root is set for reused substates. Append so nested
+          // loops don't drop the outer loop's anchor.
+          if (!substate.tricklingRoots || !substate.tricklingRoots.includes(expr)) {
+            substate.tricklingRoots = [...(substate.tricklingRoots ?? []), expr];
+          }
 
           if (substate?.interpolations.size) {
             vln.ø__internal.triggerEffects(
@@ -487,10 +490,11 @@ function setupVelinStd(vln) {
 
           const substate = vln.composeState(reactiveState, interpolations);
 
-          // Set tricklingRoot to the array expression to prevent triggering
-          // dependencies at or above the array level (since the entire loop
-          // will recalculate if the array or its parents change)
-          substate.tricklingRoot = expr;
+          // Append this loop's array path to the trickling-root stack so deps
+          // at or above it are filtered out, while preserving any outer loop's
+          // anchor. The outer loop already recalculates its own subtree, so
+          // children don't need to re-register on outer arrays.
+          substate.tricklingRoots = [...(substate.tricklingRoots ?? []), expr];
 
           newSubstates.push(substate);
           placeholder.parentNode.insertBefore(clone, lastInserted.nextSibling);
