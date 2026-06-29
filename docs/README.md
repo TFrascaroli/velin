@@ -90,4 +90,3 @@ Found an issue or want to improve the docs? The documentation is written in Mark
 ## See Also
 
 - [README.md](../README.md) - Project overview and quick introduction
-- [CHANGELOG.md](../CHANGELOG.md) - Version history and breaking changes

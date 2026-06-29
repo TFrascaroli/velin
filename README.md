@@ -6,11 +6,11 @@ Velin is a fine-grained reactivity engine for plain HTML and JavaScript. It uses
 
 ### Why Velin?
 
+*   **CSP Friendly & Secure**: Built with an AST-based evaluator instead of `eval()` or `new Function()`. Drops into strict Content Security Policy environments without `unsafe-eval`.
 *   **Logic in JS, View in HTML**: Velin keeps your business logic in standard, testable JavaScript objects rather than embedding it in HTML attributes.
-*   **CSP Friendly & Secure**: Built with an AST-based evaluator instead of `eval()` or `new Function()`. It is fully compatible with strict Content Security Policies (CSP) and ready for enterprise environments.
 *   **Fine-Grained Reactivity**: Changing a property only triggers updates for the specific DOM elements that depend on it.
 *   **Scale Naturally**: Designed for interactive widgets and light-to-medium SPAs. You can modularize your state naturally as your project grows.
-*   **Minimal Footprint**: ~7KB gzipped for the full standard library.
+*   **Minimal Footprint**: ~8.5KB gzipped for the full bundle.
 
 ## Getting Started
 
@@ -50,19 +50,20 @@ Add this to your HTML `<head>`:
 
 Velin is under active development. Current priorities:
 
--   **Velin Router** - Minimal, state-driven client-side routing.
 -   **DevTools** - Browser extension for direct state inspection.
+-   **Stable Plugin API** - Frozen `PluginContext` surface so third-party plugins survive core refactors.
 -   **Async Patterns** - Standardized practices for loading and error states.
 
 ## Modular Architecture
 
 Velin is split into modules for optimal bundle size:
 
--   **`velin-core.js`** (~4.9KB gzipped) - Core reactivity, expression evaluator, plugin system.
--   **`velin-standard.js`** (~2.0KB gzipped) - Standard directives (text, if, loop, input, on, attr, class).
+-   **`velin-core.js`** (~5.5KB gzipped) - Core reactivity, expression evaluator, plugin system.
+-   **`velin-standard.js`** (~2.0KB gzipped) - Standard directives (text, if, loop, input, on, attr, class, use, watch).
 -   **`velin-templates-and-fragments.js`** (~1.0KB gzipped) - Template and Fragment support.
 -   **`velin-events.js`** (~0.6KB gzipped) - Event orchestration (alias, contain).
--   **`velin-all.js`** (~7.4KB gzipped) - Everything bundled (recommended).
+-   **`velin-router.js`** (~1.1KB gzipped) - Optional state-driven hash router.
+-   **`velin-all.js`** (~8.5KB gzipped) - Everything bundled (recommended).
 
 ## Development
 

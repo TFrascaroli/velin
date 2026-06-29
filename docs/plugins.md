@@ -79,26 +79,20 @@ Velin.plugins.priorities.STOPPER = 50     // Run first, stop children
 
 Function called to set up dependency tracking. Return value is passed to `render` as `tracked`.
 
-**Function signature:**
-```javascript
-track: ({ reactiveState, expr, node, subkey }) => {
-  // Return value becomes 'tracked' in render
-  return someValue;
-}
-```
+**Function signature:** receives the same args object as `render` (see below) — most commonly you only destructure `evaluate`, `evaluateAst`, `compiledExpression`, `expr`, `node`, `subkey`.
 
 **Common patterns:**
 
 ```javascript
-// Track expression value
+// Track expression value (most common)
 track: Velin.trackers.expressionTracker
 
-// Track setter function
+// Track setter function (for two-way binding)
 track: Velin.trackers.setterTracker
 
-// Custom tracking
-track: ({ reactiveState, expr }) => {
-  const value = Velin.evaluate(reactiveState, expr);
+// Custom tracking — use the pre-bound helper
+track: ({ evaluate, expr }) => {
+  const value = evaluate(expr);
   // Do something with value
   return value;
 }
@@ -108,35 +102,80 @@ track: ({ reactiveState, expr }) => {
 
 Function that updates the DOM. Called initially and whenever dependencies change.
 
-**Function signature:**
+**Function signature:** the args object is destructured directly — destructure only the fields you need.
+
 ```javascript
 render: ({
-  reactiveState,  // Reactive state object
-  expr,           // The directive's attribute value
-  node,           // The DOM element
-  subkey,         // For directives like vln-on:click, this is 'click'
-  tracked,        // Value returned from track()
-  pluginState,    // Persistent state for this node
-  attributeName   // Full attribute name, e.g., 'vln-on:click'
+  // Directive info
+  node,               // The DOM element
+  expr,               // The directive's expression string
+  compiledExpression, // Pre-compiled AST of expr
+  subkey,             // For directives like vln-on:click, this is 'click'
+  attributeName,      // Full attribute name, e.g. 'vln-on:click'
+  attributeValue,     // Raw attribute value (same as expr for normal directives)
+  tracked,            // Value returned from track()
+  pluginState,        // Persistent state for this node
+
+  // State helpers — pre-bound to the current reactive scope (ADR-0002)
+  state,              // User-facing Proxy (read/write — bypasses dep tracking on writes)
+  evaluate,           // (expr, allowMutations?) => any
+  evaluateAst,        // (ast) => any
+  getSetter,          // (expr) => (value) => void
+  compose,            // (init) => ChildContext (see below)
+  consume,            // (node, attrName, value) => mark attribute as processed
+  triggerEffects,     // (prop) => manually fire reactive effects bound to a key
 }) => {
   // Update the DOM
   node.textContent = tracked;
 
-  // Optionally return control or updated state
+  // Optionally return a PluginControl to influence what happens next
   return {
-    state: newPluginState,  // Updated plugin state
-    halt: true              // Stop processing child nodes
+    pluginState: newScratchpad,                  // persisted as pluginState next render
+    halt: true,                                  // skip remaining plugins + children
+    scopedState: childCtx,                       // children processed against this child
+    plugins: [{ name: 'vln-foo', value: 'bar' }] // inject directives after this one
   };
 }
 ```
 
+Only one plugin per node may set `scopedState`; a second attempt throws
+`VLN012`. Plugins injected via `plugins` run **immediately after** the
+current plugin, ahead of any remaining lower-priority entries on the node.
+
+### `ChildContext` (returned by `compose`)
+
+`compose(init)` creates a scoped reactive sub-scope and returns a
+`ChildContext`. Use it instead of touching the underlying reactive state.
+
+```javascript
+const child = compose({
+  user:   { expr: 'items[i]' },   // bind expression — tracks deps
+  $index: { literal: i },         // bind literal value — no tracking
+});
+
+child.state;                  // child's Proxy (with interpolations visible)
+child.evaluate(expr);         // evaluate inside child scope
+child.evaluateAst(ast);       // evaluate a pre-compiled AST in child scope
+child.getSetter(expr);
+child.compose(nested);        // nest another scope
+child.anchor(arrayExpr);      // append to trickling-root stack (vln-loop pattern)
+child.setInterpolation(k, i); // update an interpolation in place
+child.processNode(node);      // process a DOM subtree against this child
+child.cleanup(node?);         // tear down (call from destroy or when removing)
+child.triggerEffects(prop);   // manually fire effects on this child's bindings
+```
+
+`compose()` also accepts the verbose `Map<string, Interpolation>` form for
+plugins that already have one in hand. Both forms require explicit
+`{expr}` / `{literal}` tags — no type-based magic.
+
 ### `destroy` (optional)
 
-Cleanup function called when the element is removed or re-rendered.
+Cleanup function called when the element is removed or re-rendered. Receives
+the same args object as `render` (including helpers).
 
-**Function signature:**
 ```javascript
-destroy: ({ node, pluginState, reactiveState, subkey }) => {
+destroy: ({ node, pluginState, subkey }) => {
   // Clean up event listeners, timers, etc.
   if (pluginState.handler) {
     node.removeEventListener('click', pluginState.handler);
@@ -195,7 +234,7 @@ Velin.plugins.registerPlugin({
   render: ({ node, tracked, pluginState = {} }) => {
     if (tracked && !pluginState.focused) {
       node.focus();
-      return { state: { focused: true } };
+      return { pluginState: { focused: true } };
     }
   }
 });
@@ -211,12 +250,12 @@ Usage:
 ```javascript
 Velin.plugins.registerPlugin({
   name: 'clickoutside',
-  destroy: ({ node, pluginState }) => {
+  destroy: ({ pluginState }) => {
     if (pluginState.handler) {
       document.removeEventListener('click', pluginState.handler);
     }
   },
-  render: ({ reactiveState, expr, node, pluginState = {} }) => {
+  render: ({ evaluate, expr, node, pluginState = {} }) => {
     // Remove old listener
     if (pluginState.handler) {
       document.removeEventListener('click', pluginState.handler);
@@ -225,13 +264,13 @@ Velin.plugins.registerPlugin({
     // Add new listener
     const handler = (event) => {
       if (!node.contains(event.target)) {
-        Velin.evaluate(reactiveState, expr);
+        evaluate(expr, true);
       }
     };
 
     document.addEventListener('click', handler);
 
-    return { state: { handler } };
+    return { pluginState: { handler } };
   }
 });
 ```
@@ -254,9 +293,9 @@ Velin.plugins.registerPlugin({
       clearTimeout(pluginState.timer);
     }
   },
-  render: ({ reactiveState, expr, node, subkey, pluginState = {} }) => {
+  render: ({ getSetter, expr, node, subkey, pluginState = {} }) => {
     const delay = parseInt(subkey) || 300; // vln-debounce:300
-    const setter = Velin.getSetter(reactiveState, expr);
+    const setter = getSetter(expr);
 
     if (pluginState.handler) {
       node.removeEventListener('input', pluginState.handler);
@@ -274,7 +313,7 @@ Velin.plugins.registerPlugin({
 
     node.addEventListener('input', handler);
 
-    return { state: { handler, timer: pluginState.timer } };
+    return { pluginState: { handler, timer: pluginState.timer } };
   }
 });
 ```
@@ -325,12 +364,12 @@ Subkeys allow one plugin to handle multiple variations:
 ```javascript
 Velin.plugins.registerPlugin({
   name: 'on',
-  render: ({ node, subkey, reactiveState, expr }) => {
+  render: ({ node, subkey, evaluate, expr }) => {
     // subkey is the part after the colon
     // vln-on:click -> subkey = 'click'
     // vln-on:submit -> subkey = 'submit'
 
-    const handler = () => Velin.evaluate(reactiveState, expr);
+    const handler = () => evaluate(expr, true);
     node.addEventListener(subkey, handler);
   }
 });
@@ -351,7 +390,7 @@ render: ({ pluginState = {} }) => {
   // First render: pluginState is {}
   if (!pluginState.initialized) {
     console.log('First render!');
-    return { state: { initialized: true } };
+    return { pluginState: { initialized: true } };
   }
 
   // Subsequent renders: pluginState has our data
@@ -359,7 +398,7 @@ render: ({ pluginState = {} }) => {
 }
 ```
 
-**Important:** Always provide a default `= {}` parameter and return `{ state: newState }` to update it.
+**Important:** Always provide a default `= {}` parameter and return `{ pluginState: newState }` to update it. (The return key was renamed from `state` to `pluginState` in ADR-0002 — symmetric with the args field so there's no in/out collision.)
 
 ## Stopping Child Processing
 
@@ -384,25 +423,38 @@ Velin.plugins.registerPlugin({
 
 ## Accessing Other Plugins
 
-You can call other plugins from your plugin:
+Two ways:
+
+### Inject directives via `PluginControl.plugins` (preferred)
+
+Return injected entries from `render`. They run on the same node right after
+your plugin, without leaving a `reflect-*` breadcrumb:
 
 ```javascript
 Velin.plugins.registerPlugin({
   name: 'mycombo',
-  render: ({ reactiveState, node }) => {
-    // Get another plugin
-    const textPlugin = Velin.plugins.get('text');
-
-    // Process with it
-    Velin.plugins.processPlugin(
-      textPlugin,
-      reactiveState,
-      'message',
-      node,
-      'vln-text'
-    );
-  }
+  render: () => ({
+    plugins: [
+      { name: 'vln-text', value: 'message' }
+    ]
+  })
 });
+```
+
+### Call `processPlugin` directly
+
+For full control. The signature is positional and takes seven arguments:
+
+```javascript
+Velin.plugins.processPlugin(
+  Velin.plugins.get('text'),
+  reactiveState,
+  'message',     // expr
+  node,
+  'vln-text',    // attributeName
+  'message',     // attributeValue (usually same as expr)
+  null           // subcommand
+);
 ```
 
 ## Best Practices
@@ -440,7 +492,7 @@ render: ({ pluginState = {} }) => {
 ```javascript
 render: ({ pluginState = {} }) => {
   return {
-    state: { ...pluginState, newProp: 'value' }
+    pluginState: { ...pluginState, newProp: 'value' }
   };
 }
 ```
@@ -483,7 +535,7 @@ Velin.plugins.registerPlugin({
       const handler = () => resize();
       node.addEventListener('input', handler);
       resize();
-      return { state: { initialized: true, handler } };
+      return { pluginState: { initialized: true, handler } };
     }
 
     resize();

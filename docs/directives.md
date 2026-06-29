@@ -484,6 +484,64 @@ get filteredItems() {
 <div vln-loop:item="filteredItems">...</div>
 ```
 
+## Routing
+
+These directives are available in the optional `velin-router.js` module.
+The router is hash-based (`location.hash`) and state-driven — there is no
+separate route definition step.
+
+### `vln-router`
+
+Bootstraps a routing state object on the bound state at the given key, wires
+up `hashchange`, and scopes everything inside the element as the active
+router scope.
+
+**Syntax:** `vln-router="stateKey"`
+
+The plugin creates (or augments) `state[stateKey]` with:
+
+```js
+{
+  path: string,     // current hash, e.g. '/users/42'
+  params: object,   // populated by vln-route matches
+  query: object,    // parsed location.search
+  error: any|null,
+  loading: boolean,
+  navigateTo(path)  // sets location.hash = path
+}
+```
+
+**Example:**
+```html
+<div vln-router="myRoute">
+  <!-- vln-route directives inside use myRoute.path -->
+  <a vln-on:click="myRoute.navigateTo('/')">Home</a>
+  <a vln-on:click="myRoute.navigateTo('/about')">About</a>
+</div>
+```
+
+### `vln-route`
+
+Conditionally renders its element when the active router's `path` matches the
+given pattern. Patterns support `:param` placeholders.
+
+**Syntax:** `vln-route="'/pattern'"`
+
+**Example:**
+```html
+<div vln-router="myRoute">
+  <div vln-route="'/'">Home page</div>
+  <div vln-route="'/users/:id'">
+    User profile (id available in $__route.params once matched)
+  </div>
+</div>
+```
+
+**Notes:**
+- The element is removed from the DOM when the route doesn't match (not just
+  hidden) and re-cloned on match.
+- Must be a descendant of a `vln-router` element.
+
 ## Event Orchestration
 
 These plugins are available in the optional `velin-events.js` module.
@@ -502,17 +560,25 @@ Listens for an existing DOM event and re-dispatches it as a new event name. Usef
 
 ### `vln-evt-contain`
 
-Stops the propagation of specified events, preventing them from bubbling.
+Stops the propagation of specified events at the capture phase.
 
-**Syntax:** `vln-evt-contain="['event1', 'event2']"`
+**Syntax:** `vln-evt-contain="expression"` where the expression evaluates to
+either a single event name (string) or an array of event names.
 
-**Example:**
+**Examples:**
 ```html
-<!-- Prevent clicks and keypresses from leaving this container -->
-<div class="modal" vln-evt-contain="['click', 'keypress']">
-  <!-- Content -->
-</div>
+<!-- Single event -->
+<div class="modal" vln-evt-contain="'click'"></div>
+
+<!-- Multiple events -->
+<div class="modal" vln-evt-contain="['click', 'keypress']"></div>
+
+<!-- Reactive: bind to state -->
+<div class="modal" vln-evt-contain="containedEvents"></div>
 ```
+
+The expression is tracked reactively — change the bound value and listeners
+are rewired automatically.
 
 ---
 

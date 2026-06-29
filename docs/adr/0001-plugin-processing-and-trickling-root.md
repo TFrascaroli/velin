@@ -1,6 +1,6 @@
 # ADR 0001 — Finalize plugin processing rewrite and fix nested trickling roots
 
-Status: **Proposed** (in-progress work on `main`, top of `f98f336 inprog`)
+Status: **Implemented** (landed in commit `8ae2568 fix(core): stack trickling roots, finalize plugin injection refactor`)
 
 ## Context
 
