@@ -10,21 +10,20 @@
  * This demonstrates:
  * - Custom plugin registration with Velin.plugins.registerPlugin()
  * - Using Velin.trackers.expressionTracker to track dependencies
- * - Accessing state with Velin.evaluate() within a plugin
+ * - Accessing state directly via the pre-bound `evaluate` helper
  * - Returning { halt: true } to prevent further plugin processing
  */
 export function registerHighlightPlugin(Velin) {
   Velin.plugins.registerPlugin({
     name: 'highlight',
     track: Velin.trackers.expressionTracker,
-    render: ({ node, tracked, reactiveState }) => {
+    render: ({ node, tracked, evaluate }) => {
       if (!tracked || typeof tracked !== 'string') {
         node.innerHTML = '';
         return { halt: true };
       }
 
-      // Access the 'search' property from reactive state
-      const searchTerm = Velin.evaluate(reactiveState, 'search');
+      const searchTerm = evaluate('search');
 
       if (!searchTerm || searchTerm.trim() === '') {
         // No search term - just show plain text

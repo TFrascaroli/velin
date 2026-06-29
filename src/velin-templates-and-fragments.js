@@ -47,9 +47,9 @@ function setupTemplatesAndFragments(vln) {
     name: "fragment",
     priority: vln.plugins.priorities.LATE,
 
-    track: ({ reactiveState, compiledExpression, node }) => {
+    track: ({ compiledExpression, evaluate, evaluateAst, node }) => {
       // Track the template ID
-      const templateId = vln.evaluateAst(compiledExpression, reactiveState);
+      const templateId = evaluateAst(compiledExpression);
 
       // Also track all vln-var:* expressions and their current values
       const varValues = {};
@@ -59,7 +59,7 @@ function setupTemplatesAndFragments(vln) {
 
         for (const attr of varAttrs) {
           const varName = attr.name.slice(8); // Remove "vln-var:" prefix
-          varValues[varName] = vln.evaluate(reactiveState, attr.value);
+          varValues[varName] = evaluate(attr.value);
         }
       }
 
@@ -67,14 +67,14 @@ function setupTemplatesAndFragments(vln) {
       return { templateId, varValues };
     },
 
-    destroy: ({ node, pluginState, reactiveState }) => {
+    destroy: ({ node, pluginState }) => {
       // Cleanup inner state
-      if (pluginState?.innerState) {
-        vln.cleanupState(reactiveState, pluginState.innerState, node);
+      if (pluginState?.innerChild) {
+        pluginState.innerChild.cleanup(node);
       }
     },
 
-    render: ({ node, tracked, reactiveState, pluginState = {} }) => {
+    render: ({ node, tracked, compose, pluginState = {} }) => {
       const templateId = tracked?.templateId || tracked;
 
       if (!templateId) {
@@ -108,16 +108,16 @@ function setupTemplatesAndFragments(vln) {
       }
 
       // If template didn't change, inner nodes' effects will handle updates - nothing to do
-      if (!templateChanged && pluginState?.innerState) {
+      if (!templateChanged && pluginState?.innerChild) {
         return {
           halt: true,
-          state: pluginState
+          pluginState,
         };
       }
 
       // Template changed - cleanup and rebuild
-      if (pluginState?.innerState) {
-        vln.cleanupState(reactiveState, pluginState.innerState, node);
+      if (pluginState?.innerChild) {
+        pluginState.innerChild.cleanup(node);
       }
       node.innerHTML = "";
 
@@ -127,16 +127,17 @@ function setupTemplatesAndFragments(vln) {
         ? varsAttr.split(',').map(v => v.trim()).filter(v => v)
         : [];
 
-      // Extract provided vars from fragment node
-      /** @type {Map<string, Interpolation>} */
-      const interpolations = new Map(
-        Array.from(node.attributes)
-          .filter(a => a.name.startsWith("vln-var:"))
-          .map(a => [a.name.slice(8), {type: 'EXPR', value: { expr: a.value } }]) // "vln-var:".length === 8
-      );
+      // Extract provided vars from fragment node and build a compose() input
+      /** @type {Record<string, {expr: string}>} */
+      const composeInit = {};
+      for (const attr of Array.from(node.attributes)) {
+        if (attr.name.startsWith("vln-var:")) {
+          composeInit[attr.name.slice(8)] = { expr: attr.value };
+        }
+      }
 
-      // Validate required vars are provided (excluding lifecycle hooks)
-      const missingVars = templateVars.filter(v =>!interpolations.has(v));
+      // Validate required vars are provided
+      const missingVars = templateVars.filter(v => !(v in composeInit));
 
       if (missingVars.length) {
         console.error(
@@ -150,21 +151,19 @@ function setupTemplatesAndFragments(vln) {
       // Clone template content
       const clone = template.content.cloneNode(true);
 
-      // Create scoped state
-      const innerState = vln.composeState(reactiveState, interpolations);
-
-      // Append and process child nodes
+      // Create scoped child and process child nodes inside it
+      const innerChild = compose(composeInit);
       Array.from(clone.childNodes).forEach(child => {
         node.appendChild(child);
-        vln.processNode(child, innerState);
+        innerChild.processNode(child);
       });
 
       return {
         halt: true,
-        state: {
+        pluginState: {
           templateId,
-          innerState,
-        }
+          innerChild,
+        },
       };
     },
   });

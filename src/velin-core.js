@@ -40,11 +40,38 @@
  * @property {DepCapture[]} ø__depCaptures Dependency capture
  * @property {Map<string, Set<VelinBindingEffect>>} bindings Map of property paths to sets of reactive effect functions
  * @property {VelinStateControl} ø__control Dependency capture state
- * @property {ImmutableMap<string, Interpolation>=} interpolations Optional map of interpolation keys to expressions
+ * @property {Map<string, Interpolation>=} interpolations Optional map of interpolation keys to expressions
  * @property {Map<string, Set<VelinBindingEffect>>} ø__innerBindings Optional map of inner bindings (for cleanup)
  * @property {Set<ReactiveState>} ø__innerStates Optional set of inner states (for cleanup)
  * @property {Array<() => void>} ø__finalizers Optional array of plugin finalizers attached to this state (for cleanup)
  * @property {string[]=} tricklingRoots Stack of root paths for dependency filtering. Dependencies at or above any of these levels are filtered out (used by vln-loop, nested loops stack their roots so the outer one isn't lost).
+ * @property {PluginHelpers=} ø__helpers Pre-bound helper bundle built once per substate (see buildPluginHelpers)
+ */
+
+/**
+ * @typedef {Object} PluginHelpers
+ * @property {any} state User-facing reactive Proxy for this scope
+ * @property {(expr?: string, allowMutations?: boolean) => any} evaluate Pre-bound evaluate
+ * @property {(ast?: ASTNode) => any} evaluateAst Pre-bound evaluateAst
+ * @property {(expr?: string) => (value: any) => void} getSetter Pre-bound getSetter
+ * @property {(init: Object | Map<string, Interpolation>) => ChildContext} compose Pre-bound compose (returns ChildContext)
+ * @property {(node: Node, name?: string, value?: string) => void} consume Pre-bound consumeAttribute
+ * @property {(prop: string) => void} triggerEffects Pre-bound triggerEffects
+ */
+
+/**
+ * @typedef {Object} ChildContext
+ * @property {any} state Child's user-facing reactive Proxy
+ * @property {(expr?: string, allowMutations?: boolean) => any} evaluate
+ * @property {(ast?: ASTNode) => any} evaluateAst
+ * @property {(expr?: string) => (value: any) => void} getSetter
+ * @property {(init: Object | Map<string, Interpolation>) => ChildContext} compose
+ * @property {(expr: string) => ChildContext} anchor Fluent — appends expr to tricklingRoots and returns this context
+ * @property {(key: string, interp: Interpolation) => ChildContext} setInterpolation
+ * @property {(node: Node) => void} processNode
+ * @property {(node?: Node | null) => void} cleanup
+ * @property {(prop: string) => void} triggerEffects
+ * @property {ReactiveState} ø__reactiveState Escape hatch — the underlying ReactiveState
  */
 
 /**
@@ -60,15 +87,15 @@ const DefaultPluginPriorities = {
   STOPPER: 50,
 };
 
-/** @typedef {(args: {node: HTMLElement, pluginState?: any, reactiveState: ReactiveState, subkey: string}) => void} PluginDestroyerFn*/
+/** @typedef {(args: {node: HTMLElement, pluginState?: any, subkey: string, expr: string, compiledExpression: ASTNode, attributeName: string, attributeValue: string, state: any, evaluate: Function, evaluateAst: Function, getSetter: Function, compose: Function, consume: Function, triggerEffects: Function}) => void} PluginDestroyerFn*/
 
 /**
  * @template Ttracked
  * @typedef {Object} VelinPlugin
  * @property {string} name
  * @property {number=} priority
- * @property {(args: {reactiveState: ReactiveState, compiledExpression: ASTNode, expr: string, node: Node, subkey: string | null}) => Ttracked} [track] Optional function to track dependencies from an expression
- * @property {(args: {reactiveState: ReactiveState, compiledExpression: ASTNode, expr: string, node: HTMLElement, subkey: string | null, tracked: Ttracked, pluginState?: any, attributeName: string, attributeValue: string}) => PluginControl | void} render Function to apply reactive updates to a node
+ * @property {(args: {compiledExpression: ASTNode, expr: string, node: Node, subkey: string | null, attributeName: string, attributeValue: string, state: any, evaluate: Function, evaluateAst: Function, getSetter: Function, compose: Function, consume: Function, triggerEffects: Function}) => Ttracked} [track] Optional function to track dependencies from an expression
+ * @property {(args: {compiledExpression: ASTNode, expr: string, node: HTMLElement, subkey: string | null, tracked: Ttracked, pluginState?: any, attributeName: string, attributeValue: string, state: any, evaluate: Function, evaluateAst: Function, getSetter: Function, compose: Function, consume: Function, triggerEffects: Function}) => PluginControl | void} render Function to apply reactive updates to a node
  * @property {PluginDestroyerFn} [destroy]
  */
 
@@ -202,9 +229,9 @@ const DefaultPluginPriorities = {
 
 /**
  * @typedef {Object} PluginControl
- * @property {any=} state Optional plugin state to persist across renders
+ * @property {any=} pluginState Optional plugin state to persist across renders (was `state` before ADR-0002)
  * @property {boolean=} halt Optional signal whether to stop processing further plugins on this node
- * @property {ReactiveState=} scopedState Optional scoped state to use for child nodes (e.g., for vln-fragment)
+ * @property {ChildContext|ReactiveState=} scopedState Optional scoped child context for child nodes; prefer a ChildContext from compose()
  * @property {Array<{name: string, value: string}>=} plugins Optional list of attribute-shaped directives to inject into the current node's plugin chain immediately after this plugin. Useful for "macro" plugins that expand into a small set of plumbing directives (e.g. a `vln-table` that emits `vln-fragment` + scoped vars). Injected entries do not leave a `reflect-*` attribute since they were never on the DOM.
  */
 
@@ -234,8 +261,8 @@ const DefaultPluginPriorities = {
 /** @typedef {(parentState: ReactiveState, innerState: ReactiveState, node?: Node | null) => void} CleanupState */
 /** @typedef {<T extends object>(root?: Element | DocumentFragment, initialState?: T) => T} Bind */
 
-/** @typedef {(args: { reactiveState: ReactiveState, expr: string, compiledExpression: ASTNode }) => any} ExpressionTracker */
-/** @typedef {(args: { reactiveState: ReactiveState, expr: string, compiledExpression: ASTNode }) => (value: any) => void} SetterTracker */
+/** @typedef {(args: { expr: string, compiledExpression: ASTNode, evaluate: Function, evaluateAst: Function, getSetter: Function, compose: Function, consume: Function, triggerEffects: Function, state: any, node: Node, subkey: string | null }) => any} ExpressionTracker */
+/** @typedef {(args: { expr: string, compiledExpression: ASTNode, evaluate: Function, evaluateAst: Function, getSetter: Function, compose: Function, consume: Function, triggerEffects: Function, state: any, node: Node, subkey: string | null }) => (value: any) => void} SetterTracker */
 /**
  * @typedef {Object} Trackers
  * @property {ExpressionTracker} expressionTracker
@@ -320,8 +347,8 @@ const trackers = {
    * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/plugins.md|Creating Plugins Guide}
    * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/api-reference.md#velintrackersexpressiontracker|API Reference}
    */
-  expressionTracker: ({ reactiveState, compiledExpression }) =>
-    wrapE(() => evaluateAst(compiledExpression, reactiveState), compiledExpression),
+  expressionTracker: ({ evaluateAst, compiledExpression }) =>
+    wrapE(() => evaluateAst(compiledExpression), compiledExpression),
 
   /**
    * Returns a setter function for the expression's target property.
@@ -342,7 +369,7 @@ const trackers = {
    * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/plugins.md|Creating Plugins Guide}
    * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/api-reference.md#velintrackerssettertracker|API Reference}
    */
-  setterTracker: ({ reactiveState, expr }) => wrapE(() => getSetter(reactiveState, expr), expr),
+  setterTracker: ({ getSetter, expr }) => wrapE(() => getSetter(expr), expr),
 
   /**
    * No-op tracker for plugins that don't need to track dependencies.
@@ -366,6 +393,106 @@ function registerPlugin(def) {
   plugins.set(def.name, {
     ...def,
   });
+}
+
+/**
+ * Normalizes a `compose()` input into a Map<string, Interpolation>.
+ * Accepts either a Map (existing form) or a `{key: {expr|literal: …}}` object.
+ * Throws on any other shape — no type-based magic (see ADR-0002 D5).
+ * @param {Map<string, Interpolation> | Record<string, {expr: string} | {literal: any}>} init
+ * @returns {Map<string, Interpolation>}
+ */
+function normalizeComposeInit(init) {
+  if (init instanceof Map) return init;
+  if (!init || typeof init !== "object") {
+    throw new Error(
+      "[Velin] compose() expects a Map<string, Interpolation> or an object with { expr } / { literal } entries."
+    );
+  }
+  /** @type {Map<string, Interpolation>} */
+  const map = new Map();
+  for (const [key, value] of Object.entries(init)) {
+    if (value && typeof value === "object" && "expr" in value) {
+      map.set(key, { type: "EXPR", value: { expr: /** @type {any} */(value).expr } });
+    } else if (value && typeof value === "object" && "literal" in value) {
+      map.set(key, { type: "LITERAL", value: /** @type {any} */(value).literal });
+    } else {
+      throw new Error(
+        `[Velin] compose(): each entry must be { expr: '...' } or { literal: ... }. Got ${JSON.stringify(value)} for key "${key}".`
+      );
+    }
+  }
+  return map;
+}
+
+/**
+ * Builds a ChildContext wrapping a freshly-composed substate. Plugins use this
+ * instead of touching the raw ReactiveState — see ADR-0002 D2/D6.
+ * @param {ReactiveState} parentState
+ * @param {Map<string, Interpolation> | Record<string, {expr: string} | {literal: any}>} init
+ * @returns {any} ChildContext (shape documented in ADR-0002)
+ */
+function buildChildContext(parentState, init) {
+  const interpolations = normalizeComposeInit(init);
+  const childState = composeState(parentState, interpolations);
+  const ctx = {
+    get state() { return childState.state; },
+    /** @param {string} expr @param {boolean=} allowMutations */
+    evaluate(expr, allowMutations) { return evaluate(childState, expr, allowMutations); },
+    /** @param {ASTNode} ast */
+    evaluateAst(ast) { return evaluateAst(ast, childState); },
+    /** @param {string} expr */
+    getSetter(expr) { return getSetter(childState, expr); },
+    /** @param {Map<string, Interpolation> | Record<string, {expr: string} | {literal: any}>} nestedInit */
+    compose(nestedInit) { return buildChildContext(childState, nestedInit); },
+    /** @param {string} expr */
+    anchor(expr) {
+      const existing = childState.tricklingRoots ?? [];
+      if (!existing.includes(expr)) {
+        childState.tricklingRoots = [...existing, expr];
+      }
+      return ctx;
+    },
+    /** @param {string} key @param {Interpolation} interp */
+    setInterpolation(key, interp) {
+      childState.interpolations.set(key, interp);
+      return ctx;
+    },
+    /** @param {Node} node */
+    processNode(node) { processNode(node, childState); },
+    /** @param {Node=} node */
+    cleanup(node) { cleanupState(parentState, childState, node); },
+    /** @param {string} prop */
+    triggerEffects(prop) { triggerEffects("root." + prop, childState); },
+    /** Internal handle for processNode/scopedState unwrap. */
+    ø__reactiveState: childState,
+  };
+  return ctx;
+}
+
+/**
+ * Builds the per-substate helper bundle that is spread into every plugin
+ * call's args. Built once per ReactiveState (in setupState/composeState),
+ * not once per render — see ADR-0002 D7.
+ * @param {ReactiveState} reactiveState
+ */
+function buildPluginHelpers(reactiveState) {
+  return {
+    /** User-facing Proxy. Reading goes through dep-tracking when a tracker is active. */
+    state: reactiveState.state,
+    /** @param {string} expr @param {boolean=} allowMutations */
+    evaluate: (expr, allowMutations) => evaluate(reactiveState, expr, allowMutations),
+    /** @param {ASTNode} ast */
+    evaluateAst: (ast) => evaluateAst(ast, reactiveState),
+    /** @param {string} expr */
+    getSetter: (expr) => getSetter(reactiveState, expr),
+    /** @param {Map<string, Interpolation> | Record<string, {expr: string} | {literal: any}>} init */
+    compose: (init) => buildChildContext(reactiveState, init),
+    /** @param {HTMLElement} node @param {string} name @param {string} value */
+    consume: (node, name, value) => consumeAttribute(node, name, value),
+    /** @param {string} prop */
+    triggerEffects: (prop) => triggerEffects("root." + prop, reactiveState),
+  };
 }
 
 /**
@@ -401,10 +528,14 @@ function processPlugin(
     reactiveState.ø__finalizers.push(() => {
       if (plugin.destroy) {
         plugin.destroy({
+          ...reactiveState.ø__helpers,
           node,
           pluginState: nodeState[stateKey],
-          reactiveState,
           subkey,
+          expr,
+          compiledExpression,
+          attributeName,
+          attributeValue,
         });
       }
       nodeState[stateKey] = null;
@@ -421,11 +552,13 @@ function processPlugin(
     const track = () =>
       plugin.track
         ? plugin.track({
-            reactiveState,
+            ...reactiveState.ø__helpers,
             compiledExpression,
             expr,
             node,
             subkey,
+            attributeName,
+            attributeValue,
           })
         : null;
     try {
@@ -442,7 +575,7 @@ function processPlugin(
       if (!nodeState?.[stateKey]) return; // Is finalized
       const tracked = track();
       const control = plugin.render({
-        reactiveState,
+        ...reactiveState.ø__helpers,
         compiledExpression,
         node,
         subkey,
@@ -452,8 +585,8 @@ function processPlugin(
         attributeValue,
         expr,
       });
-      if (control && control.state) {
-        nodeState[stateKey] = control.state;
+      if (control && control.pluginState) {
+        nodeState[stateKey] = control.pluginState;
         pluginStates.set(node, nodeState);
       }
 
@@ -1423,6 +1556,7 @@ function setupState(obj) {
 
   const state = wrap(obj, "root");
   reactiveState.state = state;
+  reactiveState.ø__helpers = buildPluginHelpers(reactiveState);
   init = false;
   return reactiveState;
 }
@@ -1459,6 +1593,7 @@ function composeState(reactiveState, interpolations) {
     ø__innerStates: new Set(),
     ø__finalizers: [],
   };
+  inner.ø__helpers = buildPluginHelpers(inner);
   reactiveState.ø__innerStates.add(inner);
   return inner;
 }
@@ -1662,7 +1797,11 @@ function processNode(node, reactiveState) {
       return;
     }
     if (control && control.scopedState) {
-      if (!scopedReactiveState) scopedReactiveState = control.scopedState;
+      // Accept either a ChildContext (preferred — from ctx.compose(...)) or
+      // a raw ReactiveState (legacy direct-callers like Velin.composeState).
+      const scoped =
+        /** @type {any} */ (control.scopedState).ø__reactiveState ?? control.scopedState;
+      if (!scopedReactiveState) scopedReactiveState = scoped;
       else
         throw new Error(
           `[VLN012] Multiple plugins on the same node cannot create scoped states. Plugin '${plugin.name}' attempted to create a scoped state, but one already exists from a previous plugin.`,

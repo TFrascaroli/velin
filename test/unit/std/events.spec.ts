@@ -21,21 +21,41 @@ describe("Velin Event Orchestration", () => {
     expect(fn).toHaveBeenCalled();
   });
 
-  it("should contain events using vln-evt-contain", () => {
+  it("should contain a single event using vln-evt-contain with a string", () => {
     const parent = document.createElement("div");
     const child = document.createElement("div");
     parent.appendChild(child);
-    
+
     const parentFn = vi.fn();
     parent.addEventListener("click", parentFn);
-    
-    // vln-evt-contain takes a string (comma separated) instead of array
+
     parent.setAttribute("vln-evt-contain", "'click'");
-    
+
     Velin.bind(parent, {});
     Velin.processNode(parent, Velin.ø__internal.boundState.root!);
-    
+
     child.dispatchEvent(new CustomEvent("click", { bubbles: true }));
     expect(parentFn).not.toHaveBeenCalled();
+  });
+
+  it("should contain multiple events using vln-evt-contain with an array", () => {
+    const parent = document.createElement("div");
+    const child = document.createElement("div");
+    parent.appendChild(child);
+
+    const clickFn = vi.fn();
+    const keyFn = vi.fn();
+    parent.addEventListener("click", clickFn);
+    parent.addEventListener("keypress", keyFn);
+
+    parent.setAttribute("vln-evt-contain", "['click', 'keypress']");
+
+    Velin.bind(parent, {});
+    Velin.processNode(parent, Velin.ø__internal.boundState.root!);
+
+    child.dispatchEvent(new CustomEvent("click", { bubbles: true }));
+    child.dispatchEvent(new CustomEvent("keypress", { bubbles: true }));
+    expect(clickFn).not.toHaveBeenCalled();
+    expect(keyFn).not.toHaveBeenCalled();
   });
 });

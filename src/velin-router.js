@@ -16,21 +16,20 @@ function setupVelinRouter(vln) {
     name: "router",
     priority: vln.plugins.priorities.STOPPER,
     track: vln.trackers.expressionTracker,
-    render: ({ expr, reactiveState, pluginState = {} }) => {
+    render: ({ expr, state, compose, pluginState = {} }) => {
       // 1. Ensure state exists and is properly initialized
-      const currentHash = globalThis.location.hash.startsWith('#') 
-        ? globalThis.location.hash.slice(1) 
+      const currentHash = globalThis.location.hash.startsWith('#')
+        ? globalThis.location.hash.slice(1)
         : '/';
-      
+
       // Access the current value once to check if we need to initialize
-      let routerState = reactiveState.state[expr];
+      let routerState = state[expr];
       if (!routerState || typeof routerState !== 'object') {
-        routerState = {};
-        reactiveState.state[expr] = routerState;
-        // Re-read it to get the Proxy if it was just created
-        routerState = reactiveState.state[expr];
+        state[expr] = {};
+        // Re-read to get the Proxy after assignment
+        routerState = state[expr];
       }
-      
+
       if (routerState.path !== currentHash) {
         routerState.path = currentHash;
       }
@@ -38,7 +37,7 @@ function setupVelinRouter(vln) {
       if (!routerState.query) routerState.query = {};
       if (routerState.error === undefined) routerState.error = null;
       if (routerState.loading === undefined) routerState.loading = false;
-      
+
       if (typeof routerState.navigateTo !== 'function') {
         routerState.navigateTo = function(path) {
           globalThis.location.hash = path;
@@ -47,15 +46,14 @@ function setupVelinRouter(vln) {
 
       // 2. Initialize watchers only once
       if (!pluginState.initialized) {
-        console.log('Router plugin initializing - adding listener');
         const onHashChange = () => {
-          const hashPath = globalThis.location.hash.startsWith('#') 
-            ? globalThis.location.hash.slice(1) 
+          const hashPath = globalThis.location.hash.startsWith('#')
+            ? globalThis.location.hash.slice(1)
             : '/';
-          
+
           if (routerState.path !== hashPath) {
             routerState.path = hashPath;
-            
+
             const query = {};
             new URLSearchParams(globalThis.location.search).forEach((value, key) => {
               query[key] = value;
@@ -65,24 +63,19 @@ function setupVelinRouter(vln) {
         };
 
         globalThis.addEventListener("hashchange", onHashChange);
-        
-        const interpolations = new Map();
-        interpolations.set("$__route", { type: 'EXPR', value: { expr } });
-        const scopedState = vln.composeState(reactiveState, interpolations);
 
         pluginState.initialized = true;
         pluginState.unwatch = onHashChange;
-        pluginState.scopedState = scopedState;
+        pluginState.scopedChild = compose({ $__route: { expr } });
       }
 
       return {
         halt: false,
-        scopedState: pluginState.scopedState,
-        state: pluginState,
+        scopedState: pluginState.scopedChild,
+        pluginState,
       };
     },
     destroy: ({ pluginState }) => {
-      console.log('Destroy called, unwatch:', pluginState.unwatch);
       if (pluginState.unwatch) {
         globalThis.removeEventListener("hashchange", pluginState.unwatch);
       }
@@ -96,37 +89,37 @@ function setupVelinRouter(vln) {
   vln.plugins.registerPlugin({
     name: "route",
     priority: vln.plugins.priorities.STOPPER + 10,
-    track: ({ reactiveState, expr }) => {
+    track: ({ evaluate, expr }) => {
       // Access $__route.path through the interpolations/evaluator
-      const currentPath = vln.evaluate(reactiveState, "$__route.path") || "";
-      const targetPath = vln.evaluate(reactiveState, expr);
+      const currentPath = evaluate("$__route.path") || "";
+      const targetPath = evaluate(expr);
       return {
         currentPath,
         targetPath,
       };
     },
-    destroy: ({ reactiveState, pluginState }) => {
+    destroy: ({ pluginState }) => {
       if (pluginState?.activeNode) {
-        vln.cleanupState(reactiveState, pluginState.childState, pluginState.activeNode);
+        pluginState.childCtx.cleanup(pluginState.activeNode);
         pluginState.activeNode.remove();
       }
       if (pluginState?.placeholder?.parentNode) {
         pluginState.placeholder.remove();
       }
     },
-    render: ({ node, expr, reactiveState, tracked, pluginState = {}, attributeName }) => {
+    render: ({ node, expr, compose, consume, tracked, pluginState = {}, attributeName }) => {
       const parent = node.parentNode || pluginState.parent;
       if (!parent) return { halt: true };
 
       if (!pluginState.initialized) {
         const placeholder = document.createComment(attributeName);
-        vln.ø__internal.consumeAttribute(node, attributeName, expr);
+        consume(node, attributeName, expr);
         pluginState.template = node.cloneNode(true);
         pluginState.placeholder = placeholder;
         pluginState.parent = parent;
         pluginState.initialized = true;
         pluginState.activeNode = null;
-        pluginState.childState = null;
+        pluginState.childCtx = null;
         parent.replaceChild(placeholder, node);
       }
 
@@ -138,25 +131,25 @@ function setupVelinRouter(vln) {
         if (!pluginState.activeNode) {
           const clone = pluginState.template.cloneNode(true);
           // Consume the attribute on the clone to prevent re-processing this plugin
-          vln.ø__internal.consumeAttribute(clone, attributeName, expr);
+          consume(clone, attributeName, expr);
 
-          // Create scoped state for children so they can be cleaned up
-          pluginState.childState = vln.composeState(reactiveState, new Map());
-          
+          // Create scoped child for cleanup tracking
+          pluginState.childCtx = compose({});
+
           pluginState.placeholder.parentNode.insertBefore(clone, pluginState.placeholder);
-          vln.processNode(clone, pluginState.childState);
+          pluginState.childCtx.processNode(clone);
           pluginState.activeNode = clone;
         }
       } else {
         if (pluginState.activeNode) {
-          vln.cleanupState(reactiveState, pluginState.childState, pluginState.activeNode);
+          pluginState.childCtx.cleanup(pluginState.activeNode);
           pluginState.activeNode.remove();
           pluginState.activeNode = null;
-          pluginState.childState = null;
+          pluginState.childCtx = null;
         }
       }
 
-      return { halt: true, state: pluginState };
+      return { halt: true, pluginState };
     }
   });
 }

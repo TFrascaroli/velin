@@ -165,7 +165,7 @@ function setupVelinStd(vln) {
 
       // Apply all classes at once
       node.className = Array.from(current).join(" ");
-      return { state: { managedClasses } };
+      return { pluginState: { managedClasses } };
     },
   });
 
@@ -189,7 +189,7 @@ function setupVelinStd(vln) {
       if (pluginState?.handler)
         node.removeEventListener(subkey, pluginState.handler);
     },
-    render: ({ reactiveState, compiledExpression, node, subkey, pluginState = {} }) => {
+    render: ({ compose, compiledExpression, node, subkey }) => {
       if (typeof node.addEventListener !== "function") {
         console.warn("[VLN004] No events hook found");
         return;
@@ -198,26 +198,16 @@ function setupVelinStd(vln) {
         console.warn("[VLN005] Expected event name 'on:event'");
         return;
       }
-      // Pass true for allowMutations - event handlers should be able to mutate state
       const handler = (event) => {
-        // Build interpolations map with event object directly
-        /** @type {Map<string, Interpolation>} */
-        const interpolations = new Map();
-        interpolations.set('event', {type: 'LITERAL', value: event});
-
-        const substate = vln.composeState(reactiveState, interpolations);
-
+        const child = compose({ event: { literal: event } });
         try {
-          vln.evaluateAst(
-            compiledExpression,
-            substate
-          );
+          child.evaluateAst(compiledExpression);
         } finally {
-          vln.cleanupState(reactiveState, substate);
+          child.cleanup();
         }
       };
       node.addEventListener(subkey, handler);
-      return { state: { handler } };
+      return { pluginState: { handler } };
     },
   });
 
@@ -255,7 +245,7 @@ function setupVelinStd(vln) {
   vln.plugins.registerPlugin({
     name: "input",
     track: vln.trackers.expressionTracker,
-    render: ({ node, tracked, expr, reactiveState, pluginState = {} }) => {
+    render: ({ node, tracked, expr, getSetter, pluginState = {} }) => {
       const isInput = node instanceof HTMLInputElement;
       const isTextArea = node instanceof HTMLTextAreaElement;
       const isSelect = node instanceof HTMLSelectElement;
@@ -268,7 +258,7 @@ function setupVelinStd(vln) {
         return;
       }
 
-      const setter = vln.getSetter(reactiveState, expr);
+      const setter = getSetter(expr);
 
       if (!pluginState.initialized) {
         if (isInput) {
@@ -323,7 +313,7 @@ function setupVelinStd(vln) {
         if ((node.textContent || "") !== tracked) node.textContent = tracked;
       }
 
-      return { state: { initialized: true } };
+      return { pluginState: { initialized: true } };
     },
   });
 
@@ -384,14 +374,12 @@ function setupVelinStd(vln) {
     name: "loop",
     priority: vln.plugins.priorities.STOPPER,
     track: vln.trackers.expressionTracker,
-    destroy: ({ pluginState, reactiveState }) => {
+    destroy: ({ pluginState }) => {
       const parent = pluginState?.placeholder?.parentNode;
       if (parent && pluginState) {
         if (pluginState.substates) {
-          pluginState.substates.forEach((sub, i) => {
-            if (sub) {
-              vln.cleanupState(reactiveState, sub, pluginState.children[i]);
-            }
+          pluginState.substates.forEach((child, i) => {
+            if (child) child.cleanup(pluginState.children[i]);
           });
         }
         if (pluginState.children) {
@@ -409,12 +397,13 @@ function setupVelinStd(vln) {
       pluginState.placeholder = null;
     },
     render: ({
-      reactiveState,
       node,
       subkey,
       tracked,
       expr,
       attributeName,
+      compose,
+      consume,
       pluginState = {},
     }) => {
       const parent = node.parentNode || pluginState.parent;
@@ -423,22 +412,19 @@ function setupVelinStd(vln) {
       const isInit = !pluginState.initialized;
       if (isInit) {
         const placeholder = document.createComment(attributeName);
-        vln.ø__internal.consumeAttribute(node, attributeName, expr);
+        consume(node, attributeName, expr);
         pluginState.template = node.cloneNode(true);
         pluginState.placeholder = placeholder;
         pluginState.parent = parent;
         pluginState.initialized = true;
         pluginState.children = [];
-        pluginState.keyMap = new Map();
-        pluginState.reusePool = [];
-        pluginState.reactiveState = reactiveState;
         pluginState.substates = [];
         parent.replaceChild(placeholder, node);
       }
 
       const { template, placeholder } = pluginState;
       if (!tracked || typeof tracked[Symbol.iterator] !== "function") {
-        return { halt: true, state: pluginState };
+        return { halt: true, pluginState };
       }
 
       const oldChildren = pluginState.children;
@@ -448,71 +434,50 @@ function setupVelinStd(vln) {
 
       let lastInserted = placeholder;
 
-      for(let i = 0; i < tracked.length; i++) {
+      for (let i = 0; i < tracked.length; i++) {
         if (oldChildren.length > i) {
-          const node = oldChildren[i];
-          const substate = oldSubstates[i];
-          newChildren.push(node);
-          newSubstates.push(substate);
-          lastInserted = node;
+          const reusedNode = oldChildren[i];
+          const reusedChild = oldSubstates[i];
+          newChildren.push(reusedNode);
+          newSubstates.push(reusedChild);
+          lastInserted = reusedNode;
 
-          // Update $index interpolation for reused substates
-          if (substate?.interpolations) {
-            substate.interpolations.set('$index', {type: 'LITERAL', value: i});
-          }
+          // Re-anchor (idempotent) and refresh $index for the reused substate.
+          reusedChild
+            .anchor(expr)
+            .setInterpolation('$index', { type: 'LITERAL', value: i });
 
-          // Ensure trickling root is set for reused substates. Append so nested
-          // loops don't drop the outer loop's anchor.
-          if (!substate.tricklingRoots || !substate.tricklingRoots.includes(expr)) {
-            substate.tricklingRoots = [...(substate.tricklingRoots ?? []), expr];
-          }
-
-          if (substate?.interpolations.size) {
-            vln.ø__internal.triggerEffects(
-              `${expr}[${i}]`,
-              substate
-            );
-            // Trigger $index updates
-            vln.ø__internal.triggerEffects('root.$index', substate);
-          }
+          reusedChild.triggerEffects(`${expr}[${i}]`);
+          reusedChild.triggerEffects('$index');
         } else {
           const clone = template.cloneNode(true);
           newChildren.push(clone);
 
-          // Build interpolations map with item and $index
-          /** @type {Map<string, Interpolation>} */
-          const interpolations = new Map();
-          if (subkey) {
-            interpolations.set(subkey, {type: 'EXPR', value: {expr: `${expr}[${i}]`}});
-          }
-          // Add $index as a literal expression
-          interpolations.set('$index', {type: 'LITERAL', value: i});
-
-          const substate = vln.composeState(reactiveState, interpolations);
-
-          // Append this loop's array path to the trickling-root stack so deps
+          const init = subkey
+            ? { [subkey]: { expr: `${expr}[${i}]` }, $index: { literal: i } }
+            : { $index: { literal: i } };
+          // Anchor this loop's array path on the trickling-root stack so deps
           // at or above it are filtered out, while preserving any outer loop's
-          // anchor. The outer loop already recalculates its own subtree, so
-          // children don't need to re-register on outer arrays.
-          substate.tricklingRoots = [...(substate.tricklingRoots ?? []), expr];
+          // anchor.
+          const child = compose(init).anchor(expr);
 
-          newSubstates.push(substate);
+          newSubstates.push(child);
           placeholder.parentNode.insertBefore(clone, lastInserted.nextSibling);
           lastInserted = clone;
-          vln.processNode(clone, substate);
+          child.processNode(clone);
         }
-      };
+      }
 
       for (let i = tracked.length; i < oldChildren.length; i++) {
         const childNode = oldChildren[i];
         childNode.remove?.();
-        vln.cleanupState(reactiveState, oldSubstates[i], childNode);
+        oldSubstates[i].cleanup(childNode);
       }
 
       pluginState.children = newChildren;
       pluginState.substates = newSubstates;
 
-      return { halt: true, state: pluginState };
+      return { halt: true, pluginState };
     },
   });
 
@@ -531,8 +496,8 @@ function setupVelinStd(vln) {
     name: "use",
     priority: vln.plugins.priorities.STOPPER + 100,
     track: vln.trackers.expressionTracker,
-    render: ({reactiveState, subkey, expr}) => {
-      const scopedState = vln.composeState(reactiveState, new Map([[subkey, {type: 'EXPR', value: {expr}}]]));
+    render: ({ subkey, expr, compose }) => {
+      const scopedState = compose({ [subkey]: { expr } });
       return { scopedState };
     }
   });

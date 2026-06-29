@@ -15,9 +15,9 @@ async function injectTemplate(url) {
 
 Velin.plugins.registerPlugin({
   name: "table",
-  render: ({ node, expr, reactiveState, attributeValue }) => {
-    const tableInfo = Velin.evaluate(reactiveState, expr);
-    const saveColumnIndex = Velin.getSetter(reactiveState, expr + ".colIndex");
+  render: ({ node, expr, evaluate, getSetter, attributeValue }) => {
+    const tableInfo = evaluate(expr);
+    const saveColumnIndex = getSetter(expr + ".colIndex");
 
     const colIndex = {};
     tableInfo.columnDefinitions.forEach(colDef => {

@@ -14,10 +14,10 @@ function setupVelinEvents(vln) {
    */
   vln.plugins.registerPlugin({
     name: "evt-alias",
-    render: ({ node, subkey, reactiveState, expr }) => {
+    render: ({ node, subkey, evaluate, expr }) => {
       if (!subkey) return;
-      const sourceEvent = vln.evaluate(reactiveState, expr);
-      
+      const sourceEvent = evaluate(expr);
+
       const handler = (e) => {
         const aliasEvent = new CustomEvent(subkey, {
           bubbles: true,
@@ -28,7 +28,7 @@ function setupVelinEvents(vln) {
       };
 
       node.addEventListener(sourceEvent, handler);
-      return { state: { handler, sourceEvent } };
+      return { pluginState: { handler, sourceEvent } };
     },
     destroy: ({ node, pluginState }) => {
       if (pluginState.handler) {
@@ -38,8 +38,9 @@ function setupVelinEvents(vln) {
   });
 
   /**
-   * vln-evt-contain="['event1', 'event2']" or vln-evt-contain="true"
-   * Stops propagation of specified events or all events.
+   * vln-evt-contain="'click'" or vln-evt-contain="['click', 'keypress']"
+   * Stops propagation of the given event(s) at the capture phase.
+   * Accepts a single event name or an array of event names.
    */
   vln.plugins.registerPlugin({
     name: "evt-contain",
@@ -52,16 +53,20 @@ function setupVelinEvents(vln) {
         }
       }
 
-      const handlers = {};
-      const eventsToContain = typeof tracked === 'string' ? tracked.split(',') : [];
+      const events = Array.isArray(tracked)
+        ? tracked
+        : typeof tracked === 'string' && tracked
+          ? [tracked]
+          : [];
 
-      eventsToContain.forEach(evt => {
-        const eventName = evt.trim();
+      const handlers = {};
+      for (const eventName of events) {
+        if (typeof eventName !== 'string' || !eventName) continue;
         const handler = (e) => e.stopPropagation();
-        node.addEventListener(eventName, handler, true); // true for capture
+        node.addEventListener(eventName, handler, true); // capture phase
         handlers[eventName] = handler;
-      });
-      return { state: { handlers } };
+      }
+      return { pluginState: { handlers } };
     },
     destroy: ({ node, pluginState }) => {
       if (pluginState.handlers) {
