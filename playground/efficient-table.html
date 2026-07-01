@@ -1,30 +1,155 @@
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Efficient Table Example</title>
-  <!-- Velin (All) -->
+  <title>Velin — Efficient Table</title>
+  <link rel="stylesheet" href="efficient-table.css" />
   <script src="vendor/velin.js"></script>
-  <style>
-    table {
-      border-collapse: collapse;
-      width: 100%;
-    }
-    th, td {
-      border: 1px solid #ccc;
-      padding: 8px;
-      text-align: left;
-    }
-    th {
-      background-color: #f4f4f4;
-    }
-  </style>
 </head>
 <body>
-  <h1>Efficient Table Example</h1>
-  <div vln-table="myTable"></div>
+  <div class="page">
 
+    <!-- ── Top bar ─────────────────────────────────────────────────────────── -->
+    <div class="topbar">
+      <div>
+        <div class="brand">velin <span>table</span></div>
+        <div class="tagline">virtual scroll · live updates · zero-build</div>
+      </div>
 
+      <div class="topbar-right">
+        <div class="perf-panel">
+          <div class="perf-cell">
+            <div class="perf-label">Set rows</div>
+            <div class="perf-value" vln-text="perf.setMs"></div>
+          </div>
+          <div class="perf-cell">
+            <div class="perf-label">Edit cell</div>
+            <div class="perf-value" vln-text="perf.editMs"></div>
+          </div>
+          <div class="perf-cell">
+            <div class="perf-label">FPS</div>
+            <div class="perf-value" vln-text="perf.fps"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Controls ────────────────────────────────────────────────────────── -->
+    <div class="controls">
+      <div class="preset-group">
+        <button class="btn btn-sm" vln-on:click="generate(1000)">1K</button>
+        <button class="btn btn-sm" vln-on:click="generate(10000)">10K</button>
+        <button class="btn btn-sm" vln-on:click="generate(100000)">100K</button>
+        <button class="btn btn-sm" vln-on:click="generate(500000)">500K</button>
+      </div>
+
+      <input class="num-input"
+             type="number"
+             min="1"
+             max="1000000"
+             vln-input="rowCountInput"
+             placeholder="rows" />
+
+      <button class="btn btn-accent" vln-on:click="doGenerate()">Generate ▶</button>
+
+      <div class="controls-sep"></div>
+
+      <button class="btn btn-drizzle"
+              vln-attr:class="dribbling ? 'btn btn-drizzle btn-drizzle-stop' : 'btn btn-drizzle'"
+              vln-on:click="toggleDribble()"
+              vln-text="dribbling ? 'Stop ◼' : 'Drizzle ▶'">
+      </button>
+
+      <div class="row-count-info">
+        <span vln-text="myTable.rows.length"></span> rows
+        · <span vln-text="myTable.visibleItems.length"></span> in DOM
+      </div>
+    </div>
+
+    <!-- ── Column picker ───────────────────────────────────────────────────── -->
+    <div class="col-picker">
+      <span class="col-picker-label">Columns</span>
+      <button class="col-chip"
+              vln-loop:def="myTable.allColumnDefs"
+              vln-attr:class="isColumnActive(def.id) ? 'col-chip active' : 'col-chip'"
+              vln-on:click="toggleColumn(def.id)">
+        <span class="dot"></span>
+        <span vln-text="def.label || def.id"></span>
+      </button>
+    </div>
+
+    <!-- ── Table ───────────────────────────────────────────────────────────── -->
+    <div class="table-wrap">
+      <div vln-table="myTable">
+
+        <!-- Header -->
+        <div class="vt-header">
+          <div class="vt-hcell"
+               vln-loop:col="myTable.columns"
+               vln-attr:style="'flex: ' + myTable.columnDefs[col].flex"
+               vln-attr:class="myTable.sortCol === col ? 'vt-hcell vt-hcell-sorted' : 'vt-hcell'"
+               vln-on:click="sortBy(col)">
+            <span vln-text="myTable.columnDefs[col].label"></span><span class="sort-arrow" vln-text="myTable.sortCol === col ? (myTable.sortDir === 'asc' ? ' ↑' : ' ↓') : ''"></span>
+          </div>
+        </div>
+
+        <!-- Scrollable viewport -->
+        <div class="vt-viewport">
+
+          <!-- Full-height spacer → native scrollbar tracks total data size -->
+          <div class="vt-spacer"
+               vln-attr:style="'height:' + myTable.spacerHeight + 'px'">
+          </div>
+
+          <!-- Floating row pool -->
+          <div class="vt-row"
+               vln-loop:item="myTable.visibleItems"
+               vln-attr:style="'top:' + item.top + 'px'">
+
+            <div class="vt-cell"
+                 vln-loop:col="myTable.columns"
+                 vln-attr:style="'flex: ' + myTable.columnDefs[col].flex"
+                 vln-fragment="myTable.columnDefs[col].template || 'cell-text'"
+                 vln-var:row="item.row"
+                 vln-var:coldef="myTable.columnDefs[col]"
+                 vln-var:actions="myTable.actions">
+            </div>
+
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ── Generation modal ────────────────────────────────────────────────── -->
+    <div class="modal-overlay" vln-if="modal.visible">
+      <div class="modal-box">
+        <div class="modal-title">Generating <span vln-text="modal.label"></span>…</div>
+        <div class="modal-bar-wrap">
+          <div class="modal-bar-fill"
+               vln-attr:style="'width:' + modal.progress + '%'">
+          </div>
+        </div>
+        <div class="modal-sub" vln-text="modal.progress + '%'"></div>
+      </div>
+    </div>
+
+    <!-- ── Inspect panel ───────────────────────────────────────────────────── -->
+    <div class="inspect-overlay" vln-if="inspect.open">
+      <div class="inspect-box">
+        <div class="inspect-header">
+          <div class="inspect-title">Row data</div>
+          <button class="inspect-close" vln-on:click="closeInspect()">×</button>
+        </div>
+        <div class="inspect-body">
+          <pre vln-text="inspect.data"></pre>
+        </div>
+      </div>
+    </div>
+
+  </div>
 
   <script src="efficient-table.js"></script>
+</body>
 </html>

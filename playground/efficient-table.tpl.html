@@ -1,23 +1,48 @@
-  <template id="efficient-table" vln-var:tabledata>
-    <table>
-      <thead>
-        <tr>
-          <th vln-loop:col="tabledata.columns" vln-text="tabledata.colIndex[col].label"></th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr vln-loop:row="tabledata.rows">
-          <td 
-            vln-loop:col="tabledata.columns"
-            vln-fragment="tabledata.colIndex[col].template || 'efficient-table-default-cell'"
-            vln-var:row="row"
-            vln-var:column="tabledata.colIndex[col]">
-          </td>
-        </tr>
-      </tbody>
-    </table>
-  </template>
+<!-- ── cell-name ─────────────────────────────────────────────────────────── -->
+<template id="cell-name" vln-vars="row, coldef, actions">
+  <div class="ct-profile">
+    <div class="ct-avatar" vln-text="row.initials"></div>
+    <div class="ct-profile-body">
+      <div class="ct-name" vln-text="row.name"></div>
+      <div class="ct-email" vln-text="row.email"></div>
+    </div>
+  </div>
+</template>
 
-  <template id="efficient-table-default-cell" vln-vars="row, column">
-    <span vln-text="row[column.id]"></span>
-  </template>
+<!-- ── cell-badge (stack pill) ───────────────────────────────────────────── -->
+<template id="cell-badge" vln-vars="row, coldef, actions">
+  <span class="ct-stack-badge" vln-text="row[coldef.id]"></span>
+</template>
+
+<!-- ── cell-text (generic) ──────────────────────────────────────────────── -->
+<template id="cell-text" vln-vars="row, coldef, actions">
+  <span class="ct-text" vln-text="row[coldef.id]"></span>
+</template>
+
+<!-- ── cell-num (currency / numeric, flash-capable) ─────────────────────── -->
+<template id="cell-num" vln-vars="row, coldef, actions">
+  <span class="ct-num"
+        vln-attr:data-flash="row._flash[coldef.id] || ''"
+        vln-text="coldef.format(row[coldef.id])">
+  </span>
+</template>
+
+<!-- ── cell-rating (0–5 stars, flash-capable) ────────────────────────────── -->
+<template id="cell-rating" vln-vars="row, coldef, actions">
+  <span class="ct-stars"
+        vln-attr:data-flash="row._flash[coldef.id] || ''"
+        vln-text="'★★★★★'.slice(0, row[coldef.id]) + '☆☆☆☆☆'.slice(0, 5 - row[coldef.id])">
+  </span>
+</template>
+
+<!-- ── cell-actions ──────────────────────────────────────────────────────── -->
+<template id="cell-actions" vln-vars="row, coldef, actions">
+  <div class="ct-actions">
+    <button class="ct-icon-btn"
+            title="Inspect"
+            vln-on:click="actions.inspectRow(row)">⬡</button>
+    <button class="ct-icon-btn ct-icon-danger"
+            title="Delete"
+            vln-on:click="actions.deleteRow(row)">✕</button>
+  </div>
+</template>
