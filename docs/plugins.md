@@ -79,6 +79,15 @@ Velin.plugins.priorities.STOPPER = 50     // Run first, stop children
 
 Function called to set up dependency tracking. Return value is passed to `render` as `tracked`.
 
+> ⚠ **`track` runs exactly once per plugin instance.** Dependencies are
+> captured during this single call and never re-scanned on subsequent
+> renders. Any reactive property your tracker skips on this first pass
+> — via a ternary, `&&`, `??`, guard-clause, or any conditional read —
+> is not registered, and later mutations to it will not trigger
+> `render`. Touch every dep you might ever need up front (assign to a
+> local so the JIT keeps the read). See
+> [ADR-0003](./adr/0003-one-shot-dependency-capture.md).
+
 **Function signature:** receives the same args object as `render` (see below) — most commonly you only destructure `evaluate`, `evaluateAst`, `compiledExpression`, `expr`, `node`, `subkey`.
 
 **Common patterns:**

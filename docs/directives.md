@@ -8,6 +8,14 @@ Directives are special HTML attributes that start with `vln-`. They tell Velin h
 
 All directive values are **JavaScript expressions** evaluated in the context of your state (accessed via `vln`).
 
+> ⚠ **Eager-touch your deps.** Velin captures an expression's reactive
+> dependencies exactly once, on the initial track pass. Anything a
+> ternary or short-circuit skips on that first run is **not** tracked,
+> and later changes to it won't trigger updates. If your expression
+> reads a value conditionally, hoist it to a state property getter
+> that touches every dep up front. See
+> [ADR-0003](./adr/0003-one-shot-dependency-capture.md).
+
 ## Text and Content
 
 ### `vln-text`
