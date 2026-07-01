@@ -129,6 +129,21 @@ html, body {
   border-color: var(--accent);
 }
 
+.filter-input {
+  width: 260px;
+  padding: 6px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 12px;
+  font-family: inherit;
+}
+.filter-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
 .controls-sep {
   width: 1px;
   height: 20px;

@@ -61,11 +61,25 @@
               vln-text="dribbling ? 'Stop ◼' : 'Drizzle ▶'">
       </button>
 
+      <input class="filter-input"
+             type="search"
+             placeholder="Filter name / stack / team / plan…"
+             vln-input="myTable.filterText" />
+
       <div class="row-count-info">
-        <span vln-text="myTable.rows.length"></span> rows
-        · <span vln-text="myTable.visibleItems.length"></span> in DOM
+        <span vln-text="myTable.viewRows.length"></span>
+        <span vln-if="myTable.viewRows.length !== myTable.rows.length">
+          / <span vln-text="myTable.rows.length"></span>
+        </span>
+        rows · <span vln-text="myTable.visibleItems.length"></span> in DOM
       </div>
     </div>
+
+    <!-- ── Reactive chain (plumbing, visible in HTML) ─────────────────────── -->
+    <!-- rows|filterText|sortCol|sortDir → rebuildview → viewRows -->
+    <div hidden vln-watch:mytable.rebuildview="[myTable.rows, myTable.filterText, myTable.sortCol, myTable.sortDir]"></div>
+    <!-- viewRows → refreshwindow → visibleItems (drives the DOM row pool) -->
+    <div hidden vln-watch:mytable.refreshwindow="myTable.viewRows"></div>
 
     <!-- ── Column picker ───────────────────────────────────────────────────── -->
     <div class="col-picker">

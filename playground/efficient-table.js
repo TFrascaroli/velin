@@ -91,8 +91,8 @@ let ringSlots = null;
 let currentVisibleRows = []; // row proxies for dribble
 
 function updateWindow(tableData, viewport) {
-  const { rows, rowHeight } = tableData;
-  const total = rows.length;
+  const { viewRows, rowHeight } = tableData;
+  const total = viewRows.length;
 
   const totalPx = total * rowHeight;
   const spacerH = Math.min(totalPx, MAX_SCROLL_PX);
@@ -131,7 +131,7 @@ function updateWindow(tableData, viewport) {
     currentVisibleRows = [];
     for (let i = 0; i < winSize; i++) {
       const di  = startIdx + i;
-      const row = rows[di];
+      const row = viewRows[di];
       ringSlots.push({ row, top: getTop(di) });
       currentVisibleRows.push(row);
     }
@@ -147,13 +147,48 @@ function updateWindow(tableData, viewport) {
 
   for (let i = 0; i < winSize; i++) {
     const di     = startIdx + i;
-    const newRow = rows[di];
+    const newRow = viewRows[di];
     const newTop = getTop(di);
     const slot = reactiveSlots[di % winSize];
     if (slot.row !== newRow) slot.row = newRow;
     if (slot.top !== newTop) slot.top = newTop;
     currentVisibleRows.push(newRow);
   }
+}
+
+// ─── View pipeline (pure) ─────────────────────────────────────────────────────
+// The reactive chain (rows|filter|sortCol|sortDir → viewRows → updateWindow)
+// is declared in the HTML via vln-watch. These functions are pure transforms;
+// no callsite here calls them directly.
+const FILTER_FIELDS = ['name', 'stack', 'team', 'plan'];
+
+function computeView(rows, filterText, sortCol, sortDir) {
+  const q = (filterText || '').toLowerCase().trim();
+  let view;
+  if (q) {
+    view = [];
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      for (let f = 0; f < FILTER_FIELDS.length; f++) {
+        const v = r[FILTER_FIELDS[f]];
+        if (typeof v === 'string' && v.toLowerCase().indexOf(q) !== -1) {
+          view.push(r);
+          break;
+        }
+      }
+    }
+  } else {
+    view = rows.slice();
+  }
+  if (sortCol) {
+    const dir = sortDir === 'asc' ? 1 : -1;
+    view.sort((a, b) => {
+      const av = a[sortCol], bv = b[sortCol];
+      if (typeof av === 'string') return av.localeCompare(bv) * dir;
+      return ((av ?? 0) - (bv ?? 0)) * dir;
+    });
+  }
+  return view;
 }
 
 // ─── Dribble ──────────────────────────────────────────────────────────────────
@@ -203,9 +238,13 @@ async function injectTemplate(url) {
   let state;
   let viewport;
 
+  viewport = document.querySelector('.vt-viewport');
+
   state = Velin.bind(document.body, {
     myTable: {
       rows:          [],
+      viewRows:      [],
+      filterText:    '',
       rowHeight:     56,
       spacerHeight:  0,
       columnDefs:    COL_DEFS,
@@ -214,15 +253,22 @@ async function injectTemplate(url) {
       allColumnDefs: COLUMN_CATALOG,
       sortCol:       null,
       sortDir:       'asc',
+      // Reactive chain (wired in HTML via vln-watch):
+      //   [rows, filterText, sortCol, sortDir] → rebuildview → viewRows
+      //   viewRows                             → refreshwindow → visibleItems
+      rebuildview([rows, filterText, sortCol, sortDir]) {
+        const view = computeView(rows, filterText, sortCol, sortDir);
+        // Row identities in viewRows change → pool must repopulate from scratch.
+        ringSlots = null;
+        state.myTable.viewRows = view;
+      },
+      refreshwindow() {
+        if (viewport) updateWindow(state.myTable, viewport);
+      },
       actions: {
         deleteRow(row) {
-          const t0  = performance.now();
-          const idx = state.myTable.rows.indexOf(row);
-          if (idx < 0) return;
-          Velin.batch(() => {
-            state.myTable.rows.splice(idx, 1);
-            updateWindow(state.myTable, viewport);
-          });
+          const t0 = performance.now();
+          state.myTable.rows = state.myTable.rows.filter(r => r !== row);
           state.perf.editMs = (performance.now() - t0).toFixed(2) + ' ms';
         },
         inspectRow(row) {
@@ -266,20 +312,13 @@ async function injectTemplate(url) {
       const def = COL_DEFS[colId];
       if (!def || !def.sortable) return;
       const t = state.myTable;
-      if (t.sortCol === colId) {
-        t.sortDir = t.sortDir === 'asc' ? 'desc' : 'asc';
-      } else {
-        t.sortCol = colId;
-        t.sortDir = 'asc';
-      }
-      const dir = t.sortDir === 'asc' ? 1 : -1;
       Velin.batch(() => {
-        t.rows.sort((a, b) => {
-          const av = a[colId], bv = b[colId];
-          if (typeof av === 'string') return av.localeCompare(bv) * dir;
-          return ((av ?? 0) - (bv ?? 0)) * dir;
-        });
-        updateWindow(t, viewport);
+        if (t.sortCol === colId) {
+          t.sortDir = t.sortDir === 'asc' ? 'desc' : 'asc';
+        } else {
+          t.sortCol = colId;
+          t.sortDir = 'asc';
+        }
       });
     },
 
@@ -312,11 +351,7 @@ async function injectTemplate(url) {
       const t0   = performance.now();
       const rows = await generateDataAsync(n, p => { state.modal.progress = p; });
 
-      ringSlots = null; // force slot pool rebuild for new dataset
-      Velin.batch(() => {
-        state.myTable.rows = rows;
-        updateWindow(state.myTable, viewport);
-      });
+      state.myTable.rows = rows; // reactive chain: rebuildview → refreshwindow
 
       state.perf.setMs    = (performance.now() - t0).toFixed(0) + ' ms';
       state.modal.visible = false;
@@ -324,8 +359,6 @@ async function injectTemplate(url) {
 
     closeInspect() { state.inspect.open = false; },
   });
-
-  viewport = document.querySelector('.vt-viewport');
 
   let rafPending = false;
   viewport.addEventListener('scroll', () => {
