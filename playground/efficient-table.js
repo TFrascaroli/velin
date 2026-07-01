@@ -9,6 +9,17 @@ const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct
 
 function fmtNum(v) { return v == null ? '—' : v.toLocaleString(); }
 
+// Deterministic PRNG (mulberry32) — seeded per row so calls within a row
+// decorrelate (fixes "all Security team are Free plan" from the old i*K%N).
+function mulberry32(seed) {
+  return function () {
+    let t = (seed += 0x6d2b79f5);
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 const COLUMN_CATALOG = [
   { id: 'name',         label: 'Name',         template: 'cell-name',   flex: '2 1 180px', sortable: true  },
   { id: 'stack',        label: 'Stack',         template: 'cell-badge',  flex: '0 0 110px', sortable: true  },
@@ -41,13 +52,17 @@ const LAST  = ['Adams','Baker','Clark','Davis','Evans','Foster','Garcia','Harris
                'Quinn','Reid','Smith','Taylor','Ueda','Vargas','Walsh','Yang'];
 
 function makeRow(i) {
-  const first = FIRST[i % FIRST.length];
-  const last  = LAST[Math.floor(i / FIRST.length) % LAST.length];
+  const rand = mulberry32(i + 1);
+  const pick = (arr) => arr[Math.floor(rand() * arr.length)];
+
+  const first = pick(FIRST);
+  const last  = pick(LAST);
+  const team  = pick(TEAMS);
 
   let totalCommits = 0;
   const months = {};
   for (let m = 0; m < 12; m++) {
-    const v = Math.round(((i * 37 + m * 13 + 7) % 400) + 10);
+    const v = 10 + Math.floor(rand() * 390);
     months[MONTH_IDS[m]] = v;
     totalCommits += v;
   }
@@ -56,14 +71,14 @@ function makeRow(i) {
     id: i,
     name:         `${first} ${last}`,
     initials:     first[0] + last[0],
-    email:        `${first.toLowerCase()}@${TEAMS[i % TEAMS.length].toLowerCase()}.dev`,
-    stack:        STACKS[i % STACKS.length],
-    team:         TEAMS[(i * 3) % TEAMS.length],
-    plan:         PLANS[Math.floor((i * 7) % PLANS.length)],
-    prs:          Math.round((i * 79 + 31) % 500),
-    reviews:      Math.round((i * 53 + 17) % 300),
-    bugs:         Math.round((i * 31 + 5)  % 120),
-    rating:       (i * 7) % 6,
+    email:        `${first.toLowerCase()}@${team.toLowerCase()}.dev`,
+    stack:        pick(STACKS),
+    team,
+    plan:         pick(PLANS),
+    prs:          Math.floor(rand() * 500),
+    reviews:      Math.floor(rand() * 300),
+    bugs:         Math.floor(rand() * 120),
+    rating:       Math.floor(rand() * 6),
     totalCommits,
     ...months,
     _flash: {},
@@ -163,19 +178,27 @@ function updateWindow(tableData, viewport) {
 const FILTER_FIELDS = ['name', 'stack', 'team', 'plan'];
 
 function computeView(rows, filterText, sortCol, sortDir) {
-  const q = (filterText || '').toLowerCase().trim();
+  const words = (filterText || '').toLowerCase().trim().split(/\s+/).filter(Boolean);
   let view;
-  if (q) {
+  if (words.length) {
     view = [];
-    for (let i = 0; i < rows.length; i++) {
+    outer: for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
-      for (let f = 0; f < FILTER_FIELDS.length; f++) {
-        const v = r[FILTER_FIELDS[f]];
-        if (typeof v === 'string' && v.toLowerCase().indexOf(q) !== -1) {
-          view.push(r);
-          break;
+      // Every word must match at least one searchable field (AND across words,
+      // OR across fields) — standard grid-filter semantics.
+      for (let w = 0; w < words.length; w++) {
+        const word = words[w];
+        let matched = false;
+        for (let f = 0; f < FILTER_FIELDS.length; f++) {
+          const v = r[FILTER_FIELDS[f]];
+          if (typeof v === 'string' && v.toLowerCase().indexOf(word) !== -1) {
+            matched = true;
+            break;
+          }
         }
+        if (!matched) continue outer;
       }
+      view.push(r);
     }
   } else {
     view = rows.slice();
@@ -190,6 +213,10 @@ function computeView(rows, filterText, sortCol, sortDir) {
   }
   return view;
 }
+
+// ─── Filter debounce ──────────────────────────────────────────────────────────
+const FILTER_DEBOUNCE_MS = 200;
+let filterDebounceTimer = null;
 
 // ─── Dribble ──────────────────────────────────────────────────────────────────
 const DRIBBLE_COLS      = ['prs', 'reviews', 'bugs', 'totalCommits', ...MONTH_IDS];
@@ -244,6 +271,7 @@ async function injectTemplate(url) {
     myTable: {
       rows:          [],
       viewRows:      [],
+      filterRaw:     '',
       filterText:    '',
       rowHeight:     56,
       spacerHeight:  0,
@@ -253,18 +281,6 @@ async function injectTemplate(url) {
       allColumnDefs: COLUMN_CATALOG,
       sortCol:       null,
       sortDir:       'asc',
-      // Reactive chain (wired in HTML via vln-watch):
-      //   [rows, filterText, sortCol, sortDir] → rebuildview → viewRows
-      //   viewRows                             → refreshwindow → visibleItems
-      rebuildview([rows, filterText, sortCol, sortDir]) {
-        const view = computeView(rows, filterText, sortCol, sortDir);
-        // Row identities in viewRows change → pool must repopulate from scratch.
-        ringSlots = null;
-        state.myTable.viewRows = view;
-      },
-      refreshwindow() {
-        if (viewport) updateWindow(state.myTable, viewport);
-      },
       actions: {
         deleteRow(row) {
           const t0 = performance.now();
@@ -292,6 +308,73 @@ async function injectTemplate(url) {
     rowCountInput: 10_000,
     dribbling: false,
 
+    // Reactive chain (wired in HTML via vln-watch):
+    //   filterRaw   → onfilterraw (debounce 200ms) → filterText
+    //   [rows, filterText, sortCol, sortDir] → rebuildview → viewRows
+    //   viewRows                             → refreshwindow → visibleItems
+    // Placed at top level (not on myTable) because HTML lowercases attribute
+    // names — a nested subkey like `myTable.rebuildview` would become
+    // `mytable.rebuildview`, which doesn't match `state.myTable`.
+    onfilterraw(raw) {
+      clearTimeout(filterDebounceTimer);
+      filterDebounceTimer = setTimeout(() => {
+        if (state) state.myTable.filterText = raw;
+      }, FILTER_DEBOUNCE_MS);
+    },
+    rebuildview([rows, filterText, sortCol, sortDir]) {
+      if (!state) return;
+      const view = computeView(rows, filterText, sortCol, sortDir);
+      ringSlots = null;
+      state.myTable.viewRows = view;
+    },
+    refreshwindow() {
+      if (!state || !viewport) return;
+      updateWindow(state.myTable, viewport);
+    },
+
+    // ── Derived header state (reactive property getters) ────────────────────
+    // Velin captures an effect's deps once, during the initial track pass,
+    // and doesn't re-scan on later runs. So whatever reactive props the
+    // expression touches on the *first* execution become its deps forever.
+    // A template ternary that short-circuits on the initial track (e.g.
+    // `sortCol === col ? … sortDir … : ''` with sortCol=null) never reads
+    // sortDir → sortDir stays untracked → later direction flips don't fire.
+    //
+    // Fix: assign every reactive read to a local up front — before any
+    // branch — so the JIT can't dead-code-eliminate the touch.
+    get sortarrow() {
+      const t = this.myTable;
+      const sortCol = t.sortCol;
+      const sortDir = t.sortDir;
+      const arrow = sortDir === 'asc' ? ' ↑' : ' ↓';
+      return (col) => sortCol === col ? arrow : '';
+    },
+    get sorttitle() {
+      const t = this.myTable;
+      const sortCol = t.sortCol;
+      const sortDir = t.sortDir;
+      const defs = t.columnDefs;
+      return (col) => {
+        const def = defs[col];
+        if (!def || !def.sortable) return '';
+        const label = def.label || col;
+        if (sortCol !== col)     return 'Sort ' + label + ' ascending';
+        if (sortDir === 'asc')   return 'Sort ' + label + ' descending';
+        return 'Remove sort';
+      };
+    },
+    get headerclass() {
+      const t = this.myTable;
+      const sortCol = t.sortCol;
+      const defs = t.columnDefs;
+      return (col) => {
+        const parts = ['vt-hcell'];
+        if (defs[col] && defs[col].sortable) parts.push('vt-hcell-sortable');
+        if (sortCol === col) parts.push('vt-hcell-sorted');
+        return parts.join(' ');
+      };
+    },
+
     isColumnActive(colId) {
       return this.myTable.columns.includes(colId);
     },
@@ -313,10 +396,16 @@ async function injectTemplate(url) {
       if (!def || !def.sortable) return;
       const t = state.myTable;
       Velin.batch(() => {
-        if (t.sortCol === colId) {
-          t.sortDir = t.sortDir === 'asc' ? 'desc' : 'asc';
-        } else {
+        if (t.sortCol !== colId) {
+          // 1st click on this column → ascending
           t.sortCol = colId;
+          t.sortDir = 'asc';
+        } else if (t.sortDir === 'asc') {
+          // 2nd click → descending
+          t.sortDir = 'desc';
+        } else {
+          // 3rd click → clear sort
+          t.sortCol = null;
           t.sortDir = 'asc';
         }
       });

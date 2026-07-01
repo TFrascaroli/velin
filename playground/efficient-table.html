@@ -64,7 +64,7 @@
       <input class="filter-input"
              type="search"
              placeholder="Filter name / stack / team / plan…"
-             vln-input="myTable.filterText" />
+             vln-input="myTable.filterRaw" />
 
       <div class="row-count-info">
         <span vln-text="myTable.viewRows.length"></span>
@@ -76,10 +76,12 @@
     </div>
 
     <!-- ── Reactive chain (plumbing, visible in HTML) ─────────────────────── -->
+    <!-- filterRaw → onfilterraw (debounce 200ms) → filterText -->
+    <div hidden vln-watch:onfilterraw="myTable.filterRaw"></div>
     <!-- rows|filterText|sortCol|sortDir → rebuildview → viewRows -->
-    <div hidden vln-watch:mytable.rebuildview="[myTable.rows, myTable.filterText, myTable.sortCol, myTable.sortDir]"></div>
+    <div hidden vln-watch:rebuildview="[myTable.rows, myTable.filterText, myTable.sortCol, myTable.sortDir]"></div>
     <!-- viewRows → refreshwindow → visibleItems (drives the DOM row pool) -->
-    <div hidden vln-watch:mytable.refreshwindow="myTable.viewRows"></div>
+    <div hidden vln-watch:refreshwindow="myTable.viewRows"></div>
 
     <!-- ── Column picker ───────────────────────────────────────────────────── -->
     <div class="col-picker">
@@ -99,12 +101,12 @@
 
         <!-- Header -->
         <div class="vt-header">
-          <div class="vt-hcell"
-               vln-loop:col="myTable.columns"
+          <div vln-loop:col="myTable.columns"
                vln-attr:style="'flex: ' + myTable.columnDefs[col].flex"
-               vln-attr:class="myTable.sortCol === col ? 'vt-hcell vt-hcell-sorted' : 'vt-hcell'"
+               vln-attr:class="headerclass(col)"
+               vln-attr:title="sorttitle(col)"
                vln-on:click="sortBy(col)">
-            <span vln-text="myTable.columnDefs[col].label"></span><span class="sort-arrow" vln-text="myTable.sortCol === col ? (myTable.sortDir === 'asc' ? ' ↑' : ' ↓') : ''"></span>
+            <span vln-text="myTable.columnDefs[col].label"></span><span class="sort-arrow" vln-text="sortarrow(col)"></span>
           </div>
         </div>
 

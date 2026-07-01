@@ -310,6 +310,8 @@ html, body {
 
 /* ── Sort header ───────────────────────────────────────────────────────── */
 .vt-hcell { cursor: default; }
+.vt-hcell-sortable { cursor: pointer; user-select: none; }
+.vt-hcell-sortable:hover { color: var(--text); background: rgba(255,255,255,.02); }
 .vt-hcell-sorted { color: var(--accent); }
 .sort-arrow { color: var(--accent); font-size: 10px; }
 
