@@ -188,25 +188,29 @@ Creates a scoped alias for a property in the state. The alias is available to th
 
 Monitors an expression and calls a method in your state whenever it changes.
 
-**Syntax:** `vln-watch:methodName="expression"`
+**Syntax:** `vln-watch:handlerpath="expression"`
 
 **Example:**
 ```html
 <script>
 const vln = Velin.bind(root, {
   count: 0,
-  logChange(newVal) {
+  logchange(newVal) {
     console.log('Count changed to:', newVal);
   }
 });
 </script>
 
-<div vln-watch:logChange="count"></div>
+<div vln-watch:logchange="count"></div>
 <button vln-on:click="count++">Increment</button>
 ```
 
 **Mechanism:**
-- When any part of the expression changes, the named method is called with the result.
+- The **attribute value** is the expression whose dependencies are tracked.
+- The **subkey** is the handler path, resolved against state (supports dotted paths like `handlers.onchange`).
+- When any dependency of the expression changes, the handler is called with the newly evaluated value.
+- The handler is also called once on initial bind with the initial value.
+- ⚠ HTML parsers lowercase attribute names, so the subkey is always lowercase in the DOM. Use lowercase handler paths in state (`logchange`, not `logChange`).
 - For debouncing or throttling, wrap your state method in plain JS.
 
 ## Event Handling

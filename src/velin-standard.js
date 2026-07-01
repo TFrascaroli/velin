@@ -318,20 +318,28 @@ function setupVelinStd(vln) {
   });
 
   /**
-   * vln-watch:name: Monitors an expression and calls a method when it changes.
+   * vln-watch:methodName: Monitors an expression and calls a method when it changes.
+   *
+   * The subkey is the handler path (resolved against state); the attribute value
+   * is the expression whose dependencies are tracked. The handler receives the
+   * newly evaluated value.
    *
    * @example
-   * <div vln-watch:count="logChange"></div>
+   * <div vln-watch:logChange="count"></div>
    *
    * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/directives.md#vln-watch|Directives Guide: vln-watch}
    */
   vln.plugins.registerPlugin({
     name: "watch",
     track: vln.trackers.expressionTracker,
-    render: ({ tracked, subkey }) => {
-      const handler = tracked;
-      if (!subkey || typeof handler !== "function") {
-        console.warn("[VLN007] Expected method name 'watch:methodName'");
+    render: ({ tracked, subkey, evaluate }) => {
+      if (!subkey) {
+        console.warn("[VLN007] vln-watch requires a handler: vln-watch:methodName=\"expr\"");
+        return;
+      }
+      const handler = evaluate(subkey);
+      if (typeof handler !== "function") {
+        console.warn(`[VLN007] vln-watch:${subkey} did not resolve to a function (HTML lowercases attribute names — use lowercase handler paths)`);
         return;
       }
       handler(tracked);

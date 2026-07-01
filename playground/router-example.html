@@ -40,14 +40,14 @@
          vln-on:destroy="console.log('Profile unmounted')">
       <h1>Profile</h1>
       <p>User ID: <span vln-text="id"></span></p>
-      <p vln-watch:logChange="id">Watching ID changes...</p>
+      <p vln-watch:logchange="id">Watching ID changes...</p>
     </div>
   </template>
 
   <script>
     const state = {
       myRoute: { path: window.location.pathname, params: {}, query: {}, error: null, loading: false },
-      logChange(id) {
+      logchange(id) {
         console.log('User ID changed to:', id);
       }
     };
