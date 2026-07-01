@@ -462,9 +462,9 @@ function setupVelinStd(vln) {
           const child = compose(init).anchor(expr);
 
           newSubstates.push(child);
+          child.processNode(clone);
           placeholder.parentNode.insertBefore(clone, lastInserted.nextSibling);
           lastInserted = clone;
-          child.processNode(clone);
         }
       }
 

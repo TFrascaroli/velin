@@ -11,6 +11,8 @@
  * @typedef {Object} VelinStateControl
  * @property {boolean} evaluating Whether or not we are currently in an evaluation (to prevent multi-sets in evaluation)
  * @property {boolean} wrapping Whether or not we are currently wrapping nested objects (to prevent false positives when setting the wrapped values)
+ * @property {number} batchDepth Nesting depth of active batch() calls; effects are queued when > 0
+ * @property {Set<Function>} batchQueue Deferred effects collected while batchDepth > 0
  */
 
 /**
@@ -282,6 +284,7 @@ const DefaultPluginPriorities = {
  * @property {CleanupState} cleanupState
  * @property {ProcessNode} processNode
  * @property {Trackers} trackers
+ * @property {(fn: () => void) => void} batch
  * @property {VelinInternal} ø__internal
  */
 
@@ -1345,22 +1348,53 @@ function getSetter(reactiveState, expr) {
  * @returns {void}
  */
 function triggerEffects(prop, reactiveState) {
-  if (__DEV__)
-    console.log(
-      prop +
-        " changed, triggering effects. " +
-        (reactiveState.bindings.get(prop)
-          ? reactiveState.bindings.get(prop).size
-          : 0) +
-        " found",
-    );
   if (!reactiveState.bindings.has(prop)) return;
+  const ctrl = reactiveState.ø__control;
+  if (__DEV__) {
+    console.log(prop + " changed, " + (ctrl.batchDepth > 0 ? "queuing" : "triggering") + " effects. " + (reactiveState.bindings.get(prop)?.size ?? 0) + " found");
+  }
   for (const effect of reactiveState.bindings.get(prop) || []) {
-    if (__DEV__) {
-      // @ts-ignore
-      Velin.ø__updateCounter = (Velin.ø__updateCounter || 0) + 1;
+    if (ctrl.batchDepth > 0) {
+      ctrl.batchQueue.add(effect);
+    } else {
+      if (__DEV__) {
+        // @ts-ignore
+        Velin.ø__updateCounter = (Velin.ø__updateCounter || 0) + 1;
+      }
+      effect();
     }
-    effect();
+  }
+}
+
+/**
+ * Defers all reactive effects triggered inside `fn` until `fn` returns,
+ * then runs them once (deduplicated). Safe to nest.
+ * @param {() => void} fn
+ */
+function batch(fn) {
+  const reactiveState = boundState.root;
+  if (!reactiveState) {
+    if (__DEV__) console.warn("[Velin] Velin.batch() called before Velin.bind() — running fn() eagerly with no batching.");
+    fn();
+    return;
+  }
+  const ctrl = reactiveState.ø__control;
+  ctrl.batchDepth++;
+  try {
+    fn();
+  } finally {
+    ctrl.batchDepth--;
+    if (ctrl.batchDepth === 0) {
+      const effects = [...ctrl.batchQueue];
+      ctrl.batchQueue.clear();
+      for (const effect of effects) {
+        if (__DEV__) {
+          // @ts-ignore
+          Velin.ø__updateCounter = (Velin.ø__updateCounter || 0) + 1;
+        }
+        effect();
+      }
+    }
   }
 }
 
@@ -1375,6 +1409,9 @@ function setupState(obj) {
     evaluating: false,
     wrapping: false,
     currentCycleID: null,
+    batchDepth: 0,
+    /** @type {Set<Function>} */
+    batchQueue: new Set(),
   };
   /** @type {ReactiveState} */
   const reactiveState = {
@@ -1846,6 +1883,7 @@ const Velin = {
   compile,
   evaluate,
   evaluateAst,
+  batch,
   plugins: {
     registerPlugin,
     processPlugin,
