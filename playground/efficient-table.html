@@ -8,7 +8,7 @@
   <script src="vendor/velin.js"></script>
 </head>
 <body>
-  <div class="page">
+  <div class="page" vln-router="route">
 
     <!-- ── Top bar ─────────────────────────────────────────────────────────── -->
     <div class="topbar">
@@ -30,6 +30,10 @@
           <div class="perf-cell">
             <div class="perf-label">FPS</div>
             <div class="perf-value" vln-text="perf.fps"></div>
+          </div>
+          <div class="perf-cell" title="Reactive proxy writes per second (dribble + pulse ticker).">
+            <div class="perf-label">Ops/s</div>
+            <div class="perf-value" vln-text="perf.ops"></div>
           </div>
         </div>
       </div>
@@ -73,15 +77,63 @@
         </span>
         rows · <span vln-text="myTable.visibleItems.length"></span> in DOM
       </div>
+
+      <label class="density-ctrl" title="Row height in px — try scrolling while dragging">
+        <span>Density</span>
+        <input type="range" min="30" max="80" step="2" vln-input="myTable.rowHeight" />
+        <span class="density-val" vln-text="myTable.rowHeight + 'px'"></span>
+      </label>
+
+      <!-- Selection chip: only appears once at least one row is checked. -->
+      <div class="sel-chip" vln-if="myTable.selectedCount > 0">
+        <span class="sel-count" vln-text="myTable.selectedCount"></span>
+        <span>selected</span>
+        <button class="btn btn-sm sel-btn sel-btn-danger"
+                vln-on:click="myTable.actions.deleteSelected()">Delete</button>
+        <button class="btn btn-sm sel-btn"
+                vln-on:click="myTable.actions.clearSelection()"
+                title="Clears via Velin.batch() so one flush covers all rows">Clear</button>
+      </div>
     </div>
 
-    <!-- ── Reactive chain (plumbing, visible in HTML) ─────────────────────── -->
-    <!-- filterRaw → onfilterraw (debounce 200ms) → filterText -->
+    <!-- ── Reactive chain (plumbing, visible in HTML *and* in the UI) ─────
+         Each vln-watch links data → a handler → downstream data. The chain
+         panel below shows each node's hit count + last-run ms live so you
+         can watch reactivity propagate.  -->
+    <div class="chain-panel" title="Live reactive dependency chain — hit count · last ms">
+      <span class="chain-node chain-source">filterRaw</span>
+      <span class="chain-arrow">→</span>
+      <div class="chain-node" vln-attr:class="'chain-node ' + (chain.onfilterraw.hits ? 'lit' : '')">
+        <span class="chain-name">onfilterraw</span>
+        <span class="chain-stat"><span vln-text="chain.onfilterraw.hits"></span> · <span vln-text="chain.onfilterraw.ms"></span>ms</span>
+      </div>
+      <span class="chain-arrow">→</span>
+      <span class="chain-node chain-source">rows · filterText · sort</span>
+      <span class="chain-arrow">→</span>
+      <div class="chain-node" vln-attr:class="'chain-node ' + (chain.rebuildview.hits ? 'lit' : '')">
+        <span class="chain-name">rebuildview</span>
+        <span class="chain-stat"><span vln-text="chain.rebuildview.hits"></span> · <span vln-text="chain.rebuildview.ms"></span>ms</span>
+      </div>
+      <span class="chain-arrow">→</span>
+      <span class="chain-node chain-source">viewRows</span>
+      <span class="chain-arrow">→</span>
+      <div class="chain-node" vln-attr:class="'chain-node ' + (chain.refreshwindow.hits ? 'lit' : '')">
+        <span class="chain-name">refreshwindow</span>
+        <span class="chain-stat"><span vln-text="chain.refreshwindow.hits"></span> · <span vln-text="chain.refreshwindow.ms"></span>ms</span>
+      </div>
+      <span class="chain-arrow">→</span>
+      <span class="chain-node chain-source">DOM</span>
+    </div>
+
+    <!-- Hidden watchers that drive the chain telemetry above. -->
     <div hidden vln-watch:onfilterraw="myTable.filterRaw"></div>
-    <!-- rows|filterText|sortCol|sortDir → rebuildview → viewRows -->
     <div hidden vln-watch:rebuildview="[myTable.rows, myTable.filterText, myTable.sortCol, myTable.sortDir]"></div>
-    <!-- viewRows → refreshwindow → visibleItems (drives the DOM row pool) -->
     <div hidden vln-watch:refreshwindow="myTable.viewRows"></div>
+
+    <!-- Density var + URL hash sync watchers. -->
+    <div hidden vln-watch:onrowheight="myTable.rowHeight"></div>
+    <div hidden vln-watch:onroute="route.path"></div>
+    <div hidden vln-watch:onurlstate="[myTable.filterRaw, myTable.sortCol, myTable.sortDir, myTable.rowHeight]"></div>
 
     <!-- ── Column picker ───────────────────────────────────────────────────── -->
     <div class="col-picker">
@@ -97,15 +149,33 @@
 
     <!-- ── Table ───────────────────────────────────────────────────────────── -->
     <div class="table-wrap">
+      <div class="empty-state"
+           vln-if="myTable.rows.length > 0 && myTable.viewRows.length === 0">
+        <div class="empty-title">No matches</div>
+        <div class="empty-sub">
+          Filter <span vln-text="'&quot;' + myTable.filterText + '&quot;'"></span>
+          returned zero rows out of <span vln-text="myTable.rows.length.toLocaleString()"></span>.
+        </div>
+      </div>
       <div vln-table="myTable">
 
         <!-- Header -->
         <div class="vt-header">
+          <!-- Header cells are the drag surface for column reordering. Drop
+               handler mutates myTable.columns; the header loop AND the row
+               cell loop both read from that array, so the whole table
+               re-lays itself out from a single state write. -->
           <div vln-loop:col="myTable.columns"
+               vln-attr:draggable="'true'"
                vln-attr:style="'flex: ' + myTable.columnDefs[col].flex"
-               vln-attr:class="headerclass(col)"
+               vln-attr:class="headerclass(col) + (drag.col === col ? ' vt-hcell-dragging' : '') + (drag.over === col && drag.col && drag.col !== col ? ' vt-hcell-dropzone' : '')"
                vln-attr:title="sorttitle(col)"
-               vln-on:click="sortBy(col)">
+               vln-on:click="sortBy(col)"
+               vln-on:dragstart="startDragCol(col, event)"
+               vln-on:dragenter="drag.over = col"
+               vln-on:dragover="event.preventDefault()"
+               vln-on:drop="dropCol(col, event)"
+               vln-on:dragend="drag.col = null, drag.over = null">
             <span vln-text="myTable.columnDefs[col].label"></span><span class="sort-arrow" vln-text="sortarrow(col)"></span>
           </div>
         </div>
@@ -127,9 +197,12 @@
                  vln-loop:col="myTable.columns"
                  vln-attr:style="'flex: ' + myTable.columnDefs[col].flex"
                  vln-fragment="myTable.columnDefs[col].template || 'cell-text'"
+                 vln-on:mouseenter="peekCell(myTable.columnDefs[col].template || 'cell-text', event)"
+                 vln-on:mouseleave="unpeekCell()"
                  vln-var:row="item.row"
                  vln-var:coldef="myTable.columnDefs[col]"
-                 vln-var:actions="myTable.actions">
+                 vln-var:actions="myTable.actions"
+                 vln-var:h="helpers">
             </div>
 
           </div>
@@ -148,6 +221,21 @@
           </div>
         </div>
         <div class="modal-sub" vln-text="modal.progress + '%'"></div>
+      </div>
+    </div>
+
+    <!-- ── Template preview popover (fires on cell hover) ──────────────────── -->
+    <!-- Outer wrapper carries vln-if only; inner div carries the reactive
+         style. Keeping them on separate elements avoids vln-attr:style's
+         setAttribute overwriting vln-if's display:none. -->
+    <div vln-if="preview.visible">
+      <div class="preview-popover"
+           vln-attr:style="'left:' + preview.x + 'px; top:' + preview.y + 'px'">
+        <div class="preview-title">
+          <span class="preview-badge">TEMPLATE</span>
+          <code vln-text="'#' + preview.title"></code>
+        </div>
+        <pre class="preview-body" vln-text="preview.source"></pre>
       </div>
     </div>
 

@@ -4,10 +4,8 @@
 const Velin = /** @type {globalThis & {Velin: VelinCore}} */ (globalThis).Velin;
 
 // ─── Column catalog ───────────────────────────────────────────────────────────
-const MONTH_IDS    = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
-const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-
 function fmtNum(v) { return v == null ? '—' : v.toLocaleString(); }
+function fmtPct(v) { return v == null ? '—' : Math.round(v) + '%'; }
 
 // Deterministic PRNG (mulberry32) — seeded per row so calls within a row
 // decorrelate (fixes "all Security team are Free plan" from the old i*K%N).
@@ -21,19 +19,21 @@ function mulberry32(seed) {
 }
 
 const COLUMN_CATALOG = [
-  { id: 'name',         label: 'Name',         template: 'cell-name',   flex: '2 1 180px', sortable: true  },
-  { id: 'stack',        label: 'Stack',         template: 'cell-badge',  flex: '0 0 110px', sortable: true  },
-  { id: 'team',         label: 'Team',          template: 'cell-text',   flex: '0 0 100px', sortable: true  },
-  { id: 'plan',         label: 'Plan',          template: 'cell-text',   flex: '0 0 90px',  sortable: true  },
-  { id: 'prs',          label: 'PRs',           template: 'cell-num',    flex: '0 0 80px',  sortable: true, format: fmtNum },
-  { id: 'reviews',      label: 'Reviews',       template: 'cell-num',    flex: '0 0 80px',  sortable: true, format: fmtNum },
-  { id: 'bugs',         label: 'Bugs',          template: 'cell-num',    flex: '0 0 70px',  sortable: true, format: fmtNum },
-  { id: 'rating',       label: 'Rating',        template: 'cell-rating', flex: '0 0 110px', sortable: true  },
-  { id: 'totalCommits', label: 'Total Commits', template: 'cell-num',   flex: '1 1 120px', sortable: true, format: fmtNum },
-  ...MONTH_IDS.map((id, i) => ({
-    id, label: MONTH_LABELS[i], template: 'cell-num', flex: '0 0 80px', sortable: true, format: fmtNum,
-  })),
-  { id: 'actions',      label: '',              template: 'cell-actions', flex: '0 0 80px', sortable: false },
+  { id: 'sel',      label: '',         template: 'cell-select',   flex: '0 0 32px',  sortable: false },
+  { id: 'name',     label: 'Name',     template: 'cell-name',     flex: '2 1 200px', sortable: true  },
+  { id: 'stack',    label: 'Stack',    template: 'cell-badge',    flex: '0 0 110px', sortable: true  },
+  { id: 'team',     label: 'Team',     template: 'cell-text',     flex: '0 0 100px', sortable: true  },
+  { id: 'pulse',    label: 'Live',     template: 'cell-pulse',    flex: '0 0 70px',  sortable: false },
+  { id: 'activity', label: 'Activity', template: 'cell-sparkline',flex: '1 1 140px', sortable: false },
+  { id: 'trend',    label: 'Trend',    template: 'cell-trend',    flex: '0 0 100px', sortable: true  },
+  { id: 'load',     label: 'Load',     template: 'cell-heat',     flex: '0 0 90px',  sortable: true  },
+  { id: 'sprint',   label: 'Sprint',   template: 'cell-progress', flex: '1 1 130px', sortable: true  },
+  { id: 'streak',   label: 'Streak',   template: 'cell-streak',   flex: '0 0 100px', sortable: true  },
+  { id: 'plan',     label: 'Plan',     template: 'cell-text',     flex: '0 0 90px',  sortable: true  },
+  { id: 'prs',      label: 'PRs',      template: 'cell-num',      flex: '0 0 80px',  sortable: true, format: fmtNum },
+  { id: 'reviews',  label: 'Reviews',  template: 'cell-num',      flex: '0 0 80px',  sortable: true, format: fmtNum },
+  { id: 'rating',   label: 'Rating',   template: 'cell-rating',   flex: '0 0 110px', sortable: true  },
+  { id: 'actions',  label: '',         template: 'cell-actions',  flex: '0 0 80px',  sortable: false },
 ];
 
 const COL_DEFS = {};
@@ -59,29 +59,29 @@ function makeRow(i) {
   const last  = pick(LAST);
   const team  = pick(TEAMS);
 
-  let totalCommits = 0;
-  const months = {};
-  for (let m = 0; m < 12; m++) {
-    const v = 10 + Math.floor(rand() * 390);
-    months[MONTH_IDS[m]] = v;
-    totalCommits += v;
-  }
+  const months = new Array(12);
+  for (let m = 0; m < 12; m++) months[m] = 20 + Math.floor(rand() * 380);
 
   return {
     id: i,
-    name:         `${first} ${last}`,
-    initials:     first[0] + last[0],
-    email:        `${first.toLowerCase()}@${team.toLowerCase()}.dev`,
-    stack:        pick(STACKS),
+    name:     `${first} ${last}`,
+    initials: first[0] + last[0],
+    email:    `${first.toLowerCase()}@${team.toLowerCase()}.dev`,
+    stack:    pick(STACKS),
     team,
-    plan:         pick(PLANS),
-    prs:          Math.floor(rand() * 500),
-    reviews:      Math.floor(rand() * 300),
-    bugs:         Math.floor(rand() * 120),
-    rating:       Math.floor(rand() * 6),
-    totalCommits,
-    ...months,
-    _flash: {},
+    plan:     pick(PLANS),
+    prs:      Math.floor(rand() * 500),
+    reviews:  Math.floor(rand() * 300),
+    rating:   Math.floor(rand() * 6),
+
+    // Flashy fields — all mutated by dribble / pulse ticker
+    months,                                     // → cell-sparkline
+    load:     Math.floor(rand() * 100),         // → cell-heat (0–100)
+    sprintPct: Math.floor(rand() * 100),        // → cell-progress (0–100)
+    trendPct: Math.round((rand() - 0.5) * 60),  // → cell-trend (-30..+30)
+    streak:   Math.floor(rand() * 6),           // → cell-streak (0–15)
+    pulse:    1,                                // → cell-pulse scale (ticker-driven)
+    selected: false,                            // → cell-select
   };
 }
 
@@ -103,7 +103,7 @@ async function generateDataAsync(n, onProgress) {
 // Permanent slot pool — never replaced, only mutated in-place.
 // Each slot lives at index di % winSize so a 1-row scroll touches exactly 1 slot.
 let ringSlots = null;
-let currentVisibleRows = []; // row proxies for dribble
+let currentVisibleRows = []; // row proxies for dribble + pulse ticker
 
 function updateWindow(tableData, viewport) {
   const { viewRows, rowHeight } = tableData;
@@ -139,8 +139,6 @@ function updateWindow(tableData, viewport) {
     ? Math.round((di / Math.max(total - 1, 1)) * spacerH)
     : di * rowHeight;
 
-  // (Re)allocate slot pool only when size changes. Pre-populate with real row
-  // data BEFORE assigning to tableData.visibleItems — null rows crash templates.
   if (!ringSlots || ringSlots.length !== winSize) {
     ringSlots = [];
     currentVisibleRows = [];
@@ -154,9 +152,6 @@ function updateWindow(tableData, viewport) {
     return;
   }
 
-  // Mutate slots in-place. slot index = di % winSize, so each row always lands
-  // in the same slot regardless of scroll position. Velin's old !== value check
-  // in the proxy set trap means untouched slots emit no reactive effects.
   const reactiveSlots = tableData.visibleItems;
   currentVisibleRows = [];
 
@@ -172,9 +167,6 @@ function updateWindow(tableData, viewport) {
 }
 
 // ─── View pipeline (pure) ─────────────────────────────────────────────────────
-// The reactive chain (rows|filter|sortCol|sortDir → viewRows → updateWindow)
-// is declared in the HTML via vln-watch. These functions are pure transforms;
-// no callsite here calls them directly.
 const FILTER_FIELDS = ['name', 'stack', 'team', 'plan'];
 
 function computeView(rows, filterText, sortCol, sortDir) {
@@ -184,8 +176,6 @@ function computeView(rows, filterText, sortCol, sortDir) {
     view = [];
     outer: for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
-      // Every word must match at least one searchable field (AND across words,
-      // OR across fields) — standard grid-filter semantics.
       for (let w = 0; w < words.length; w++) {
         const word = words[w];
         let matched = false;
@@ -219,25 +209,89 @@ const FILTER_DEBOUNCE_MS = 200;
 let filterDebounceTimer = null;
 
 // ─── Dribble ──────────────────────────────────────────────────────────────────
-const DRIBBLE_COLS      = ['prs', 'reviews', 'bugs', 'totalCommits', ...MONTH_IDS];
-const DRIBBLE_PER_TICK  = 20;
-const DRIBBLE_FLASH_MS  = 400;
+// Each tick mutates a handful of visible rows across several "flashy" fields.
+// Every write flows through Velin's reactive core → the bound cell re-renders,
+// and CSS `transition` on the target property produces the visible motion.
+// No @keyframes anywhere; nothing moves without a data write behind it.
+// Two-tier dribble: heavy fraction hits visible rows every tick so the user
+// SEES motion, lighter fraction hits random rows across the full dataset so
+// scrolling anywhere reveals fresh data. Ratio tuned so a 500K set still
+// feels alive without burning too many cycles.
+const DRIBBLE_VISIBLE_FRAC = 0.6; // fraction of visible rows mutated per tick
+const DRIBBLE_BG_COUNT     = 200; // random full-set mutations per tick
 let dribbleTimer = null;
+let pulseRafId   = null;
+let state        = null; // set by the bootstrap IIFE below
+
+// Reactive-op counter: incremented on every proxy write we control (dribble
+// mutateRow calls + pulse ticker row.pulse writes). FPS ticker resets it each
+// second and publishes to state.perf.ops so the perf panel can display it.
+let writeCount = 0;
+
+function bump(v, min, max, step) {
+  const nv = v + (Math.random() - 0.5) * step * 2;
+  return Math.max(min, Math.min(max, nv));
+}
+
+function mutateRow(row) {
+  const which = Math.floor(Math.random() * 5);
+  writeCount++;
+  switch (which) {
+    case 0: row.load      = Math.round(bump(row.load,      0, 100, 18)); break;
+    case 1: row.sprintPct = Math.round(bump(row.sprintPct, 0, 100, 12)); break;
+    case 2: row.trendPct  = Math.round(bump(row.trendPct, -35, 35, 12)); break;
+    case 3: {
+      // Replace months array so the sparkline template's `row.months` read
+      // fires reactively regardless of per-index proxy behavior.
+      const m = Math.floor(Math.random() * 12);
+      const next = row.months.slice();
+      next[m] = Math.max(0, Math.round(bump(next[m], 0, 500, 80)));
+      row.months = next;
+      break;
+    }
+    case 4: {
+      const d = Math.random() < 0.5 ? -1 : 1;
+      row.streak = Math.max(0, Math.min(15, row.streak + d));
+      break;
+    }
+  }
+}
 
 function dribbleTick() {
-  const rows = currentVisibleRows;
-  if (!rows.length) return;
+  const allRows     = state && state.myTable && state.myTable.rows;
+  const visibleRows = currentVisibleRows;
+  if (!allRows || !allRows.length) return;
 
   Velin.batch(() => {
-    for (let i = 0; i < DRIBBLE_PER_TICK; i++) {
-      const row  = rows[Math.floor(Math.random() * rows.length)];
-      const col  = DRIBBLE_COLS[Math.floor(Math.random() * DRIBBLE_COLS.length)];
-      const old  = row[col];
-      const delta = Math.round((Math.random() - 0.45) * 30);
-      row[col] = Math.max(0, old + delta);
-      row._flash[col] = row[col] > old ? 'up' : 'down';
-      const r = row, c = col;
-      setTimeout(() => { r._flash[c] = ''; }, DRIBBLE_FLASH_MS);
+    // Foreground: many visible rows every tick → obvious on-screen motion.
+    const visN = Math.ceil(visibleRows.length * DRIBBLE_VISIBLE_FRAC);
+    for (let i = 0; i < visN; i++) {
+      const row = visibleRows[Math.floor(Math.random() * visibleRows.length)];
+      if (row) mutateRow(row);
+    }
+    // Background: random full-set touches → scrolled areas stay fresh.
+    for (let i = 0; i < DRIBBLE_BG_COUNT; i++) {
+      const row = allRows[Math.floor(Math.random() * allRows.length)];
+      if (row) mutateRow(row);
+    }
+  });
+}
+
+// Pulse ticker: writes row.pulse each frame for every visible row. The dot's
+// transform is bound to row.pulse via vln-attr:style, so this is pure reactive
+// churn producing visible motion — no CSS animation involved. Also a nice
+// stress-test signal: ~60 rows × 60 fps = ~3600 reactive writes/sec.
+function pulseTick() {
+  pulseRafId = requestAnimationFrame(pulseTick);
+  const rows = currentVisibleRows;
+  if (!rows.length) return;
+  const t = performance.now() / 1000;
+  Velin.batch(() => {
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      if (!row) continue;
+      row.pulse = 0.75 + (Math.sin(t * 2 + row.id * 0.37) + 1) * 0.25; // 0.75..1.25
+      writeCount++;
     }
   });
 }
@@ -262,10 +316,7 @@ async function injectTemplate(url) {
 (async () => {
   await injectTemplate('efficient-table.tpl.html');
 
-  let state;
-  let viewport;
-
-  viewport = document.querySelector('.vt-viewport');
+  const viewport = document.querySelector('.vt-viewport');
 
   state = Velin.bind(document.body, {
     myTable: {
@@ -276,26 +327,49 @@ async function injectTemplate(url) {
       rowHeight:     56,
       spacerHeight:  0,
       columnDefs:    COL_DEFS,
-      columns:       ['name', 'stack', 'team', 'prs', 'reviews', 'bugs', 'rating', 'jan', 'actions'],
+      columns:       ['sel', 'name', 'stack', 'team', 'pulse', 'activity', 'trend', 'load', 'sprint', 'streak', 'actions'],
       visibleItems:  [],
       allColumnDefs: COLUMN_CATALOG,
       sortCol:       null,
       sortDir:       'asc',
+      selectedCount: 0,
       actions: {
         deleteRow(row) {
           const t0 = performance.now();
+          if (row.selected) state.myTable.selectedCount--;
           state.myTable.rows = state.myTable.rows.filter(r => r !== row);
           state.perf.editMs = (performance.now() - t0).toFixed(2) + ' ms';
         },
         inspectRow(row) {
-          // Collect raw data (avoid proxy JSON issues with _flash)
           const data = {};
           for (const k of Object.keys(row)) {
-            if (k === '_flash') continue;
+            if (k === 'pulse') continue; // ticker-driven noise
             data[k] = row[k];
           }
           state.inspect.data = JSON.stringify(data, null, 2);
           state.inspect.open = true;
+        },
+        toggleRow(row, checked) {
+          if (row.selected === checked) return;
+          row.selected = checked;
+          state.myTable.selectedCount += checked ? 1 : -1;
+        },
+        deleteSelected() {
+          const t0 = performance.now();
+          state.myTable.rows = state.myTable.rows.filter(r => !r.selected);
+          state.myTable.selectedCount = 0;
+          state.perf.editMs = (performance.now() - t0).toFixed(2) + ' ms';
+        },
+        // Uses Velin.batch() so N per-row writes coalesce into a single
+        // downstream flush — the visible reason batch() exists.
+        clearSelection() {
+          Velin.batch(() => {
+            const rows = state.myTable.rows;
+            for (let i = 0; i < rows.length; i++) {
+              if (rows[i].selected) rows[i].selected = false;
+            }
+          });
+          state.myTable.selectedCount = 0;
         },
       },
     },
@@ -303,45 +377,114 @@ async function injectTemplate(url) {
     modal: { visible: false, progress: 0, label: '' },
     inspect: { open: false, data: '' },
 
-    perf: { setMs: '—', editMs: '—', fps: '—' },
+    // Hover popover: reflects the actual <template id="…"> HTML of whichever
+    // cell the mouse is over. Nothing to fetch — read straight from the DOM.
+    preview: { visible: false, title: '', source: '', x: 0, y: 0 },
+
+    // Column drag-and-drop state. drop() only mutates myTable.columns; the
+    // header and cell loops both read that array so the reorder cascades
+    // through the DOM without a single manual node touch.
+    drag: { col: null, over: null },
+
+    // Router state — populated by vln-router; used to reflect filter+sort
+    // +density into location.hash and vice-versa.
+    route: { path: '/', params: {}, query: {} },
+    routerReady: false,
+
+    perf: { setMs: '—', editMs: '—', fps: '—', ops: '—' },
+
+    // Reactive-chain telemetry — each vln-watch handler bumps its cell.
+    // Turns the plumbing (which used to be `<div hidden>`) into a visible
+    // demonstration of "what fires when."
+    chain: {
+      onfilterraw:   { hits: 0, ms: '0.00' },
+      rebuildview:   { hits: 0, ms: '0.00' },
+      refreshwindow: { hits: 0, ms: '0.00' },
+    },
 
     rowCountInput: 10_000,
     dribbling: false,
 
-    // Reactive chain (wired in HTML via vln-watch):
-    //   filterRaw   → onfilterraw (debounce 200ms) → filterText
-    //   [rows, filterText, sortCol, sortDir] → rebuildview → viewRows
-    //   viewRows                             → refreshwindow → visibleItems
-    // Placed at top level (not on myTable) because HTML lowercases attribute
-    // names — a nested subkey like `myTable.rebuildview` would become
-    // `mytable.rebuildview`, which doesn't match `state.myTable`.
+    // Cell helpers — pure derivations from row data. Templates call these so
+    // the sparkline / heat / trend cells stay declarative.
+    // NOTE: no `this.` inside these methods — Velin's evaluator doesn't bind
+    // `this` to the helpers object, which triggers infinite recursion.
+    helpers: {
+      // 12 (v, index) pairs → SVG polyline points inside viewBox 0 0 110 24
+      sparkPoints(months) {
+        let s = '';
+        for (let i = 0; i < 12; i++) {
+          const v = months[i];
+          const y = 22 - Math.min(v, 500) / 500 * 20;
+          s += (i ? ' ' : '') + (i * 10) + ',' + y.toFixed(1);
+        }
+        return s;
+      },
+      // 0..100 load → green(120°) → red(0°) via hue interp
+      heatBg(load) {
+        const h = 120 - Math.min(Math.max(load, 0), 100) * 1.2;
+        return 'hsl(' + h.toFixed(0) + ' 65% 42% / 0.85)';
+      },
+      trendStyle(pct) {
+        const clamped = Math.max(-30, Math.min(30, pct));
+        const rot = clamped * 1.5; // ±45°
+        const hue = clamped >= 0 ? 140 : 0;
+        return 'transform: rotate(' + rot.toFixed(0) + 'deg); color: hsl(' + hue + ' 70% 55%);';
+      },
+      trendLabel(pct) {
+        const sign = pct > 0 ? '+' : '';
+        return sign + pct + '%';
+      },
+      statusColor(load) {
+        if (load < 20) return '#64748b';  // idle — slate
+        if (load < 55) return '#22c55e';  // active — green
+        if (load < 85) return '#f59e0b';  // busy — amber
+        return '#ef4444';                 // hot — red
+      },
+      statusLabel(load) {
+        if (load < 20) return 'idle';
+        if (load < 55) return 'active';
+        if (load < 85) return 'busy';
+        return 'hot';
+      },
+      pulseClass(load) {
+        if (load < 20) return 'pulse-idle';
+        if (load < 55) return 'pulse-active';
+        if (load < 85) return 'pulse-busy';
+        return 'pulse-hot';
+      },
+      fires(n) {
+        const capped = Math.min(n, 5);
+        return '🔥'.repeat(capped) + (n > 5 ? '+' : '');
+      },
+    },
+
     onfilterraw(raw) {
+      const t0 = performance.now();
       clearTimeout(filterDebounceTimer);
       filterDebounceTimer = setTimeout(() => {
         if (state) state.myTable.filterText = raw;
       }, FILTER_DEBOUNCE_MS);
+      const c = state && state.chain.onfilterraw;
+      if (c) { c.hits++; c.ms = (performance.now() - t0).toFixed(2); }
     },
     rebuildview([rows, filterText, sortCol, sortDir]) {
       if (!state) return;
+      const t0 = performance.now();
       const view = computeView(rows, filterText, sortCol, sortDir);
       ringSlots = null;
       state.myTable.viewRows = view;
+      const c = state.chain.rebuildview;
+      c.hits++; c.ms = (performance.now() - t0).toFixed(2);
     },
     refreshwindow() {
       if (!state || !viewport) return;
+      const t0 = performance.now();
       updateWindow(state.myTable, viewport);
+      const c = state.chain.refreshwindow;
+      c.hits++; c.ms = (performance.now() - t0).toFixed(2);
     },
 
-    // ── Derived header state (reactive property getters) ────────────────────
-    // Velin captures an effect's deps once, during the initial track pass,
-    // and doesn't re-scan on later runs. So whatever reactive props the
-    // expression touches on the *first* execution become its deps forever.
-    // A template ternary that short-circuits on the initial track (e.g.
-    // `sortCol === col ? … sortDir … : ''` with sortCol=null) never reads
-    // sortDir → sortDir stays untracked → later direction flips don't fire.
-    //
-    // Fix: assign every reactive read to a local up front — before any
-    // branch — so the JIT can't dead-code-eliminate the touch.
     get sortarrow() {
       const t = this.myTable;
       const sortCol = t.sortCol;
@@ -397,14 +540,11 @@ async function injectTemplate(url) {
       const t = state.myTable;
       Velin.batch(() => {
         if (t.sortCol !== colId) {
-          // 1st click on this column → ascending
           t.sortCol = colId;
           t.sortDir = 'asc';
         } else if (t.sortDir === 'asc') {
-          // 2nd click → descending
           t.sortDir = 'desc';
         } else {
-          // 3rd click → clear sort
           t.sortCol = null;
           t.sortDir = 'asc';
         }
@@ -414,10 +554,13 @@ async function injectTemplate(url) {
     toggleDribble() {
       state.dribbling = !state.dribbling;
       if (state.dribbling) {
-        dribbleTimer = setInterval(dribbleTick, 100);
+        dribbleTimer = setInterval(dribbleTick, 80);
+        pulseTick(); // schedules its own rAF
       } else {
         clearInterval(dribbleTimer);
         dribbleTimer = null;
+        if (pulseRafId) cancelAnimationFrame(pulseRafId);
+        pulseRafId = null;
       }
     },
 
@@ -430,7 +573,6 @@ async function injectTemplate(url) {
       const n = +state.rowCountInput;
       if (!n || n < 1) return;
 
-      // Stop dribble if running
       if (state.dribbling) state.toggleDribble();
 
       state.modal.label    = n.toLocaleString() + ' rows';
@@ -440,13 +582,104 @@ async function injectTemplate(url) {
       const t0   = performance.now();
       const rows = await generateDataAsync(n, p => { state.modal.progress = p; });
 
-      state.myTable.rows = rows; // reactive chain: rebuildview → refreshwindow
+      state.myTable.rows = rows;
 
       state.perf.setMs    = (performance.now() - t0).toFixed(0) + ' ms';
       state.modal.visible = false;
+
+      // Auto-start ambient motion so the page is visibly alive on load —
+      // pulse dots + sparkline drift + heat/trend/sprint mutation.
+      if (!state.dribbling) state.toggleDribble();
     },
 
     closeInspect() { state.inspect.open = false; },
+
+    startDragCol(col, event) {
+      state.drag.col = col;
+      if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', col);
+      }
+    },
+    dropCol(target, event) {
+      event.preventDefault();
+      const src = state.drag.col;
+      state.drag.col  = null;
+      state.drag.over = null;
+      if (!src || src === target) return;
+      const cols = state.myTable.columns.slice();
+      const from = cols.indexOf(src);
+      const to   = cols.indexOf(target);
+      if (from < 0 || to < 0) return;
+      cols.splice(from, 1);
+      cols.splice(to, 0, src);
+      // One reactive write — the header loop and every row's cell loop
+      // both read myTable.columns and rerender in lockstep.
+      state.myTable.columns = cols;
+    },
+
+    peekCell(templateId, event) {
+      const tpl = document.getElementById(templateId);
+      if (!tpl) return;
+      state.preview.title = templateId;
+      state.preview.source = tpl.innerHTML.trim();
+      // Clamp so the popover never spills off-screen.
+      const pad = 16, w = 460, h = 260;
+      state.preview.x = Math.min(event.clientX + pad, window.innerWidth  - w - pad);
+      state.preview.y = Math.min(event.clientY + pad, window.innerHeight - h - pad);
+      state.preview.visible = true;
+    },
+    unpeekCell() { state.preview.visible = false; },
+
+    // Density slider → CSS var + refresh window layout.
+    // vln-input on <input type=range> hands us a string; coerce once here.
+    onrowheight(h) {
+      const n = +h || 56;
+      document.documentElement.style.setProperty('--row-h', n + 'px');
+      if (state && viewport) Velin.batch(() => updateWindow(state.myTable, viewport));
+    },
+
+    // URL hash ↔ state sync via vln-router. First hashchange sets routerReady
+    // so we don't clobber the initial URL with defaults before it's parsed.
+    onroute(path) {
+      if (!state) return; // fires during initial bind, before state is assigned
+      const q = path.indexOf('?');
+      const params = new URLSearchParams(q === -1 ? '' : path.slice(q + 1));
+      const filter  = params.get('filter') || '';
+      const sort    = params.get('sort')   || '';
+      const density = parseInt(params.get('density') || '', 10);
+      const t = state.myTable;
+      Velin.batch(() => {
+        if (t.filterRaw !== filter) t.filterRaw = filter;
+        if (sort) {
+          const [col, dir] = sort.split(':');
+          if (t.sortCol !== col) t.sortCol = col;
+          const d = dir === 'desc' ? 'desc' : 'asc';
+          if (t.sortDir !== d) t.sortDir = d;
+        } else if (t.sortCol) {
+          t.sortCol = null;
+          t.sortDir = 'asc';
+        }
+        if (!isNaN(density) && density >= 30 && density <= 80 && t.rowHeight !== density) {
+          t.rowHeight = density;
+        }
+      });
+      state.routerReady = true;
+    },
+    onurlstate([filter, sortCol, sortDir, rowH]) {
+      if (!state || !state.routerReady) return;
+      const p = new URLSearchParams();
+      if (filter)  p.set('filter', filter);
+      if (sortCol) p.set('sort', sortCol + ':' + sortDir);
+      if (rowH !== 56) p.set('density', String(rowH));
+      const query   = p.toString();
+      const desired = '#/' + (query ? '?' + query : '');
+      const current = window.location.hash || '';
+      // '#/' and '' both render as the same location — skip the no-op write.
+      if (current !== desired && !(current === '' && desired === '#/')) {
+        window.location.hash = desired;
+      }
+    },
   });
 
   let rafPending = false;
@@ -460,19 +693,26 @@ async function injectTemplate(url) {
     }
   }, { passive: true });
 
-  // FPS counter
   let lastT  = performance.now();
   let frames = 0;
   (function tick() {
     frames++;
     const now = performance.now();
     if (now - lastT >= 1000) {
-      state.perf.fps = Math.round(frames / ((now - lastT) / 1000)) + ' fps';
+      const dt = (now - lastT) / 1000;
+      state.perf.fps = Math.round(frames / dt) + ' fps';
+      state.perf.ops = Math.round(writeCount / dt).toLocaleString() + '/s';
       frames = 0;
+      writeCount = 0;
       lastT  = now;
     }
     requestAnimationFrame(tick);
   })();
+
+  // Now that `state` is assigned, re-run onroute so the initial hash is
+  // parsed and routerReady flips true. (onroute fires during bind but has
+  // to bail there because `state` isn't set yet.)
+  state.onroute(state.route.path || '/');
 
   state.doGenerate();
 })();
