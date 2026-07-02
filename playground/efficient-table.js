@@ -328,6 +328,11 @@ async function injectTemplate(url) {
       spacerHeight:  0,
       columnDefs:    COL_DEFS,
       columns:       ['sel', 'name', 'stack', 'team', 'pulse', 'activity', 'trend', 'load', 'sprint', 'streak', 'actions'],
+      // Object mirror of `columns` used exclusively by the keyed vln-loop
+      // in the header + cell renderers. Kept in sync by `oncolschange` below.
+      // Rebuilt on every columns change but the *key* (colId) is stable, so
+      // the keyed diff reuses substates and just moves DOM.
+      activeCols:    [],
       visibleItems:  [],
       allColumnDefs: COLUMN_CATALOG,
       sortCol:       null,
@@ -457,6 +462,13 @@ async function injectTemplate(url) {
         const capped = Math.min(n, 5);
         return '🔥'.repeat(capped) + (n > 5 ? '+' : '');
       },
+    },
+
+    // Derive the keyed loop's input from the source-of-truth columns array.
+    // A single reactive write here fans out through the keyed loops.
+    oncolschange(cols) {
+      if (!state) return;
+      state.myTable.activeCols = cols.map(id => ({ colId: id }));
     },
 
     onfilterraw(raw) {
@@ -713,6 +725,9 @@ async function injectTemplate(url) {
   // parsed and routerReady flips true. (onroute fires during bind but has
   // to bail there because `state` isn't set yet.)
   state.onroute(state.route.path || '/');
+  // First fire of oncolschange also happens pre-state during bind, so
+  // populate activeCols manually here — the loops depend on it.
+  state.oncolschange(state.myTable.columns);
 
   state.doGenerate();
 })();

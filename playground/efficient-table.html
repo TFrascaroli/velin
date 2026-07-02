@@ -134,6 +134,8 @@
     <div hidden vln-watch:onrowheight="myTable.rowHeight"></div>
     <div hidden vln-watch:onroute="route.path"></div>
     <div hidden vln-watch:onurlstate="[myTable.filterRaw, myTable.sortCol, myTable.sortDir, myTable.rowHeight]"></div>
+    <!-- Keep the keyed-loop input in sync with the columns source of truth. -->
+    <div hidden vln-watch:oncolschange="myTable.columns"></div>
 
     <!-- ── Column picker ───────────────────────────────────────────────────── -->
     <div class="col-picker">
@@ -165,18 +167,18 @@
                handler mutates myTable.columns; the header loop AND the row
                cell loop both read from that array, so the whole table
                re-lays itself out from a single state write. -->
-          <div vln-loop:col="myTable.columns"
+          <div vln-loop:col="{collection: myTable.activeCols, key: 'colId'}"
                vln-attr:draggable="'true'"
-               vln-attr:style="'flex: ' + myTable.columnDefs[col].flex"
-               vln-attr:class="headerclass(col) + (drag.col === col ? ' vt-hcell-dragging' : '') + (drag.over === col && drag.col && drag.col !== col ? ' vt-hcell-dropzone' : '')"
-               vln-attr:title="sorttitle(col)"
-               vln-on:click="sortBy(col)"
-               vln-on:dragstart="startDragCol(col, event)"
-               vln-on:dragenter="drag.over = col"
+               vln-attr:style="'flex: ' + myTable.columnDefs[col.colId].flex"
+               vln-attr:class="headerclass(col.colId) + (drag.col === col.colId ? ' vt-hcell-dragging' : '') + (drag.over === col.colId && drag.col && drag.col !== col.colId ? ' vt-hcell-dropzone' : '')"
+               vln-attr:title="sorttitle(col.colId)"
+               vln-on:click="sortBy(col.colId)"
+               vln-on:dragstart="startDragCol(col.colId, event)"
+               vln-on:dragenter="drag.over = col.colId"
                vln-on:dragover="event.preventDefault()"
-               vln-on:drop="dropCol(col, event)"
+               vln-on:drop="dropCol(col.colId, event)"
                vln-on:dragend="drag.col = null, drag.over = null">
-            <span vln-text="myTable.columnDefs[col].label"></span><span class="sort-arrow" vln-text="sortarrow(col)"></span>
+            <span vln-text="myTable.columnDefs[col.colId].label"></span><span class="sort-arrow" vln-text="sortarrow(col.colId)"></span>
           </div>
         </div>
 
@@ -194,13 +196,13 @@
                vln-attr:style="'top:' + item.top + 'px'">
 
             <div class="vt-cell"
-                 vln-loop:col="myTable.columns"
-                 vln-attr:style="'flex: ' + myTable.columnDefs[col].flex"
-                 vln-fragment="myTable.columnDefs[col].template || 'cell-text'"
-                 vln-on:mouseenter="peekCell(myTable.columnDefs[col].template || 'cell-text', event)"
+                 vln-loop:col="{collection: myTable.activeCols, key: 'colId'}"
+                 vln-attr:style="'flex: ' + myTable.columnDefs[col.colId].flex"
+                 vln-fragment="myTable.columnDefs[col.colId].template || 'cell-text'"
+                 vln-on:mouseenter="peekCell(myTable.columnDefs[col.colId].template || 'cell-text', event)"
                  vln-on:mouseleave="unpeekCell()"
                  vln-var:row="item.row"
-                 vln-var:coldef="myTable.columnDefs[col]"
+                 vln-var:coldef="myTable.columnDefs[col.colId]"
                  vln-var:actions="myTable.actions"
                  vln-var:h="helpers">
             </div>
