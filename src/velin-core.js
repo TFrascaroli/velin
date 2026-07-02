@@ -89,7 +89,7 @@ const DefaultPluginPriorities = {
   STOPPER: 50,
 };
 
-/** @typedef {(args: {node: HTMLElement, pluginState?: any, subkey: string, expr: string, compiledExpression: ASTNode, attributeName: string, attributeValue: string, state: any, evaluate: Function, evaluateAst: Function, getSetter: Function, compose: Function, consume: Function, triggerEffects: Function}) => void} PluginDestroyerFn*/
+/** @typedef {(args: {node: Element, pluginState?: any, subkey: string, expr: string, compiledExpression: ASTNode, attributeName: string, attributeValue: string, state: any, evaluate: Function, evaluateAst: Function, getSetter: Function, compose: Function, consume: Function, triggerEffects: Function}) => void} PluginDestroyerFn*/
 
 /**
  * @template Ttracked
@@ -97,7 +97,7 @@ const DefaultPluginPriorities = {
  * @property {string} name
  * @property {number=} priority
  * @property {(args: {compiledExpression: ASTNode, expr: string, node: Node, subkey: string | null, attributeName: string, attributeValue: string, state: any, evaluate: Function, evaluateAst: Function, getSetter: Function, compose: Function, consume: Function, triggerEffects: Function}) => Ttracked} [track] Optional function to track dependencies from an expression
- * @property {(args: {compiledExpression: ASTNode, expr: string, node: HTMLElement, subkey: string | null, tracked: Ttracked, pluginState?: any, attributeName: string, attributeValue: string, state: any, evaluate: Function, evaluateAst: Function, getSetter: Function, compose: Function, consume: Function, triggerEffects: Function}) => PluginControl | void} render Function to apply reactive updates to a node
+ * @property {(args: {compiledExpression: ASTNode, expr: string, node: Element, subkey: string | null, tracked: Ttracked, pluginState?: any, attributeName: string, attributeValue: string, state: any, evaluate: Function, evaluateAst: Function, getSetter: Function, compose: Function, consume: Function, triggerEffects: Function}) => PluginControl | void} render Function to apply reactive updates to a node
  * @property {PluginDestroyerFn} [destroy]
  */
 
@@ -215,7 +215,7 @@ const DefaultPluginPriorities = {
  * @typedef {Object} VelinInternal
  * @property {WeakMap<Node, any>} pluginStates
  * @property {{root?: ReactiveState}} boundState
- * @property {(node: HTMLElement, attr: string, expr: string) => void} consumeAttribute
+ * @property {(node: Element, attr: string, expr: string) => void} consumeAttribute
  * @property {(prop: string, reactiveState: ReactiveState) => void} triggerEffects
  */
 
@@ -244,7 +244,7 @@ const DefaultPluginPriorities = {
 
 /** 
  * @template Ttracked
- * @typedef {(plugin: VelinPlugin<Ttracked>, reactiveState: ReactiveState, expr: string, node: HTMLElement, attributeName: string, attributeValue: string, subkey?: string | null) => PluginControl | void} ProcessPlugin
+ * @typedef {(plugin: VelinPlugin<Ttracked>, reactiveState: ReactiveState, expr: string, node: Element, attributeName: string, attributeValue: string, subkey?: string | null) => PluginControl | void} ProcessPlugin
  */
 
 /** 
@@ -257,7 +257,7 @@ const DefaultPluginPriorities = {
 /** @typedef {(reactiveState: ReactiveState, expr: string) => (value: any) => void} GetSetter */
 /** @typedef {(prop: string, reactiveState: ReactiveState) => void} TriggerEffects */
 /** @typedef {(node: Node, reactiveState: ReactiveState) => void} ProcessNode */
-/** @typedef {(node: HTMLElement, attr: string, expr: string) => void} ConsumeAttribute */
+/** @typedef {(node: Element, attr: string, expr: string) => void} ConsumeAttribute */
 
 /** @typedef {(reactiveState: ReactiveState, interpolations: Map<string, Interpolation>) => ReactiveState} ComposeState */
 /** @typedef {(parentState: ReactiveState, innerState: ReactiveState, node?: Node | null) => void} CleanupState */
@@ -1769,7 +1769,10 @@ function parsePluginFromAttribute(name, value) {
  * @param {ReactiveState} reactiveState
  */
 function processNode(node, reactiveState) {
-  if (!(node instanceof HTMLElement)) return;
+  // Element (not just HTMLElement) so we descend into <svg> subtrees —
+  // otherwise vln-attr / vln-class on a <polyline> etc. is unreachable
+  // because traversal bails at the SVG root.
+  if (!(node instanceof Element)) return;
   if (node instanceof HTMLTemplateElement) return;
   if (__DEV__) console.log("Processing node", node);
 

@@ -65,8 +65,8 @@ function setupVelinStd(vln) {
     name: "attr",
     track: vln.trackers.expressionTracker,
     render: ({ node, subkey, tracked }) => {
-      if (!(node instanceof HTMLElement)) {
-        console.warn("[VLN001] Cannot set attributes on non-HTML elements");
+      if (!(node instanceof Element)) {
+        console.warn("[VLN001] Cannot set attributes on non-Element nodes");
         return;
       }
       if (!subkey) {
@@ -85,6 +85,13 @@ function setupVelinStd(vln) {
           node.setAttribute(subkey, '');
         } else {
           node.removeAttribute(subkey);
+        }
+        // The attribute reflects the *default* state (e.g. defaultChecked)
+        // and diverges from the live property once the user interacts. For
+        // form controls that expose the boolean as a property, also assign
+        // it so reactive writes reset the actual checkbox/radio/select state.
+        if (subkey in node) {
+          try { /** @type {any} */(node)[subkey] = !!tracked; } catch (_) {}
         }
       } else {
         // For regular attributes, remove if null/undefined, otherwise set value
@@ -120,8 +127,8 @@ function setupVelinStd(vln) {
     priority: vln.plugins.priorities.OVERRIDABLE,
     track: vln.trackers.expressionTracker,
     render: ({ node, tracked, pluginState }) => {
-      if (!(node instanceof HTMLElement)) {
-        console.warn("[VLN003] Cannot set classes on non-HTML elements");
+      if (!(node instanceof Element)) {
+        console.warn("[VLN003] Cannot set classes on non-Element nodes");
         return;
       }
 
@@ -163,8 +170,10 @@ function setupVelinStd(vln) {
         }
       }
 
-      // Apply all classes at once
-      node.className = Array.from(current).join(" ");
+      // Apply all classes at once. On SVGElement, `.className` is an
+      // SVGAnimatedString (read-only string assignment silently fails),
+      // so route through setAttribute for cross-element safety.
+      node.setAttribute("class", Array.from(current).join(" "));
       return { pluginState: { managedClasses } };
     },
   });
@@ -249,7 +258,7 @@ function setupVelinStd(vln) {
       const isInput = node instanceof HTMLInputElement;
       const isTextArea = node instanceof HTMLTextAreaElement;
       const isSelect = node instanceof HTMLSelectElement;
-      const isContentEditable = node.isContentEditable;
+      const isContentEditable = node instanceof HTMLElement && node.isContentEditable;
 
       if (!isInput && !isTextArea && !isSelect && !isContentEditable) {
         console.warn(
