@@ -102,11 +102,14 @@ async function generateDataAsync(n, onProgress) {
 // ─── Virtual scroll window ────────────────────────────────────────────────────
 // Permanent slot pool — never replaced, only mutated in-place.
 // Each slot lives at index di % winSize so a 1-row scroll touches exactly 1 slot.
+// All inputs come from reactive state (viewRows, rowHeight, scrollTop,
+// viewportHeight). The scroll/resize listeners are one-line bridges that only
+// write those state properties; this function is invoked by a vln-watch, so
+// the reactive-chain panel is telling the truth.
 let ringSlots = null;
-let currentVisibleRows = []; // row proxies for dribble + pulse ticker
 
-function updateWindow(tableData, viewport) {
-  const { viewRows, rowHeight } = tableData;
+function updateWindow(tableData) {
+  const { viewRows, rowHeight, scrollTop, viewportHeight } = tableData;
   const total = viewRows.length;
 
   const totalPx = total * rowHeight;
@@ -116,22 +119,21 @@ function updateWindow(tableData, viewport) {
   if (!total) {
     ringSlots = null;
     tableData.visibleItems = [];
-    currentVisibleRows = [];
     return;
   }
 
-  const viewH      = viewport.clientHeight || 600;
+  const viewH      = viewportHeight || 600;
   const screenRows = Math.ceil(viewH / rowHeight);
   const winSize    = Math.min(Math.ceil(screenRows * 1.5), total);
   const useScale   = totalPx > MAX_SCROLL_PX;
 
   let startIdx;
   if (useScale) {
-    const ratio = spacerH > 0 ? viewport.scrollTop / spacerH : 0;
+    const ratio = spacerH > 0 ? scrollTop / spacerH : 0;
     startIdx = Math.round(ratio * (total - winSize));
   } else {
     const bufferAbove = Math.floor((winSize - screenRows) / 2);
-    startIdx = Math.max(0, Math.floor(viewport.scrollTop / rowHeight) - bufferAbove);
+    startIdx = Math.max(0, Math.floor(scrollTop / rowHeight) - bufferAbove);
   }
   startIdx = Math.min(Math.max(startIdx, 0), Math.max(0, total - winSize));
 
@@ -141,19 +143,16 @@ function updateWindow(tableData, viewport) {
 
   if (!ringSlots || ringSlots.length !== winSize) {
     ringSlots = [];
-    currentVisibleRows = [];
     for (let i = 0; i < winSize; i++) {
       const di  = startIdx + i;
       const row = viewRows[di];
       ringSlots.push({ row, top: getTop(di) });
-      currentVisibleRows.push(row);
     }
     tableData.visibleItems = ringSlots;
     return;
   }
 
   const reactiveSlots = tableData.visibleItems;
-  currentVisibleRows = [];
 
   for (let i = 0; i < winSize; i++) {
     const di     = startIdx + i;
@@ -162,7 +161,6 @@ function updateWindow(tableData, viewport) {
     const slot = reactiveSlots[di % winSize];
     if (slot.row !== newRow) slot.row = newRow;
     if (slot.top !== newTop) slot.top = newTop;
-    currentVisibleRows.push(newRow);
   }
 }
 
@@ -258,16 +256,16 @@ function mutateRow(row) {
 }
 
 function dribbleTick() {
-  const allRows     = state && state.myTable && state.myTable.rows;
-  const visibleRows = currentVisibleRows;
+  const allRows = state && state.myTable && state.myTable.rows;
+  const slots   = state && state.myTable && state.myTable.visibleItems;
   if (!allRows || !allRows.length) return;
 
   Velin.batch(() => {
     // Foreground: many visible rows every tick → obvious on-screen motion.
-    const visN = Math.ceil(visibleRows.length * DRIBBLE_VISIBLE_FRAC);
+    const visN = Math.ceil((slots ? slots.length : 0) * DRIBBLE_VISIBLE_FRAC);
     for (let i = 0; i < visN; i++) {
-      const row = visibleRows[Math.floor(Math.random() * visibleRows.length)];
-      if (row) mutateRow(row);
+      const slot = slots[Math.floor(Math.random() * slots.length)];
+      if (slot && slot.row) mutateRow(slot.row);
     }
     // Background: random full-set touches → scrolled areas stay fresh.
     for (let i = 0; i < DRIBBLE_BG_COUNT; i++) {
@@ -283,12 +281,12 @@ function dribbleTick() {
 // stress-test signal: ~60 rows × 60 fps = ~3600 reactive writes/sec.
 function pulseTick() {
   pulseRafId = requestAnimationFrame(pulseTick);
-  const rows = currentVisibleRows;
-  if (!rows.length) return;
+  const slots = state && state.myTable && state.myTable.visibleItems;
+  if (!slots || !slots.length) return;
   const t = performance.now() / 1000;
   Velin.batch(() => {
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i];
+    for (let i = 0; i < slots.length; i++) {
+      const row = slots[i] && slots[i].row;
       if (!row) continue;
       row.pulse = 0.75 + (Math.sin(t * 2 + row.id * 0.37) + 1) * 0.25; // 0.75..1.25
       writeCount++;
@@ -326,6 +324,11 @@ async function injectTemplate(url) {
       filterText:    '',
       rowHeight:     56,
       spacerHeight:  0,
+      // Reactive mirrors of the viewport's scroll position and height. The
+      // scroll listener + ResizeObserver below are one-line bridges that write
+      // these; refreshwindow watches them and derives visibleItems.
+      scrollTop:     0,
+      viewportHeight: 0,
       columnDefs:    COL_DEFS,
       columns:       ['sel', 'name', 'stack', 'team', 'pulse', 'activity', 'trend', 'load', 'sprint', 'streak', 'actions'],
       // Object mirror of `columns` used exclusively by the keyed vln-loop
@@ -490,11 +493,22 @@ async function injectTemplate(url) {
       c.hits++; c.ms = (performance.now() - t0).toFixed(2);
     },
     refreshwindow() {
-      if (!state || !viewport) return;
+      if (!state) return;
       const t0 = performance.now();
-      updateWindow(state.myTable, viewport);
+      updateWindow(state.myTable);
       const c = state.chain.refreshwindow;
       c.hits++; c.ms = (performance.now() - t0).toFixed(2);
+    },
+    // Timer lifecycle reacts to state.dribbling — callers just flip the flag,
+    // they don't need to know a timer exists.
+    ondribbling(on) {
+      if (on) {
+        if (!dribbleTimer) dribbleTimer = setInterval(dribbleTick, 80);
+        if (!pulseRafId)   pulseTick(); // schedules its own rAF
+      } else {
+        if (dribbleTimer) { clearInterval(dribbleTimer); dribbleTimer = null; }
+        if (pulseRafId)   { cancelAnimationFrame(pulseRafId); pulseRafId = null; }
+      }
     },
 
     get sortarrow() {
@@ -563,19 +577,6 @@ async function injectTemplate(url) {
       });
     },
 
-    toggleDribble() {
-      state.dribbling = !state.dribbling;
-      if (state.dribbling) {
-        dribbleTimer = setInterval(dribbleTick, 80);
-        pulseTick(); // schedules its own rAF
-      } else {
-        clearInterval(dribbleTimer);
-        dribbleTimer = null;
-        if (pulseRafId) cancelAnimationFrame(pulseRafId);
-        pulseRafId = null;
-      }
-    },
-
     generate(n) {
       state.rowCountInput = n;
       return state.doGenerate();
@@ -585,7 +586,7 @@ async function injectTemplate(url) {
       const n = +state.rowCountInput;
       if (!n || n < 1) return;
 
-      if (state.dribbling) state.toggleDribble();
+      if (state.dribbling) state.dribbling = false;
 
       state.modal.label    = n.toLocaleString() + ' rows';
       state.modal.progress = 0;
@@ -601,7 +602,7 @@ async function injectTemplate(url) {
 
       // Auto-start ambient motion so the page is visibly alive on load —
       // pulse dots + sparkline drift + heat/trend/sprint mutation.
-      if (!state.dribbling) state.toggleDribble();
+      state.dribbling = true;
     },
 
     closeInspect() { state.inspect.open = false; },
@@ -643,12 +644,11 @@ async function injectTemplate(url) {
     },
     unpeekCell() { state.preview.visible = false; },
 
-    // Density slider → CSS var + refresh window layout.
-    // vln-input on <input type=range> hands us a string; coerce once here.
+    // Density slider → CSS var. The layout recompute happens via refreshwindow,
+    // which watches rowHeight among other things.
     onrowheight(h) {
       const n = +h || 56;
       document.documentElement.style.setProperty('--row-h', n + 'px');
-      if (state && viewport) Velin.batch(() => updateWindow(state.myTable, viewport));
     },
 
     // URL hash ↔ state sync via vln-router. First hashchange sets routerReady
@@ -694,16 +694,26 @@ async function injectTemplate(url) {
     },
   });
 
-  let rafPending = false;
+  // Scroll → state bridge. The listener does one thing: push scrollTop into
+  // reactive state. refreshwindow reacts to that write and updates the ring
+  // slots. rAF-throttling coalesces bursts of scroll events into one write
+  // per frame, so downstream watchers fire at most 60 Hz.
+  let scrollRafPending = false;
   viewport.addEventListener('scroll', () => {
-    if (!rafPending) {
-      rafPending = true;
-      requestAnimationFrame(() => {
-        rafPending = false;
-        Velin.batch(() => updateWindow(state.myTable, viewport));
-      });
-    }
+    if (scrollRafPending) return;
+    scrollRafPending = true;
+    requestAnimationFrame(() => {
+      scrollRafPending = false;
+      state.myTable.scrollTop = viewport.scrollTop;
+    });
   }, { passive: true });
+
+  // Viewport resize → state bridge. Same shape as the scroll bridge.
+  const ro = new ResizeObserver(() => {
+    state.myTable.viewportHeight = viewport.clientHeight;
+  });
+  ro.observe(viewport);
+  state.myTable.viewportHeight = viewport.clientHeight || 600;
 
   let lastT  = performance.now();
   let frames = 0;

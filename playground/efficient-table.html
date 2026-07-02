@@ -61,7 +61,7 @@
 
       <button class="btn btn-drizzle"
               vln-attr:class="dribbling ? 'btn btn-drizzle btn-drizzle-stop' : 'btn btn-drizzle'"
-              vln-on:click="toggleDribble()"
+              vln-on:click="dribbling = !dribbling"
               vln-text="dribbling ? 'Stop ◼' : 'Drizzle ▶'">
       </button>
 
@@ -115,12 +115,14 @@
         <span class="chain-stat"><span vln-text="chain.rebuildview.hits"></span> · <span vln-text="chain.rebuildview.ms"></span>ms</span>
       </div>
       <span class="chain-arrow">→</span>
-      <span class="chain-node chain-source">viewRows</span>
+      <span class="chain-node chain-source">viewRows · scrollTop · rowHeight · viewportHeight</span>
       <span class="chain-arrow">→</span>
       <div class="chain-node" vln-attr:class="'chain-node ' + (chain.refreshwindow.hits ? 'lit' : '')">
         <span class="chain-name">refreshwindow</span>
         <span class="chain-stat"><span vln-text="chain.refreshwindow.hits"></span> · <span vln-text="chain.refreshwindow.ms"></span>ms</span>
       </div>
+      <span class="chain-arrow">→</span>
+      <span class="chain-node chain-source">visibleItems</span>
       <span class="chain-arrow">→</span>
       <span class="chain-node chain-source">DOM</span>
     </div>
@@ -128,7 +130,9 @@
     <!-- Hidden watchers that drive the chain telemetry above. -->
     <div hidden vln-watch:onfilterraw="myTable.filterRaw"></div>
     <div hidden vln-watch:rebuildview="[myTable.rows, myTable.filterText, myTable.sortCol, myTable.sortDir]"></div>
-    <div hidden vln-watch:refreshwindow="myTable.viewRows"></div>
+    <div hidden vln-watch:refreshwindow="[myTable.viewRows, myTable.rowHeight, myTable.scrollTop, myTable.viewportHeight]"></div>
+    <!-- Timer lifecycle reacts to state.dribbling; the button just flips it. -->
+    <div hidden vln-watch:ondribbling="dribbling"></div>
 
     <!-- Density var + URL hash sync watchers. -->
     <div hidden vln-watch:onrowheight="myTable.rowHeight"></div>
