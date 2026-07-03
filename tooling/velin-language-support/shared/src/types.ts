@@ -1,9 +1,12 @@
 // Shared types and utilities for Velin language support
 
 export interface VelinSchemaReference {
-  type: 'typescript' | 'jsdoc' | 'json' | 'inline' | 'global-type';
-  source?: string; // File path or inline definition
+  type: 'typescript' | 'jsdoc' | 'json' | 'inline' | 'global-type' | 'inline-script';
+  source?: string; // File path, inline definition, or (for inline-script) the script body
   typeName?: string; // For TypeScript/JSDoc references
+  // For inline-script: offset in the enclosing HTML document where `source` begins.
+  // Used to translate declaration positions back to HTML coordinates for F12.
+  sourceOffset?: number;
 }
 
 export interface VelinDirective {

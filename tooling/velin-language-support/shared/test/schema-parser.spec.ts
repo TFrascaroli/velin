@@ -56,6 +56,11 @@ describe('SchemaParser.parseSchemaComment', () => {
     });
   });
 
+  it('parses @velin-schema: script (inline-script mode)', () => {
+    const ref = p.parseSchemaComment('<!-- @velin-schema: script -->');
+    expect(ref).toEqual({ type: 'inline-script' });
+  });
+
   it('returns null for unrelated comments', () => {
     expect(p.parseSchemaComment('<!-- just a comment -->')).toBeNull();
     expect(p.parseSchemaComment('<!-- @other-schema: foo.ts -->')).toBeNull();
@@ -78,6 +83,39 @@ describe('SchemaParser.findSchemaContext', () => {
     ].join('\n');
     const ctx = p.findSchemaContext(doc, 2);
     expect(ctx.schemaRef?.typeName).toBe('TypeA');
+  });
+
+  it('ignores <script> mentions inside HTML comments (inline-script)', () => {
+    const doc = [
+      '<!--',
+      '  This talks about the <script> block down there.',
+      '-->',
+      '<!-- @velin-schema: script -->',
+      '<div vln-text="user.name"></div>',
+      '<script>',
+      '  const state = { user: { name: "x" } };',
+      '  Velin.bind(document.body, state);',
+      '</script>',
+    ].join('\n');
+    const ctx = p.findSchemaContext(doc, 4);
+    expect(ctx.schemaRef?.type).toBe('inline-script');
+    expect(ctx.schemaRef?.source).toContain('Velin.bind');
+    expect(ctx.schemaRef?.source).not.toContain('talks about');
+  });
+
+  it('resolves inline-script mode by extracting the last <script> body', () => {
+    const doc = [
+      '<!-- @velin-schema: script -->',
+      '<div vln-text="user.name"></div>',
+      '<script>',
+      '  const state = { user: { name: "x" } };',
+      '  Velin.bind(document.body, state);',
+      '</script>',
+    ].join('\n');
+    const ctx = p.findSchemaContext(doc, 1);
+    expect(ctx.schemaRef?.type).toBe('inline-script');
+    expect(ctx.schemaRef?.source).toContain('Velin.bind');
+    expect(ctx.schemaRef?.sourceOffset).toBeGreaterThan(0);
   });
 
   it('prefers the more recent schema comment when multiple exist', () => {

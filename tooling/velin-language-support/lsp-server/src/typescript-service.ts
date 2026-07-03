@@ -26,6 +26,9 @@ export class TypeScriptService {
     if (schemaRef.type === 'global-type') {
       return this.getGlobalTypeCompletions(schemaRef, expression, cursorPos, documentUri, currentLine, documentText);
     }
+    if (schemaRef.type === 'inline-script') {
+      return this.getInlineScriptCompletions(schemaRef, expression, cursorPos, documentUri, currentLine, documentText);
+    }
 
     try {
       const uri = URI.parse(documentUri);
@@ -133,97 +136,165 @@ export class TypeScriptService {
           ? this.analyzeScopeAtLine(documentUri, currentLine, documentText)
           : {};
 
-      // Extract the property path ending at the cursor. Example:
-      //   expression = "user.profile.avatar + 1", cursorPos = 15
-      //   → path = ['user', 'profile'], target = 'avatar'
-      const chain = extractPropertyChainAt(expression, cursorPos);
+      // AST walk of the expression at the cursor. Understands `.prop`, `[idx]`,
+      // and `foo()` hops — where extractPropertyChainAt gives up.
+      const chain = extractHopsAt(expression, cursorPos);
       if (!chain) return null;
 
-      const workspaceRoot = this.getWorkspaceRoot(documentUri);
-      let program: ts.Program;
-      let typeSymbol: ts.Symbol | undefined;
-
-      if (schemaRef.type === 'global-type') {
-        program = this.getOrCreateProjectProgram(workspaceRoot);
-        for (const sf of program.getSourceFiles()) {
-          if (sf.isDeclarationFile) continue;
-          typeSymbol = this.findTypeSymbol(program, sf, schemaRef.typeName || '');
-          if (typeSymbol) break;
-        }
-      } else {
-        if (!schemaRef.source) return null;
-        const uri = URI.parse(documentUri);
-        const schemaFilePath = path.resolve(
-          path.dirname(uri.fsPath),
-          schemaRef.source,
-        );
-        if (!fs.existsSync(schemaFilePath)) return null;
-        program = this.getOrCreateProgram(workspaceRoot, schemaFilePath);
-        const sf = program.getSourceFile(schemaFilePath);
-        if (!sf) return null;
-        typeSymbol = this.findTypeSymbol(program, sf, schemaRef.typeName || 'default');
-      }
-      if (!typeSymbol) return null;
-
+      const resolved = this.resolveRootType(schemaRef, documentUri);
+      if (!resolved) return null;
+      const { program, rootType } = resolved;
       const checker = program.getTypeChecker();
-      let currentType: ts.Type =
-        typeSymbol.flags & ts.SymbolFlags.Interface
-          ? checker.getDeclaredTypeOfSymbol(typeSymbol)
-          : typeSymbol.valueDeclaration
-          ? checker.getTypeOfSymbolAtLocation(typeSymbol, typeSymbol.valueDeclaration)
-          : checker.getDeclaredTypeOfSymbol(typeSymbol);
 
-      // Handle loop variables: replace the loop var at the head of the path
-      // with the element type of its source array.
-      const path0 = chain.path[0] ?? chain.target;
-      if (scopeVars[path0]?.type === 'array item') {
-        const match = scopeVars[path0].documentation?.match(
+      // Handle loop variable at the head of the chain.
+      let currentType = rootType;
+      let hops = chain.hops;
+      const rootName = chain.root;
+      if (scopeVars[rootName]?.type === 'array item') {
+        const match = scopeVars[rootName].documentation?.match(
           /from vln-loop:\w+="([^"]+)"/,
         );
         if (match) {
-          const arrayProp = currentType.getProperty(match[1]);
-          if (arrayProp?.valueDeclaration) {
-            const arrayType = checker.getTypeOfSymbolAtLocation(
-              arrayProp,
-              arrayProp.valueDeclaration,
-            );
-            const elemType =
-              checker.getIndexTypeOfType(arrayType, ts.IndexKind.Number) ??
-              (arrayType as any).typeArguments?.[0];
-            if (elemType) currentType = elemType;
+          const elem = elementTypeOfProperty(checker, currentType, match[1]);
+          if (elem) currentType = elem;
+        }
+      } else {
+        // Descend into the property named by the root identifier.
+        const rootProp = currentType.getProperty(rootName);
+        if (!rootProp?.valueDeclaration) {
+          // If the target *is* the root (no hops), resolve to the root prop decl.
+          if (hops.length === 0) {
+            const decl = rootProp?.declarations?.[0];
+            if (decl) return locationOfDecl(decl, schemaRef, { uri: documentUri, text: documentText });
           }
-          // Consume the loop variable segment.
-          chain.path.shift();
+          return null;
+        }
+        if (hops.length === 0) {
+          // Cursor is on the root identifier — jump to its declaration.
+          const decl = rootProp.declarations?.[0] ?? rootProp.valueDeclaration;
+          return locationOfDecl(decl, schemaRef, { uri: documentUri, text: documentText });
+        }
+        currentType = checker.getTypeOfSymbolAtLocation(
+          rootProp,
+          rootProp.valueDeclaration,
+        );
+      }
+
+      // Walk hops. The last hop of kind 'prop' is the F12 target — capture its
+      // symbol before advancing. For 'call'/'index' the last hop just moves
+      // us; the F12 target must have been a 'prop' hop.
+      let targetDecl: ts.Declaration | undefined;
+      for (let i = 0; i < hops.length; i++) {
+        const hop = hops[i];
+        const isLast = i === hops.length - 1;
+        if (hop.kind === 'prop') {
+          const prop = currentType.getProperty(hop.name);
+          if (!prop) return null;
+          if (isLast) {
+            targetDecl = prop.declarations?.[0] ?? prop.valueDeclaration;
+            break;
+          }
+          if (!prop.valueDeclaration) return null;
+          currentType = checker.getTypeOfSymbolAtLocation(prop, prop.valueDeclaration);
+        } else if (hop.kind === 'call') {
+          const sig = checker.getSignaturesOfType(currentType, ts.SignatureKind.Call)[0];
+          if (!sig) return null;
+          // Unwrap `T | null | undefined` so subsequent `.prop` hops see T.
+          currentType = checker.getNonNullableType(sig.getReturnType());
+        } else if (hop.kind === 'index') {
+          const elem =
+            checker.getIndexTypeOfType(currentType, ts.IndexKind.Number) ??
+            checker.getIndexTypeOfType(currentType, ts.IndexKind.String) ??
+            (currentType as any).typeArguments?.[0];
+          if (!elem) return null;
+          currentType = checker.getNonNullableType(elem);
         }
       }
 
-      // Walk the property path.
-      for (const seg of chain.path) {
-        const prop = currentType.getProperty(seg);
-        if (!prop?.valueDeclaration) return null;
-        currentType = checker.getTypeOfSymbolAtLocation(prop, prop.valueDeclaration);
-      }
-
-      // Resolve the target symbol.
-      const target = currentType.getProperty(chain.target);
-      const decl = target?.declarations?.[0] ?? target?.valueDeclaration;
-      if (!decl) return null;
-
-      // Build a Location pointing at the declaration.
-      const sf = decl.getSourceFile();
-      const start = sf.getLineAndCharacterOfPosition(decl.getStart());
-      const end = sf.getLineAndCharacterOfPosition(decl.getEnd());
-      return {
-        uri: URI.file(sf.fileName).toString(),
-        range: {
-          start: { line: start.line, character: start.character },
-          end: { line: end.line, character: end.character },
-        },
-      };
+      if (!targetDecl) return null;
+      return locationOfDecl(targetDecl, schemaRef);
     } catch (err: any) {
       console.log(`[TypeScriptService] getDefinition error: ${err.message}`);
       return null;
     }
+  }
+
+  resolveRootType(
+    schemaRef: VelinSchemaReference,
+    documentUri: string,
+  ): { program: ts.Program; rootType: ts.Type } | null {
+    const workspaceRoot = this.getWorkspaceRoot(documentUri);
+
+    if (schemaRef.type === 'inline-script') {
+      if (!schemaRef.source) return null;
+      const compiled = this.compileInlineScript(documentUri, schemaRef.source);
+      if (!compiled?.rootType) return null;
+      return { program: compiled.program, rootType: compiled.rootType };
+    }
+
+    let program: ts.Program;
+    let typeSymbol: ts.Symbol | undefined;
+
+    if (schemaRef.type === 'global-type') {
+      program = this.getOrCreateProjectProgram(workspaceRoot);
+      for (const sf of program.getSourceFiles()) {
+        if (sf.isDeclarationFile) continue;
+        typeSymbol = this.findTypeSymbol(program, sf, schemaRef.typeName || '');
+        if (typeSymbol) break;
+      }
+    } else {
+      if (!schemaRef.source) return null;
+      const uri = URI.parse(documentUri);
+      const schemaFilePath = path.resolve(
+        path.dirname(uri.fsPath),
+        schemaRef.source,
+      );
+      if (!fs.existsSync(schemaFilePath)) return null;
+      program = this.getOrCreateProgram(workspaceRoot, schemaFilePath);
+      const sf = program.getSourceFile(schemaFilePath);
+      if (!sf) return null;
+      typeSymbol = this.findTypeSymbol(program, sf, schemaRef.typeName || 'default');
+    }
+    if (!typeSymbol) return null;
+
+    const checker = program.getTypeChecker();
+    const rootType: ts.Type =
+      typeSymbol.flags & ts.SymbolFlags.Interface
+        ? checker.getDeclaredTypeOfSymbol(typeSymbol)
+        : typeSymbol.valueDeclaration
+        ? checker.getTypeOfSymbolAtLocation(typeSymbol, typeSymbol.valueDeclaration)
+        : checker.getDeclaredTypeOfSymbol(typeSymbol);
+    return { program, rootType };
+  }
+
+  /**
+   * Completions when the schema is inferred from an inline `<script>` block
+   * in the same HTML document (`@velin-schema: script`).
+   */
+  async getInlineScriptCompletions(
+    schemaRef: VelinSchemaReference,
+    expression: string,
+    cursorPos: number,
+    documentUri: string,
+    currentLine?: number,
+    documentText?: string,
+  ): Promise<CompletionItem[]> {
+    if (!schemaRef.source) return [];
+    const compiled = this.compileInlineScript(documentUri, schemaRef.source);
+    if (!compiled?.rootType) return [];
+
+    const expressionContext = this.parseExpression(expression, cursorPos);
+    const scopeVars =
+      currentLine !== undefined
+        ? this.analyzeScopeAtLine(documentUri, currentLine, documentText)
+        : {};
+
+    return this.completionsFromRootType(
+      compiled.program,
+      compiled.rootType,
+      expressionContext,
+      scopeVars,
+    );
   }
 
   async getJSDocCompletions(
@@ -420,12 +491,17 @@ export class TypeScriptService {
       actualType = typeChecker.getDeclaredTypeOfSymbol(typeSymbol);
     }
     
-    console.log(`[TypeScriptService] Starting with type: ${typeChecker.typeToString(actualType)}`);
-    console.log(`[TypeScriptService] Type flags: ${actualType.flags}`);
-    console.log(`[TypeScriptService] Type symbol: ${actualType.symbol?.getName()}`);
-    
-    console.log(`[TypeScriptService] Navigation path: ${JSON.stringify(context.path)}`);
-    
+    return this.completionsFromRootType(program, actualType, context, scopeVars);
+  }
+
+  private completionsFromRootType(
+    program: ts.Program,
+    actualType: ts.Type,
+    context: ExpressionContext,
+    scopeVars: Record<string, any> = {},
+  ): CompletionItem[] {
+    const typeChecker = program.getTypeChecker();
+
     // Navigate through the property path
     let currentType = actualType;
     for (const part of context.path) {
@@ -549,6 +625,72 @@ export class TypeScriptService {
     return ts.displayPartsToString(displayParts);
   }
 
+  /**
+   * Compile the body of an inline `<script>` block and locate the state
+   * expression to use as the root type. Prefers the second argument of a
+   * `Velin.bind(el, state)` call; falls back to the first top-level object
+   * literal declaration.
+   */
+  private compileInlineScript(
+    documentUri: string,
+    scriptBody: string,
+  ): { program: ts.Program; rootType: ts.Type } | null {
+    const cacheKey = `inline:${documentUri}:${hashString(scriptBody)}`;
+    if (this.programs.has(cacheKey)) {
+      const program = this.programs.get(cacheKey)!;
+      const sf = program.getSourceFile(INLINE_SCRIPT_FILENAME);
+      if (sf) {
+        const rootType = findInlineRootType(program, sf);
+        if (rootType) return { program, rootType };
+      }
+    }
+
+    const options: ts.CompilerOptions = {
+      allowJs: true,
+      checkJs: false,
+      target: ts.ScriptTarget.ES2020,
+      module: ts.ModuleKind.ESNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeJs,
+      noLib: false,
+      skipLibCheck: true,
+      strict: false,
+    };
+
+    // Prepend a minimal declaration for the `Velin` global so `Velin.bind(...)`
+    // parses cleanly and we can locate the call.
+    const prelude = `declare const Velin: { bind(el: unknown, state: any): unknown };\n`;
+    const fullSource = prelude + scriptBody;
+    const sourceFile = ts.createSourceFile(
+      INLINE_SCRIPT_FILENAME,
+      fullSource,
+      ts.ScriptTarget.ES2020,
+      true,
+      ts.ScriptKind.TS,
+    );
+
+    const host = ts.createCompilerHost(options, true);
+    const originalGetSourceFile = host.getSourceFile.bind(host);
+    host.getSourceFile = (fileName, langVersion, onErr, shouldCreate) => {
+      if (fileName === INLINE_SCRIPT_FILENAME) return sourceFile;
+      return originalGetSourceFile(fileName, langVersion, onErr, shouldCreate);
+    };
+    host.fileExists = (fileName) =>
+      fileName === INLINE_SCRIPT_FILENAME || ts.sys.fileExists(fileName);
+    host.readFile = (fileName) =>
+      fileName === INLINE_SCRIPT_FILENAME ? fullSource : ts.sys.readFile(fileName);
+
+    const program = ts.createProgram(
+      [INLINE_SCRIPT_FILENAME],
+      options,
+      host,
+    );
+    this.programs.set(cacheKey, program);
+
+    const rootType = findInlineRootType(program, sourceFile);
+    if (!rootType) return null;
+    return { program, rootType };
+  }
+
   private analyzeScopeAtLine(
     documentUri: string,
     lineNumber: number,
@@ -567,15 +709,11 @@ export class TypeScriptService {
       const lines = content.split('\n');
       const scopeVars: Record<string, any> = {};
 
-      // Analyze lines from current position upwards to find scope-defining directives
-      console.log(`[TypeScriptService] Analyzing scope from line ${lineNumber} (0-based)`);
-      
       // Search upwards from current line to find enclosing scopes
       let foundScope = false;
       for (let i = lineNumber; i >= 0 && i < lines.length; i--) {
         const line = lines[i];
-        console.log(`[TypeScriptService] Checking line ${i}: "${line.trim()}"`);
-        
+
         // Look for vln-loop:varName patterns
         const loopMatch = line.match(/vln-loop:(\w+)=["']([^"']+)["']/);
         if (loopMatch) {
@@ -595,32 +733,28 @@ export class TypeScriptService {
             documentation: 'Current iteration index in vln-loop'
           };
           
-          console.log(`[TypeScriptService] Found loop scope: ${varName} from ${arrayExpr}`);
           foundScope = true;
         }
-        
+
         // Look for vln-var:varName patterns (template variables) - only on current or previous lines
         if (i <= lineNumber) {
           const varMatches = line.matchAll(/vln-var:(\w+)=["']([^"']+)["']/g);
           for (const match of varMatches) {
             const varName = match[1];
             const varExpr = match[2];
-            
+
             scopeVars[varName] = {
               type: 'template variable',
               detail: `${varName} (from ${varExpr})`,
               documentation: `Template variable from vln-var:${varName}="${varExpr}"`
             };
-            
-            console.log(`[TypeScriptService] Found template var: ${varName} from ${varExpr}`);
             foundScope = true;
           }
         }
-        
-        // Stop searching if we hit a closing tag that ends current scope, 
+
+        // Stop searching if we hit a closing tag that ends current scope,
         // but continue if we haven't found any scope yet (to catch parent scopes)
         if (foundScope && line.includes('</') && !line.includes('<!--')) {
-          console.log(`[TypeScriptService] Found closing tag, stopping scope search`);
           break;
         }
       }
@@ -637,6 +771,212 @@ interface ExpressionContext {
   currentPart: string;
   isMethodCall: boolean;
   isPropertyAccess: boolean;
+}
+
+export type Hop =
+  | { kind: 'prop'; name: string }
+  | { kind: 'call' }
+  | { kind: 'index' };
+
+const INLINE_SCRIPT_FILENAME = '__velin_inline__.ts';
+
+function hashString(s: string): string {
+  // Cheap 32-bit FNV-1a — good enough for a cache key.
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+  }
+  return h.toString(16);
+}
+
+function elementTypeOfProperty(
+  checker: ts.TypeChecker,
+  parentType: ts.Type,
+  propName: string,
+): ts.Type | undefined {
+  const arrayProp = parentType.getProperty(propName);
+  if (!arrayProp?.valueDeclaration) return undefined;
+  const arrayType = checker.getTypeOfSymbolAtLocation(
+    arrayProp,
+    arrayProp.valueDeclaration,
+  );
+  return (
+    checker.getIndexTypeOfType(arrayType, ts.IndexKind.Number) ??
+    (arrayType as any).typeArguments?.[0]
+  );
+}
+
+function locationOfDecl(
+  decl: ts.Declaration,
+  schemaRef: VelinSchemaReference,
+  htmlContext?: { uri: string; text?: string },
+): DefinitionLocation | null {
+  const sf = decl.getSourceFile();
+
+  // For inline-script schemas, `decl` lives in a synthetic file whose contents
+  // are prelude + scriptBody. Translate positions back to the HTML document.
+  if (
+    schemaRef.type === 'inline-script' &&
+    schemaRef.sourceOffset !== undefined &&
+    sf.fileName === INLINE_SCRIPT_FILENAME &&
+    htmlContext
+  ) {
+    const preludeLen = sf.text.length - (schemaRef.source?.length ?? 0);
+    const declStart = decl.getStart();
+    const declEnd = decl.getEnd();
+    if (declStart < preludeLen) return null; // decl is inside the injected prelude
+    const htmlStart = schemaRef.sourceOffset + (declStart - preludeLen);
+    const htmlEnd = schemaRef.sourceOffset + (declEnd - preludeLen);
+
+    const text = htmlContext.text ?? readFileOrEmpty(htmlContext.uri);
+    if (!text) return null;
+    return {
+      uri: htmlContext.uri,
+      range: {
+        start: offsetToLineCol(text, htmlStart),
+        end: offsetToLineCol(text, htmlEnd),
+      },
+    };
+  }
+
+  const start = sf.getLineAndCharacterOfPosition(decl.getStart());
+  const end = sf.getLineAndCharacterOfPosition(decl.getEnd());
+  return {
+    uri: URI.file(sf.fileName).toString(),
+    range: {
+      start: { line: start.line, character: start.character },
+      end: { line: end.line, character: end.character },
+    },
+  };
+}
+
+function readFileOrEmpty(uri: string): string {
+  try {
+    return fs.readFileSync(URI.parse(uri).fsPath, 'utf8');
+  } catch {
+    return '';
+  }
+}
+
+function offsetToLineCol(text: string, offset: number): { line: number; character: number } {
+  let line = 0;
+  let lineStart = 0;
+  for (let i = 0; i < offset && i < text.length; i++) {
+    if (text.charCodeAt(i) === 10 /* \n */) {
+      line++;
+      lineStart = i + 1;
+    }
+  }
+  return { line, character: offset - lineStart };
+}
+
+function findInlineRootType(program: ts.Program, sf: ts.SourceFile): ts.Type | undefined {
+  const checker = program.getTypeChecker();
+  // Prefer Velin.bind(el, STATE) — the state argument is authoritative.
+  let bindStateNode: ts.Expression | undefined;
+  const visit = (node: ts.Node) => {
+    if (
+      !bindStateNode &&
+      ts.isCallExpression(node) &&
+      ts.isPropertyAccessExpression(node.expression) &&
+      ts.isIdentifier(node.expression.expression) &&
+      node.expression.expression.text === 'Velin' &&
+      node.expression.name.text === 'bind' &&
+      node.arguments.length >= 2
+    ) {
+      bindStateNode = node.arguments[1];
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+  if (bindStateNode) {
+    return checker.getTypeAtLocation(bindStateNode);
+  }
+
+  // Fallback: first top-level `const foo = { ... }` object literal.
+  for (const stmt of sf.statements) {
+    if (!ts.isVariableStatement(stmt)) continue;
+    for (const d of stmt.declarationList.declarations) {
+      if (d.initializer && ts.isObjectLiteralExpression(d.initializer)) {
+        return checker.getTypeAtLocation(d.initializer);
+      }
+    }
+  }
+  return undefined;
+}
+
+/**
+ * AST-based expression walk. Given an expression like `getCurrentUser().name`
+ * and a cursor position, returns:
+ *   { root: 'getCurrentUser', hops: [{kind:'call'}, {kind:'prop', name:'name'}] }
+ *
+ * The last hop is the F12 target. Supports property access, call expressions,
+ * and element access. Returns null if the cursor is not on an identifier.
+ */
+export function extractHopsAt(
+  expression: string,
+  cursorPos: number,
+): { root: string; hops: Hop[] } | null {
+  const sf = ts.createSourceFile(
+    '_expr.ts',
+    expression,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+
+  // Find the identifier node under the cursor.
+  let hit: ts.Identifier | undefined;
+  const findAt = (node: ts.Node) => {
+    if (hit) return;
+    const start = node.getStart(sf);
+    const end = node.getEnd();
+    if (cursorPos < start || cursorPos > end) return;
+    if (ts.isIdentifier(node)) hit = node;
+    ts.forEachChild(node, findAt);
+  };
+  findAt(sf);
+  if (!hit) return null;
+
+  // If the identifier is the `.name` of a PropertyAccessExpression, the
+  // chain-end node is the PropertyAccessExpression itself. Otherwise it's
+  // the identifier alone (the root of some chain — possibly its own chain).
+  let chainEnd: ts.Expression = hit;
+  if (
+    hit.parent &&
+    ts.isPropertyAccessExpression(hit.parent) &&
+    hit.parent.name === hit
+  ) {
+    chainEnd = hit.parent;
+  }
+
+  return analyzeChain(chainEnd);
+}
+
+function analyzeChain(node: ts.Expression): { root: string; hops: Hop[] } | null {
+  if (ts.isIdentifier(node)) {
+    return { root: node.text, hops: [] };
+  }
+  if (ts.isPropertyAccessExpression(node)) {
+    const inner = analyzeChain(node.expression);
+    if (!inner) return null;
+    inner.hops.push({ kind: 'prop', name: node.name.text });
+    return inner;
+  }
+  if (ts.isCallExpression(node)) {
+    const inner = analyzeChain(node.expression);
+    if (!inner) return null;
+    inner.hops.push({ kind: 'call' });
+    return inner;
+  }
+  if (ts.isElementAccessExpression(node)) {
+    const inner = analyzeChain(node.expression);
+    if (!inner) return null;
+    inner.hops.push({ kind: 'index' });
+    return inner;
+  }
+  return null;
 }
 
 /**

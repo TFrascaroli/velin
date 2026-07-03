@@ -3,13 +3,17 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { URI } from 'vscode-uri';
-import { TypeScriptService, extractPropertyChainAt } from '../src/typescript-service';
+import {
+  TypeScriptService,
+  extractPropertyChainAt,
+  extractHopsAt,
+} from '../src/typescript-service';
 
-const EXAMPLES = path.resolve(__dirname, '../../examples');
+const FIXTURES = path.resolve(__dirname, 'fixtures');
 
 // The service resolves the schema source path relative to the document's
-// directory. Point the "document" at examples/ so ./UserState.ts resolves.
-const documentUri = URI.file(path.join(EXAMPLES, 'test.html')).toString();
+// directory. Point the "document" at fixtures/ so ./UserState.ts resolves.
+const documentUri = URI.file(path.join(FIXTURES, 'test.html')).toString();
 
 const tsSchema = {
   type: 'typescript' as const,
@@ -157,6 +161,115 @@ describe('TypeScriptService.getDefinition', () => {
   });
 });
 
+describe('extractHopsAt (AST chain analysis)', () => {
+  it('returns a bare identifier chain', () => {
+    expect(extractHopsAt('user', 2)).toEqual({ root: 'user', hops: [] });
+  });
+
+  it('splits a dotted chain into root + prop hops', () => {
+    // Cursor mid-`avatar` in "user.profile.avatar"
+    const expr = 'user.profile.avatar';
+    expect(extractHopsAt(expr, expr.length - 1)).toEqual({
+      root: 'user',
+      hops: [
+        { kind: 'prop', name: 'profile' },
+        { kind: 'prop', name: 'avatar' },
+      ],
+    });
+  });
+
+  it('handles call expression followed by property access', () => {
+    // getCurrentUser().name — cursor on `name`
+    const expr = 'getCurrentUser().name';
+    const cursor = expr.length - 2;
+    expect(extractHopsAt(expr, cursor)).toEqual({
+      root: 'getCurrentUser',
+      hops: [{ kind: 'call' }, { kind: 'prop', name: 'name' }],
+    });
+  });
+
+  it('handles element access', () => {
+    // users[0].name — cursor on `name`
+    const expr = 'users[0].name';
+    const cursor = expr.length - 2;
+    expect(extractHopsAt(expr, cursor)).toEqual({
+      root: 'users',
+      hops: [{ kind: 'index' }, { kind: 'prop', name: 'name' }],
+    });
+  });
+});
+
+describe('TypeScriptService.getDefinition (call chains)', () => {
+  const svc = new TypeScriptService();
+
+  it('follows a call expression to its return type property', async () => {
+    // getCurrentUser() returns UserStateInterface['users'][0] | null, whose
+    // properties include id/name/email. Cursor on `name`.
+    const expr = 'getCurrentUser().name';
+    const loc = await svc.getDefinition(
+      tsSchema,
+      expr,
+      expr.length - 1,
+      documentUri,
+    );
+    expect(loc).not.toBeNull();
+    expect(loc!.uri).toMatch(/UserState\.ts$/);
+  });
+});
+
+describe('TypeScriptService.getCompletions (inline-script)', () => {
+  const svc = new TypeScriptService();
+
+  it('infers state shape from Velin.bind() and completes user.', async () => {
+    const script = `
+      const state = {
+        user: { name: 'Alice', email: 'a@b.c' },
+        users: [{ id: '1', name: 'Alice' }],
+        greet() { return 'hi'; },
+      };
+      Velin.bind(document.getElementById('app'), state);
+    `;
+    const inlineSchema = {
+      type: 'inline-script' as const,
+      source: script,
+      sourceOffset: 0,
+    };
+    const expr = 'user.';
+    const items = await svc.getInlineScriptCompletions(
+      inlineSchema,
+      expr,
+      expr.length,
+      documentUri,
+    );
+    const labels = items.map((i) => i.label);
+    expect(labels).toEqual(expect.arrayContaining(['name', 'email']));
+  });
+
+  it('exposes top-level methods on the inferred state', async () => {
+    const script = `
+      const state = {
+        count: 0,
+        greet(name) { return 'hi ' + name; },
+      };
+      Velin.bind(null, state);
+    `;
+    const inlineSchema = {
+      type: 'inline-script' as const,
+      source: script,
+      sourceOffset: 0,
+    };
+    const items = await svc.getInlineScriptCompletions(
+      inlineSchema,
+      '',
+      0,
+      documentUri,
+    );
+    const greet = items.find((i) => i.label === 'greet');
+    expect(greet).toBeDefined();
+    expect(greet!.insertText).toBe('greet()');
+  });
+});
+
 describe('TypeScriptService.getCompletions (loop scope)', () => {
   const svc = new TypeScriptService();
 
@@ -175,7 +288,7 @@ describe('TypeScriptService.getCompletions (loop scope)', () => {
 
     // Also copy UserState.ts alongside so the relative resolve works.
     fs.copyFileSync(
-      path.join(EXAMPLES, 'UserState.ts'),
+      path.join(FIXTURES, 'UserState.ts'),
       path.join(path.dirname(tmp), 'UserState.ts'),
     );
 

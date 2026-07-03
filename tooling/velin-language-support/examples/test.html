@@ -2,194 +2,158 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Velin Language Support Example</title>
+    <title>Velin Language Support — Editor Demo</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 2rem; }
-        .user-card { border: 1px solid #ccc; padding: 1rem; margin: 1rem 0; border-radius: 8px; }
-        .loading { color: #666; font-style: italic; }
-        .error { color: red; padding: 0.5rem; background: #fee; border-radius: 4px; }
-        button { padding: 0.5rem 1rem; margin: 0.25rem; cursor: pointer; }
-        input { padding: 0.5rem; margin: 0.25rem; border: 1px solid #ccc; border-radius: 4px; }
+        body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 780px; }
+        .card { border: 1px solid #ccc; padding: 1rem; margin: 1rem 0; border-radius: 8px; }
+        .group { background: #f5f5f5; padding: .5rem 1rem; margin: .5rem 0; border-radius: 6px; }
+        .item { padding: .25rem .5rem; }
+        .active { font-weight: bold; }
+        .muted { color: #888; }
+        img.avatar { width: 32px; height: 32px; border-radius: 50%; vertical-align: middle; }
+        input, button, select { padding: .3rem .5rem; margin: .1rem; }
     </style>
 </head>
 <body>
-    <!-- @velin-schema: ./UserState.ts#UserStateInterface -->
+    <!--
+      Editor sanity-check demo for the Velin language extension.
+      The schema is inferred from the <script> block at the bottom via
+      `@velin-schema: script` — no sibling .ts file needed.
+
+      What should light up when this file is open in VS Code with the
+      Velin extension installed:
+
+      • Identifiers inside vln-* directives are coloured by the semantic
+        token provider (methods purple-ish, properties light-blue,
+        loop/template vars distinct from state-root variables).
+      • Autocomplete inside any vln-* expression suggests state members.
+        Try typing `user.` inside the .card below.
+      • F12 on `user.name`, `getSelected().name`, `groups[0].items`,
+        `item.title`, or `group.name` jumps to its declaration in the
+        <script> block.
+      • Removing `vln-fragment` from the <span> below should surface a
+        red "vln-var:name requires `vln-fragment` on the same element"
+        diagnostic.
+      • Moving `vln-vars` off the <template> should surface a
+        "vln-vars is only valid on <template>" diagnostic.
+    -->
+    <!-- @velin-schema: script -->
+
     <div id="app">
-        <h1>User Management</h1>
-        
-        <!-- Loading state -->
-        <div vln-if="isLoading" class="loading">
-            Loading users...
-        </div>
+        <h1>Velin editor demo</h1>
 
-        <!-- Error display -->
-        <div vln-if="error" class="error">
-            <span vln-text="error"></span>
-            <button vln-on:click="clearError()">Dismiss</button>
-        </div>
+        <!-- vln-if / vln-text / vln-input basics ------------------------ -->
+        <section class="card">
+            <p vln-if="isLoading" class="muted">Loading…</p>
+            <p vln-if="error" class="muted" vln-text="error"></p>
 
-        <!-- Current user display -->
-        <div class="user-card" vln-if="user">
-            <h2>Current User</h2>
-            <p><strong>Name:</strong> <span vln-text="user.name"></span></p>
-            <p><strong>Email:</strong> <span vln-text="user.email"></span></p>
-            <p><strong>Status:</strong> <span vln-text="user.isActive ? 'Active' : 'Inactive'"></span></p>
-            
-            <!-- User profile -->
-            <div vln-if="user.profile">
-                <h3>Profile</h3>
-                <img vln-attr:src="user.profile.avatar" vln-attr:alt="user.name + ' avatar'" style="width: 50px; height: 50px; border-radius: 50%;">
-                <p vln-text="user.profile.bio"></p>
-                
-                <!-- Preferences -->
-                <div class="preferences">
-                    <h4>Preferences</h4>
-                    <label>
-                        Theme:
-                        <select vln-input="user.profile.preferences.theme">
-                            <option value="light">Light</option>
-                            <option value="dark">Dark</option>
-                        </select>
-                    </label>
-                    <label>
-                        <input type="checkbox" vln-input="user.profile.preferences.notifications">
-                        Enable notifications
-                    </label>
+            <label>
+                Your name:
+                <input vln-input="user.name" placeholder="Name" />
+            </label>
+            <p>Hello, <span vln-text="user.name"></span>!</p>
+        </section>
+
+        <!-- vln-attr / vln-class / vln-on modifier-subkey directives ---- -->
+        <section class="card">
+            <img class="avatar"
+                 vln-attr:src="user.avatar"
+                 vln-attr:alt="user.name + ' avatar'" />
+            <button vln-class="{ active: user.isActive }"
+                    vln-on:click="toggleActive()">
+                Toggle active
+            </button>
+        </section>
+
+        <!-- Nested vln-loop — F12 through two levels of loop vars ------- -->
+        <section class="card">
+            <h2>Nested groups (<span vln-text="groups.length"></span>)</h2>
+            <div vln-loop:group="groups" class="group">
+                <h3 vln-text="group.name"></h3>
+                <div vln-loop:item="group.items" class="item">
+                    <span vln-text="$index + '. ' + item.title"></span>
+                    <button vln-on:click="select(item.id)">Select</button>
                 </div>
             </div>
-        </div>
+        </section>
 
-        <!-- User editing form -->
-        <div class="user-card">
-            <h3>Edit User</h3>
-            <input vln-input="user.name" placeholder="Name" />
-            <input vln-input="user.email" type="email" placeholder="Email" />
-            <label>
-                <input type="checkbox" vln-input="user.isActive" />
-                Active user
-            </label>
-            <button vln-on:click="updateUser({ name: user.name, email: user.email })">
-                Update User
-            </button>
-        </div>
+        <!-- vln-fragment + vln-vars + vln-var:* -------------------------- -->
+        <section class="card">
+            <h2>Fragment with scoped vars</h2>
+            <span vln-fragment="user-badge"
+                  vln-var:label="'Current user'"
+                  vln-var:person="user"></span>
+        </section>
 
-        <!-- Users list -->
-        <div class="user-card">
-            <h3>All Users (<span vln-text="getUserCount()"></span>)</h3>
-            
-            <div vln-loop:u="users" class="user-item" style="margin: 0.5rem 0; padding: 0.5rem; background: #f9f9f9;">
-                <strong vln-text="u.name"></strong> 
-                (<span vln-text="u.email"></span>)
-                <button vln-on:click="setCurrentUser(u.id)" vln-class="currentUserId === u.id ? 'active' : ''">
-                    Select
-                </button>
-                <button vln-on:click="removeUser(u.id)">Remove</button>
-            </div>
+        <!-- vln-watch — rare form, fires handler when expression changes - -->
+        <section class="card" vln-watch:onNameChange="user.name">
+            <p class="muted">
+                Watching <code>user.name</code>. Open the console and type in
+                the name field above.
+            </p>
+        </section>
 
-            <!-- Add new user -->
-            <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #ccc;">
-                <h4>Add New User</h4>
-                <input id="newUserName" placeholder="Name" />
-                <input id="newUserEmail" placeholder="Email" />
-                <button vln-on:click="addUser({ name: document.getElementById('newUserName').value, email: document.getElementById('newUserEmail').value })">
-                    Add User
-                </button>
-            </div>
-        </div>
-
-        <!-- Current user indicator -->
-        <div vln-if="getCurrentUser()" class="user-card">
-            <h3>Currently Selected</h3>
-            <p vln-text="'You have selected: ' + getCurrentUser().name"></p>
-        </div>
+        <!-- Selected item indicator -------------------------------------- -->
+        <section vln-if="getSelected()" class="card">
+            Selected: <span vln-text="getSelected().name"></span>
+        </section>
     </div>
 
-    <!-- Try typing in the expressions above to test autocompletion:
-    
-    When you type "user." you should see:
-    - name (string)
-    - email (string)  
-    - isActive (boolean)
-    - profile (object)
-    
-    When you type "user.profile." you should see:
-    - avatar (string)
-    - bio (string)
-    - preferences (object)
-    
-    When you type method names, you should see:
-    - updateUser() 
-    - addUser()
-    - removeUser()
-    - setCurrentUser()
-    - clearError()
-    - getCurrentUser()
-    - getUserCount()
-    
-    -->
+    <!-- vln-vars must live on <template>. Moving it off triggers a diagnostic. -->
+    <template id="user-badge" vln-vars="label, person">
+        <div>
+            <span class="muted" vln-text="label + ':'"></span>
+            <img class="avatar" vln-attr:src="person.avatar" />
+            <strong vln-text="person.name"></strong>
+        </div>
+    </template>
 
     <script src="https://unpkg.com/velin/dist/build/velin-all.min.js"></script>
     <script>
-        // This would normally be your actual state implementation
-        const userState = {
+        const state = {
             user: {
-                name: 'Alice Johnson',
-                email: 'alice@example.com',
+                name: 'Alice',
+                avatar: 'https://via.placeholder.com/32',
                 isActive: true,
-                profile: {
-                    avatar: 'https://via.placeholder.com/50',
-                    bio: 'Software developer with a passion for reactive UIs',
-                    preferences: {
-                        theme: 'light',
-                        notifications: true
-                    }
-                }
             },
-            users: [
-                { id: '1', name: 'Alice Johnson', email: 'alice@example.com' },
-                { id: '2', name: 'Bob Smith', email: 'bob@example.com' },
-                { id: '3', name: 'Carol Brown', email: 'carol@example.com' }
+            groups: [
+                {
+                    name: 'Inbox',
+                    items: [
+                        { id: 1, title: 'Welcome to Velin' },
+                        { id: 2, title: 'Read the ADR' },
+                    ],
+                },
+                {
+                    name: 'Archive',
+                    items: [
+                        { id: 3, title: 'Old notes' },
+                    ],
+                },
             ],
-            currentUserId: '1',
+            selectedId: null,
             isLoading: false,
             error: null,
 
-            updateUser(updates) {
-                Object.assign(this.user, updates);
+            toggleActive() {
+                this.user.isActive = !this.user.isActive;
             },
-            
-            addUser(user) {
-                const id = Date.now().toString();
-                this.users.push({ ...user, id });
+            select(id) {
+                this.selectedId = id;
             },
-            
-            removeUser(id) {
-                this.users = this.users.filter(u => u.id !== id);
-                if (this.currentUserId === id) {
-                    this.currentUserId = null;
+            getSelected() {
+                for (const g of this.groups) {
+                    const hit = g.items.find(i => i.id === this.selectedId);
+                    if (hit) return hit;
                 }
+                return null;
             },
-            
-            setCurrentUser(id) {
-                this.currentUserId = id;
+            onNameChange(next, prev) {
+                console.log('name changed:', prev, '→', next);
             },
-            
-            clearError() {
-                this.error = null;
-            },
-            
-            getCurrentUser() {
-                return this.users.find(u => u.id === this.currentUserId) || null;
-            },
-            
-            getUserCount() {
-                return this.users.length;
-            }
         };
 
-        // Bind the state to the DOM
-        const vln = Velin.bind(document.getElementById('app'), userState);
+        Velin.bind(document.getElementById('app'), state);
     </script>
 </body>
 </html>

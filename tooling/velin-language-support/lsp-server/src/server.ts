@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 import {
   createConnection,
   TextDocuments,
@@ -31,6 +29,7 @@ import {
   findElementAt,
 } from '@velin/shared';
 import { TypeScriptService } from './typescript-service';
+import * as ts from 'typescript';
 
 // Create a connection for the server
 const connection = createConnection(ProposedFeatures.all);
@@ -335,79 +334,221 @@ connection.onDefinition(async (params) => {
   };
 });
 
-// Handle semantic tokens requests
+// Semantic token type indices — must match the legend declared in onInitialize.
+const TT = {
+  VARIABLE: 0,
+  PROPERTY: 1,
+  FUNCTION: 2,
+  METHOD: 3,
+  KEYWORD: 4,
+  STRING: 5,
+  NUMBER: 6,
+  OPERATOR: 7,
+  PARAMETER: 8,
+} as const;
+
 connection.languages.semanticTokens.on((params: SemanticTokensParams): SemanticTokens => {
   const document = documents.get(params.textDocument.uri);
-  if (!document) {
-    return { data: [] };
-  }
+  if (!document) return { data: [] };
 
-  const allTokens: Array<{ line: number; start: number; length: number; type: number; modifiers: number }> = [];
   const text = document.getText();
   const lines = text.split('\n');
-  
+
+  // Resolve the schema type once per document (semantic tokens is a full-doc
+  // request). If the doc uses multiple schemas we still pick the first found;
+  // per-block resolution can come later.
+  const rootCtx = resolveRootTypeForDocument(document.uri, text);
+
+  // Collect names introduced by vln-loop:*/vln-var:* anywhere in the doc so
+  // we can colour them as parameters wherever they appear.
+  const scopeVarNames = collectScopeVarNames(text);
+
+  const allTokens: Array<{ line: number; start: number; length: number; type: number; modifiers: number }> = [];
+
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
     const line = lines[lineIndex];
     const directives = directiveParser.findDirectivesInLine(line, lineIndex);
-    
+
     for (const directive of directives) {
-      // Find the expression part within quotes
       const attrStart = directive.position.start;
       const equalsPos = line.indexOf('=', attrStart);
-      
-      if (equalsPos !== -1) {
-        let pos = equalsPos + 1;
-        while (pos < line.length && /\s/.test(line[pos])) pos++;
-        
-        if (pos < line.length && (line[pos] === '"' || line[pos] === "'")) {
-          const quoteStart = pos + 1;
-          const quoteEnd = line.indexOf(line[pos], quoteStart);
-          
-          if (quoteEnd !== -1) {
-            const expression = line.substring(quoteStart, quoteEnd);
-            
-            // Use manual tokenization for JavaScript/TypeScript expression
-            const expressionTokens = tokenizeExpression(expression, lineIndex, quoteStart);
-            
-            // Convert flat array back to token objects for sorting
-            for (let i = 0; i < expressionTokens.length; i += 5) {
-              allTokens.push({
-                line: expressionTokens[i],
-                start: expressionTokens[i + 1],
-                length: expressionTokens[i + 2],
-                type: expressionTokens[i + 3],
-                modifiers: expressionTokens[i + 4]
-              });
-            }
-          }
-        }
-      }
+      if (equalsPos === -1) continue;
+      let pos = equalsPos + 1;
+      while (pos < line.length && /\s/.test(line[pos])) pos++;
+      if (pos >= line.length || (line[pos] !== '"' && line[pos] !== "'")) continue;
+      const quoteChar = line[pos];
+      const quoteStart = pos + 1;
+      const quoteEnd = line.indexOf(quoteChar, quoteStart);
+      if (quoteEnd === -1) continue;
+
+      const expression = line.substring(quoteStart, quoteEnd);
+      const tokens = tokenizeDirectiveExpression(
+        expression,
+        lineIndex,
+        quoteStart,
+        rootCtx,
+        scopeVarNames,
+      );
+      allTokens.push(...tokens);
     }
   }
 
-  // Sort tokens by line then by start position
-  allTokens.sort((a, b) => {
-    if (a.line !== b.line) return a.line - b.line;
-    return a.start - b.start;
-  });
+  allTokens.sort((a, b) => (a.line - b.line) || (a.start - b.start));
 
-  // Convert to LSP format: [deltaLine, deltaStart, length, tokenType, tokenModifiers]
-  const tokens: number[] = [];
+  const data: number[] = [];
   let prevLine = 0;
   let prevStart = 0;
+  for (const t of allTokens) {
+    const deltaLine = t.line - prevLine;
+    const deltaStart = deltaLine === 0 ? t.start - prevStart : t.start;
+    data.push(deltaLine, deltaStart, t.length, t.type, t.modifiers);
+    prevLine = t.line;
+    prevStart = t.start;
+  }
+  return { data };
+});
 
-  for (const token of allTokens) {
-    const deltaLine = token.line - prevLine;
-    const deltaStart = deltaLine === 0 ? token.start - prevStart : token.start;
+interface RootTypeCtx {
+  program: ts.Program;
+  checker: ts.TypeChecker;
+  rootType: ts.Type;
+  // Cached classification of root members.
+  members: Map<string, 'method' | 'property'>;
+}
 
-    tokens.push(deltaLine, deltaStart, token.length, token.type, token.modifiers);
+function resolveRootTypeForDocument(uri: string, text: string): RootTypeCtx | null {
+  const ctx = schemaParser.findSchemaContext(text, 0);
+  const schemaRef = ctx.schemaRef;
+  if (!schemaRef) {
+    // Try scanning down for any schema comment (findSchemaContext at line 0
+    // only returns something if one exists at or before line 0).
+    for (let i = 0; i < text.split('\n').length; i++) {
+      const c = schemaParser.findSchemaContext(text, i);
+      if (c.schemaRef) return buildRootCtx(c.schemaRef, uri);
+    }
+    return null;
+  }
+  return buildRootCtx(schemaRef, uri);
+}
 
-    prevLine = token.line;
-    prevStart = token.start;
+function buildRootCtx(schemaRef: any, uri: string): RootTypeCtx | null {
+  const resolved = tsService.resolveRootType(schemaRef, uri);
+  if (!resolved) return null;
+  const { program, rootType } = resolved;
+  const checker = program.getTypeChecker();
+  const members = new Map<string, 'method' | 'property'>();
+  for (const prop of checker.getPropertiesOfType(rootType)) {
+    const decl = prop.valueDeclaration ?? prop.declarations?.[0];
+    if (!decl) continue;
+    const t = checker.getTypeOfSymbolAtLocation(prop, decl);
+    const callable = checker.getSignaturesOfType(t, ts.SignatureKind.Call).length > 0;
+    members.set(prop.getName(), callable ? 'method' : 'property');
+  }
+  return { program, checker, rootType, members };
+}
+
+function collectScopeVarNames(text: string): Set<string> {
+  const names = new Set<string>();
+  const re = /vln-(loop|var):(\w+)=/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text))) names.add(m[2]);
+  names.add('$index');
+  return names;
+}
+
+function tokenizeDirectiveExpression(
+  expression: string,
+  line: number,
+  startChar: number,
+  rootCtx: RootTypeCtx | null,
+  scopeVars: Set<string>,
+): Array<{ line: number; start: number; length: number; type: number; modifiers: number }> {
+  const out: Array<{ line: number; start: number; length: number; type: number; modifiers: number }> = [];
+  const scanner = ts.createScanner(
+    ts.ScriptTarget.Latest,
+    /* skipTrivia */ true,
+    ts.LanguageVariant.Standard,
+    expression,
+  );
+
+  let prevKind: ts.SyntaxKind | null = null;
+  scanner.resetTokenState(0);
+
+  const tokens: Array<{ kind: ts.SyntaxKind; text: string; start: number; end: number }> = [];
+  while (true) {
+    const kind = scanner.scan();
+    if (kind === ts.SyntaxKind.EndOfFileToken) break;
+    tokens.push({
+      kind,
+      text: scanner.getTokenText(),
+      start: scanner.getTokenStart(),
+      end: scanner.getTokenEnd(),
+    });
   }
 
-  return { data: tokens };
-});
+  for (let i = 0; i < tokens.length; i++) {
+    const tok = tokens[i];
+    const next = tokens[i + 1];
+    const prevIsDot =
+      i > 0 && tokens[i - 1].kind === ts.SyntaxKind.DotToken;
+    const nextIsOpenParen =
+      next && next.kind === ts.SyntaxKind.OpenParenToken;
+
+    let type: number | null = null;
+
+    if (tok.kind === ts.SyntaxKind.Identifier) {
+      if (prevIsDot) {
+        type = nextIsOpenParen ? TT.METHOD : TT.PROPERTY;
+      } else if (scopeVars.has(tok.text)) {
+        type = TT.PARAMETER;
+      } else if (rootCtx?.members.has(tok.text)) {
+        const kind = rootCtx.members.get(tok.text);
+        type = kind === 'method' ? TT.METHOD : TT.PROPERTY;
+      } else if (nextIsOpenParen) {
+        type = TT.FUNCTION;
+      } else {
+        type = TT.VARIABLE;
+      }
+    } else if (isKeywordKind(tok.kind)) {
+      type = TT.KEYWORD;
+    } else if (
+      tok.kind === ts.SyntaxKind.StringLiteral ||
+      tok.kind === ts.SyntaxKind.NoSubstitutionTemplateLiteral ||
+      tok.kind === ts.SyntaxKind.TemplateHead ||
+      tok.kind === ts.SyntaxKind.TemplateMiddle ||
+      tok.kind === ts.SyntaxKind.TemplateTail
+    ) {
+      type = TT.STRING;
+    } else if (tok.kind === ts.SyntaxKind.NumericLiteral) {
+      type = TT.NUMBER;
+    } else if (isPunctuationKind(tok.kind)) {
+      type = TT.OPERATOR;
+    }
+
+    if (type !== null) {
+      out.push({
+        line,
+        start: startChar + tok.start,
+        length: tok.end - tok.start,
+        type,
+        modifiers: 0,
+      });
+    }
+    prevKind = tok.kind;
+  }
+  return out;
+}
+
+function isKeywordKind(kind: ts.SyntaxKind): boolean {
+  return kind >= ts.SyntaxKind.FirstKeyword && kind <= ts.SyntaxKind.LastKeyword;
+}
+
+function isPunctuationKind(kind: ts.SyntaxKind): boolean {
+  return (
+    (kind >= ts.SyntaxKind.FirstPunctuation && kind <= ts.SyntaxKind.LastPunctuation) ||
+    (kind >= ts.SyntaxKind.FirstBinaryOperator && kind <= ts.SyntaxKind.LastBinaryOperator)
+  );
+}
 
 async function getSchemaCompletions(
   schemaRef: any,
@@ -420,6 +561,7 @@ async function getSchemaCompletions(
   switch (schemaRef.type) {
     case 'typescript':
     case 'global-type':
+    case 'inline-script':
       return await tsService.getCompletions(
         schemaRef,
         expression,
@@ -504,82 +646,6 @@ function convertCompletionItemKind(kind: CompletionItemKind): LSPCompletionItemK
     [CompletionItemKind.Reference]: LSPCompletionItemKind.Reference
   };
   return kindMap[kind] || LSPCompletionItemKind.Text;
-}
-
-function tokenizeExpression(expression: string, line: number, startChar: number): number[] {
-  const tokens: number[] = [];
-  
-  // Token type mapping based on our legend:
-  // ['variable', 'property', 'function', 'method', 'keyword', 'string', 'number', 'operator', 'parameter']
-  const TokenType = {
-    VARIABLE: 0,
-    PROPERTY: 1,
-    FUNCTION: 2,
-    METHOD: 3,
-    KEYWORD: 4,
-    STRING: 5,
-    NUMBER: 6,
-    OPERATOR: 7,
-    PARAMETER: 8
-  };
-  
-  // Enhanced tokenization with proper JavaScript/TypeScript parsing
-  const tokenRegex = /(\w+)|(\.)|([\(\)])|(=|!==?|<=?|>=?|\+\+?|--?|\*|\/|%)|(\d+(?:\.\d+)?)|('(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*")|(\s+)/g;
-  let match;
-  let lastWasIdentifier = false;
-  
-  tokenRegex.lastIndex = 0; // Reset regex state
-  
-  while ((match = tokenRegex.exec(expression)) !== null) {
-    const tokenText = match[0];
-    const tokenStart = match.index;
-    const tokenLength = tokenText.length;
-    
-    // Skip whitespace
-    if (/^\s+$/.test(tokenText)) {
-      lastWasIdentifier = false;
-      continue;
-    }
-    
-    let tokenType = TokenType.VARIABLE; // variable by default
-    let tokenModifiers = 0;
-    
-    if (match[1]) { // Word tokens (\w+)
-      if (['true', 'false', 'null', 'undefined', 'this', 'new', 'typeof', 'instanceof', 'return', 'function', 'var', 'let', 'const', 'if', 'else', 'for', 'while', 'do'].includes(tokenText)) {
-        tokenType = TokenType.KEYWORD;
-      } else if (lastWasIdentifier) {
-        // If we had an identifier before (after a dot), this is likely a property access
-        tokenType = TokenType.PROPERTY;
-      } else if (tokenText.match(/^[A-Z]/)) {
-        // Capitalized identifiers are likely classes/constructors
-        tokenType = TokenType.FUNCTION; // Use function for constructors
-      } else {
-        tokenType = TokenType.VARIABLE;
-      }
-      lastWasIdentifier = true;
-    } else if (match[2]) { // Dot (.)
-      tokenType = TokenType.OPERATOR;
-      // Keep lastWasIdentifier as true since after a dot we expect a property
-      lastWasIdentifier = true;
-    } else if (match[3]) { // Parentheses
-      tokenType = TokenType.OPERATOR;
-      lastWasIdentifier = false;
-    } else if (match[4]) { // Operators
-      tokenType = TokenType.OPERATOR;
-      lastWasIdentifier = false;
-    } else if (match[5]) { // Numbers
-      tokenType = TokenType.NUMBER;
-      lastWasIdentifier = false;
-    } else if (match[6]) { // Strings
-      tokenType = TokenType.STRING;
-      lastWasIdentifier = false;
-    }
-    
-    // Add token: [line, absoluteStart, length, tokenType, tokenModifiers]
-    tokens.push(line, startChar + tokenStart, tokenLength, tokenType, tokenModifiers);
-  }
-  
-  return tokens;
 }
 
 // Make the text document manager listen on the connection
