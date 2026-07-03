@@ -4,6 +4,14 @@ import * as fs from 'fs';
 import { URI } from 'vscode-uri';
 import { CompletionItem, CompletionItemKind, VelinSchemaReference } from '@velin/shared';
 
+export interface DefinitionLocation {
+  uri: string;
+  range: {
+    start: { line: number; character: number };
+    end: { line: number; character: number };
+  };
+}
+
 export class TypeScriptService {
   private programs: Map<string, ts.Program> = new Map();
   
@@ -12,10 +20,11 @@ export class TypeScriptService {
     expression: string,
     cursorPos: number,
     documentUri: string,
-    currentLine?: number
+    currentLine?: number,
+    documentText?: string,
   ): Promise<CompletionItem[]> {
     if (schemaRef.type === 'global-type') {
-      return this.getGlobalTypeCompletions(schemaRef, expression, cursorPos, documentUri, currentLine);
+      return this.getGlobalTypeCompletions(schemaRef, expression, cursorPos, documentUri, currentLine, documentText);
     }
 
     try {
@@ -27,6 +36,11 @@ export class TypeScriptService {
       const schemaFilePath = path.resolve(path.dirname(documentPath), schemaRef.source);
       
       if (!fs.existsSync(schemaFilePath)) {
+        console.log(
+          `[TypeScriptService] schema source not found: ${schemaFilePath} ` +
+            `(resolved from "${schemaRef.source}" relative to ${documentPath}). ` +
+            `Fix the path in the schema comment.`,
+        );
         return [];
       }
 
@@ -48,8 +62,11 @@ export class TypeScriptService {
       const expressionContext = this.parseExpression(expression, cursorPos);
       
       // Analyze scope for loop variables and template variables
-      const scopeVars = currentLine !== undefined ? this.analyzeScopeAtLine(documentUri, currentLine) : {};
-      
+      const scopeVars =
+        currentLine !== undefined
+          ? this.analyzeScopeAtLine(documentUri, currentLine, documentText)
+          : {};
+
       // Get completions based on the expression context
       return this.getCompletionsFromType(program, typeSymbol, expressionContext, scopeVars);
     } catch (error: any) {
@@ -63,7 +80,8 @@ export class TypeScriptService {
     expression: string,
     cursorPos: number,
     documentUri: string,
-    currentLine?: number
+    currentLine?: number,
+    documentText?: string,
   ): Promise<CompletionItem[]> {
     try {
       const workspaceRoot = this.getWorkspaceRoot(documentUri);
@@ -85,12 +103,160 @@ export class TypeScriptService {
       }
 
       const expressionContext = this.parseExpression(expression, cursorPos);
-      const scopeVars = currentLine !== undefined ? this.analyzeScopeAtLine(documentUri, currentLine) : {};
-      
+      const scopeVars =
+        currentLine !== undefined
+          ? this.analyzeScopeAtLine(documentUri, currentLine, documentText)
+          : {};
+
       return this.getCompletionsFromType(program, typeSymbol, expressionContext, scopeVars);
     } catch (error: any) {
       console.log(`[TypeScriptService] ERROR in getGlobalTypeCompletions: ${error.message}`);
       return [];
+    }
+  }
+
+  /**
+   * Resolve the identifier at `cursorPos` inside `expression` to its
+   * declaration in the schema source file. Used by go-to-definition.
+   */
+  async getDefinition(
+    schemaRef: VelinSchemaReference,
+    expression: string,
+    cursorPos: number,
+    documentUri: string,
+    currentLine?: number,
+    documentText?: string,
+  ): Promise<DefinitionLocation | null> {
+    try {
+      const scopeVars =
+        currentLine !== undefined
+          ? this.analyzeScopeAtLine(documentUri, currentLine, documentText)
+          : {};
+
+      // Extract the property path ending at the cursor. Example:
+      //   expression = "user.profile.avatar + 1", cursorPos = 15
+      //   → path = ['user', 'profile'], target = 'avatar'
+      const chain = extractPropertyChainAt(expression, cursorPos);
+      if (!chain) return null;
+
+      const workspaceRoot = this.getWorkspaceRoot(documentUri);
+      let program: ts.Program;
+      let typeSymbol: ts.Symbol | undefined;
+
+      if (schemaRef.type === 'global-type') {
+        program = this.getOrCreateProjectProgram(workspaceRoot);
+        for (const sf of program.getSourceFiles()) {
+          if (sf.isDeclarationFile) continue;
+          typeSymbol = this.findTypeSymbol(program, sf, schemaRef.typeName || '');
+          if (typeSymbol) break;
+        }
+      } else {
+        if (!schemaRef.source) return null;
+        const uri = URI.parse(documentUri);
+        const schemaFilePath = path.resolve(
+          path.dirname(uri.fsPath),
+          schemaRef.source,
+        );
+        if (!fs.existsSync(schemaFilePath)) return null;
+        program = this.getOrCreateProgram(workspaceRoot, schemaFilePath);
+        const sf = program.getSourceFile(schemaFilePath);
+        if (!sf) return null;
+        typeSymbol = this.findTypeSymbol(program, sf, schemaRef.typeName || 'default');
+      }
+      if (!typeSymbol) return null;
+
+      const checker = program.getTypeChecker();
+      let currentType: ts.Type =
+        typeSymbol.flags & ts.SymbolFlags.Interface
+          ? checker.getDeclaredTypeOfSymbol(typeSymbol)
+          : typeSymbol.valueDeclaration
+          ? checker.getTypeOfSymbolAtLocation(typeSymbol, typeSymbol.valueDeclaration)
+          : checker.getDeclaredTypeOfSymbol(typeSymbol);
+
+      // Handle loop variables: replace the loop var at the head of the path
+      // with the element type of its source array.
+      const path0 = chain.path[0] ?? chain.target;
+      if (scopeVars[path0]?.type === 'array item') {
+        const match = scopeVars[path0].documentation?.match(
+          /from vln-loop:\w+="([^"]+)"/,
+        );
+        if (match) {
+          const arrayProp = currentType.getProperty(match[1]);
+          if (arrayProp?.valueDeclaration) {
+            const arrayType = checker.getTypeOfSymbolAtLocation(
+              arrayProp,
+              arrayProp.valueDeclaration,
+            );
+            const elemType =
+              checker.getIndexTypeOfType(arrayType, ts.IndexKind.Number) ??
+              (arrayType as any).typeArguments?.[0];
+            if (elemType) currentType = elemType;
+          }
+          // Consume the loop variable segment.
+          chain.path.shift();
+        }
+      }
+
+      // Walk the property path.
+      for (const seg of chain.path) {
+        const prop = currentType.getProperty(seg);
+        if (!prop?.valueDeclaration) return null;
+        currentType = checker.getTypeOfSymbolAtLocation(prop, prop.valueDeclaration);
+      }
+
+      // Resolve the target symbol.
+      const target = currentType.getProperty(chain.target);
+      const decl = target?.declarations?.[0] ?? target?.valueDeclaration;
+      if (!decl) return null;
+
+      // Build a Location pointing at the declaration.
+      const sf = decl.getSourceFile();
+      const start = sf.getLineAndCharacterOfPosition(decl.getStart());
+      const end = sf.getLineAndCharacterOfPosition(decl.getEnd());
+      return {
+        uri: URI.file(sf.fileName).toString(),
+        range: {
+          start: { line: start.line, character: start.character },
+          end: { line: end.line, character: end.character },
+        },
+      };
+    } catch (err: any) {
+      console.log(`[TypeScriptService] getDefinition error: ${err.message}`);
+      return null;
+    }
+  }
+
+  async getJSDocCompletions(
+    schemaRef: VelinSchemaReference,
+    expression: string,
+    cursorPos: number,
+    documentUri: string
+  ): Promise<CompletionItem[]> {
+    // JSDoc references live in .js files. TypeScript's checker handles both
+    // .ts and .js (with allowJs+checkJs) — reuse the normal completion path.
+    return this.getCompletions(schemaRef, expression, cursorPos, documentUri);
+  }
+
+  private getWorkspaceRoot(documentUri: string): string {
+    try {
+      const startPath = path.dirname(URI.parse(documentUri).fsPath);
+      let current = startPath;
+      // Walk up until we find a marker file. Cap depth at 20 to avoid infinite
+      // loops on malformed paths.
+      for (let i = 0; i < 20; i++) {
+        if (
+          fs.existsSync(path.join(current, 'package.json')) ||
+          fs.existsSync(path.join(current, 'tsconfig.json'))
+        ) {
+          return current;
+        }
+        const parent = path.dirname(current);
+        if (parent === current) break;
+        current = parent;
+      }
+      return startPath;
+    } catch {
+      return process.cwd();
     }
   }
 
@@ -383,17 +549,21 @@ export class TypeScriptService {
     return ts.displayPartsToString(displayParts);
   }
 
-  private analyzeScopeAtLine(documentUri: string, lineNumber: number): Record<string, any> {
+  private analyzeScopeAtLine(
+    documentUri: string,
+    lineNumber: number,
+    documentText?: string,
+  ): Record<string, any> {
     try {
-      const uri = URI.parse(documentUri);
-      const documentPath = uri.fsPath;
-      const fs = require('fs');
-      
-      if (!fs.existsSync(documentPath)) {
-        return {};
+      // Prefer the LSP-synced document text; fall back to disk when the caller
+      // did not provide it (e.g. warm-start requests).
+      let content = documentText;
+      if (content === undefined) {
+        const uri = URI.parse(documentUri);
+        const documentPath = uri.fsPath;
+        if (!fs.existsSync(documentPath)) return {};
+        content = fs.readFileSync(documentPath, 'utf8');
       }
-
-      const content = fs.readFileSync(documentPath, 'utf8');
       const lines = content.split('\n');
       const scopeVars: Record<string, any> = {};
 
@@ -467,4 +637,38 @@ interface ExpressionContext {
   currentPart: string;
   isMethodCall: boolean;
   isPropertyAccess: boolean;
+}
+
+/**
+ * Extract the dotted property chain that the cursor is inside. For
+ * `user.profile.avatar + 1` with cursor at position 15 (mid-`avatar`),
+ * returns `{ path: ['user', 'profile'], target: 'avatar' }`.
+ *
+ * Returns null if the cursor is not on an identifier.
+ */
+export function extractPropertyChainAt(
+  expression: string,
+  cursorPos: number,
+): { path: string[]; target: string } | null {
+  // Find the identifier span covering the cursor by walking outward.
+  const isIdentChar = (c: string) => /[\w$]/.test(c);
+  let start = cursorPos;
+  while (start > 0 && isIdentChar(expression[start - 1])) start--;
+  let end = cursorPos;
+  while (end < expression.length && isIdentChar(expression[end])) end++;
+  if (start === end) return null;
+  const target = expression.substring(start, end);
+  if (!/^[A-Za-z_$][\w$]*$/.test(target)) return null;
+
+  // Walk backwards from `start` gathering the `.foo.bar.` chain.
+  const path: string[] = [];
+  let i = start;
+  while (i > 0 && expression[i - 1] === '.') {
+    i--;
+    let segEnd = i;
+    while (i > 0 && isIdentChar(expression[i - 1])) i--;
+    if (i === segEnd) break;
+    path.unshift(expression.substring(i, segEnd));
+  }
+  return { path, target };
 }

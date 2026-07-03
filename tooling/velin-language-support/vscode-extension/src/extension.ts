@@ -4,103 +4,99 @@ import {
   LanguageClient,
   LanguageClientOptions,
   ServerOptions,
-  TransportKind
+  State,
+  TransportKind,
 } from 'vscode-languageclient/node';
 
-let client: LanguageClient;
+let client: LanguageClient | undefined;
 
 export function activate(context: vscode.ExtensionContext) {
-  // Path to the language server module
-  const serverModule = context.asAbsolutePath(
-    path.join('..', 'lsp-server', 'dist', 'server.js')
-  );
+  // Bundled by esbuild into the extension's own dist/ folder.
+  const serverModule = context.asAbsolutePath(path.join('dist', 'server.js'));
 
-  // Server options - runs the server in Node.js
   const serverOptions: ServerOptions = {
-    run: {
-      module: serverModule,
-      transport: TransportKind.ipc
-    },
+    run: { module: serverModule, transport: TransportKind.ipc },
     debug: {
       module: serverModule,
       transport: TransportKind.ipc,
-      options: {
-        execArgv: ['--nolazy', '--inspect=6009']
-      }
-    }
+      options: { execArgv: ['--nolazy', '--inspect=6009'] },
+    },
   };
 
-  // Client options - configure which documents to send to the server
   const clientOptions: LanguageClientOptions = {
-    // Register the server for HTML documents that might contain Velin directives
-    documentSelector: [
-      { scheme: 'file', language: 'html' },
-      { scheme: 'file', language: 'html-velin' }
-    ],
+    documentSelector: [{ scheme: 'file', language: 'html' }],
     synchronize: {
-      // Notify the server about file changes to TypeScript/JavaScript files
-      // that might contain schema definitions
       fileEvents: [
         vscode.workspace.createFileSystemWatcher('**/*.{ts,js,json}'),
-        vscode.workspace.createFileSystemWatcher('**/*.html')
-      ]
+        vscode.workspace.createFileSystemWatcher('**/*.html'),
+      ],
+      // Forward velin.* setting changes to the server via
+      // `workspace/didChangeConfiguration`. No restart needed.
+      configurationSection: 'velin',
     },
-    // Pass configuration to the server
     initializationOptions: () => {
       const config = vscode.workspace.getConfiguration('velin');
       return {
         enable: config.get('enable', true),
-        trace: config.get('trace.server', 'off')
+        trace: config.get('trace.server', 'off'),
       };
-    }
+    },
   };
 
-  // Create the language client
   client = new LanguageClient(
     'velinLanguageServer',
     'Velin Language Server',
     serverOptions,
-    clientOptions
+    clientOptions,
   );
 
-  // Register commands
-  const restartCommand = vscode.commands.registerCommand('velin.restartServer', async () => {
-    await client.stop();
-    await client.start();
-    vscode.window.showInformationMessage('Velin Language Server restarted');
-  });
-
-  // Add status bar item
-  const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-  statusBarItem.text = '$(symbol-class) Velin';
-  statusBarItem.tooltip = 'Velin Language Support is active';
+  const statusBarItem = vscode.window.createStatusBarItem(
+    vscode.StatusBarAlignment.Right,
+    100,
+  );
   statusBarItem.command = 'velin.restartServer';
+  updateStatus(statusBarItem, 'starting');
   statusBarItem.show();
 
-  // Register configuration change listener
-  const configListener = vscode.workspace.onDidChangeConfiguration(event => {
-    if (event.affectsConfiguration('velin')) {
-      // Restart the client when configuration changes
-      vscode.commands.executeCommand('velin.restartServer');
-    }
+  client.onDidChangeState((e) => {
+    if (e.newState === State.Running) updateStatus(statusBarItem, 'ready');
+    else if (e.newState === State.Starting) updateStatus(statusBarItem, 'starting');
+    else if (e.newState === State.Stopped) updateStatus(statusBarItem, 'stopped');
   });
 
-  // Start the client and push disposables to context
-  context.subscriptions.push(
-    restartCommand,
-    statusBarItem,
-    configListener
+  const restartCommand = vscode.commands.registerCommand(
+    'velin.restartServer',
+    async () => {
+      if (!client) return;
+      await client.stop();
+      await client.start();
+    },
   );
-  
-  // Start the client
-  client.start().then(() => {
-    vscode.window.showInformationMessage('Velin Language Support is now active!');
+
+  context.subscriptions.push(restartCommand, statusBarItem);
+
+  client.start().catch((err) => {
+    updateStatus(statusBarItem, 'error');
+    vscode.window.showErrorMessage(
+      `Velin Language Server failed to start: ${err?.message ?? err}`,
+    );
   });
 }
 
+function updateStatus(
+  item: vscode.StatusBarItem,
+  state: 'starting' | 'ready' | 'stopped' | 'error',
+) {
+  const icons: Record<typeof state, string> = {
+    starting: '$(sync~spin)',
+    ready: '$(check)',
+    stopped: '$(debug-stop)',
+    error: '$(error)',
+  };
+  item.text = `${icons[state]} Velin`;
+  item.tooltip = `Velin Language Server: ${state}`;
+}
+
 export function deactivate(): Thenable<void> | undefined {
-  if (!client) {
-    return undefined;
-  }
-  return client.stop();
+  return client?.stop();
 }

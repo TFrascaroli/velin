@@ -1,22 +1,16 @@
-# Build outputs and development files
+# Source & build config
 src/
+esbuild.mjs
 tsconfig.json
+vitest.config.ts
 *.tsbuildinfo
 .vscode/
+
+# node_modules — everything is bundled by esbuild into dist/
 node_modules/
 
-# Parent directory files
-../package.json
-../package-lock.json
-../node_modules/
-../README.md
-../build.sh
-../.gitignore
-../lsp-server/
-../shared/
-../examples/
-
-# Test files
+# Test/dev artifacts
 test/
 **/*.test.*
 **/*.spec.*
+**/*.map

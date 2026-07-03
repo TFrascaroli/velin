@@ -1,0 +1,194 @@
+import { describe, expect, it, beforeAll } from 'vitest';
+import * as path from 'path';
+import * as fs from 'fs';
+import * as os from 'os';
+import { URI } from 'vscode-uri';
+import { TypeScriptService, extractPropertyChainAt } from '../src/typescript-service';
+
+const EXAMPLES = path.resolve(__dirname, '../../examples');
+
+// The service resolves the schema source path relative to the document's
+// directory. Point the "document" at examples/ so ./UserState.ts resolves.
+const documentUri = URI.file(path.join(EXAMPLES, 'test.html')).toString();
+
+const tsSchema = {
+  type: 'typescript' as const,
+  source: './UserState.ts',
+  typeName: 'UserStateInterface',
+};
+
+describe('TypeScriptService.getCompletions (root)', () => {
+  const svc = new TypeScriptService();
+
+  it('lists top-level properties of the interface', async () => {
+    const items = await svc.getCompletions(tsSchema, '', 0, documentUri);
+    const labels = items.map((i) => i.label);
+    expect(labels).toContain('user');
+    expect(labels).toContain('users');
+    expect(labels).toContain('currentUserId');
+    expect(labels).toContain('isLoading');
+    expect(labels).toContain('error');
+  });
+
+  it('lists methods as callable items', async () => {
+    const items = await svc.getCompletions(tsSchema, '', 0, documentUri);
+    const updateUser = items.find((i) => i.label === 'updateUser');
+    expect(updateUser).toBeDefined();
+    expect(updateUser!.insertText).toBe('updateUser()');
+  });
+});
+
+describe('TypeScriptService.getCompletions (nested paths)', () => {
+  const svc = new TypeScriptService();
+
+  it('completes "user." with user fields', async () => {
+    const expr = 'user.';
+    const items = await svc.getCompletions(tsSchema, expr, expr.length, documentUri);
+    const labels = items.map((i) => i.label);
+    expect(labels).toEqual(
+      expect.arrayContaining(['name', 'email', 'isActive', 'profile']),
+    );
+  });
+
+  it('completes "user.profile." with profile fields', async () => {
+    const expr = 'user.profile.';
+    const items = await svc.getCompletions(tsSchema, expr, expr.length, documentUri);
+    const labels = items.map((i) => i.label);
+    expect(labels).toEqual(
+      expect.arrayContaining(['avatar', 'bio', 'preferences']),
+    );
+  });
+
+  it('completes "user.profile.preferences." with preference fields', async () => {
+    const expr = 'user.profile.preferences.';
+    const items = await svc.getCompletions(tsSchema, expr, expr.length, documentUri);
+    const labels = items.map((i) => i.label);
+    expect(labels).toEqual(expect.arrayContaining(['theme', 'notifications']));
+  });
+
+  it('filters by the currently-typed prefix', async () => {
+    const expr = 'user.pro';
+    const items = await svc.getCompletions(tsSchema, expr, expr.length, documentUri);
+    const labels = items.map((i) => i.label);
+    expect(labels).toContain('profile');
+    expect(labels).not.toContain('name');
+  });
+
+  it('returns [] for a nonexistent property path', async () => {
+    const expr = 'user.doesNotExist.';
+    const items = await svc.getCompletions(tsSchema, expr, expr.length, documentUri);
+    expect(items).toEqual([]);
+  });
+});
+
+describe('extractPropertyChainAt', () => {
+  it('returns null when the cursor is in a gap between identifiers', () => {
+    // Position 5 is the '+' — not part of any identifier.
+    expect(extractPropertyChainAt('user + 1', 5)).toBeNull();
+  });
+
+  it('treats the position immediately after an identifier as on it', () => {
+    // Standard editor convention: cursor after `user` still targets `user`.
+    expect(extractPropertyChainAt('user + 1', 4)).toEqual({
+      path: [],
+      target: 'user',
+    });
+  });
+
+  it('returns the identifier when the cursor is on a bare name', () => {
+    expect(extractPropertyChainAt('user', 2)).toEqual({ path: [], target: 'user' });
+  });
+
+  it('splits a dotted chain into path + target', () => {
+    // Cursor mid-`profile` inside "user.profile.avatar"
+    const expr = 'user.profile.avatar';
+    const cursor = 8; // inside "profile"
+    expect(extractPropertyChainAt(expr, cursor)).toEqual({
+      path: ['user'],
+      target: 'profile',
+    });
+  });
+
+  it('handles the tail of a chain', () => {
+    const expr = 'user.profile.avatar';
+    const cursor = expr.length - 1;
+    expect(extractPropertyChainAt(expr, cursor)).toEqual({
+      path: ['user', 'profile'],
+      target: 'avatar',
+    });
+  });
+
+  it('handles expressions surrounded by other tokens', () => {
+    const expr = "'x' + user.name + 1";
+    const cursor = expr.indexOf('name') + 2;
+    expect(extractPropertyChainAt(expr, cursor)).toEqual({
+      path: ['user'],
+      target: 'name',
+    });
+  });
+});
+
+describe('TypeScriptService.getDefinition', () => {
+  const svc = new TypeScriptService();
+
+  it('resolves user.name to its declaration in the interface', async () => {
+    const expr = 'user.name';
+    const loc = await svc.getDefinition(
+      tsSchema,
+      expr,
+      expr.length - 1, // inside "name"
+      documentUri,
+    );
+    expect(loc).not.toBeNull();
+    expect(loc!.uri).toMatch(/UserState\.ts$/);
+    // "name" is declared on line 3 (0-based line 2) of the interface file.
+    expect(loc!.range.start.line).toBe(2);
+  });
+
+  it('returns null for a nonexistent property', async () => {
+    const expr = 'user.doesNotExist';
+    const loc = await svc.getDefinition(
+      tsSchema,
+      expr,
+      expr.length - 1,
+      documentUri,
+    );
+    expect(loc).toBeNull();
+  });
+});
+
+describe('TypeScriptService.getCompletions (loop scope)', () => {
+  const svc = new TypeScriptService();
+
+  it('resolves a vln-loop variable to the array element type', async () => {
+    // Simulate a document where line 2 sits inside <div vln-loop:u="users">.
+    const html = [
+      '<!-- @velin-schema: ./UserState.ts#UserStateInterface -->',
+      '<div vln-loop:u="users">',
+      '  <span vln-text="u."></span>',
+      '</div>',
+    ].join('\n');
+
+    const tmp = path.join(os.tmpdir(), `velin-loop-${Date.now()}.html`);
+    fs.writeFileSync(tmp, html, 'utf8');
+    const loopUri = URI.file(tmp).toString();
+
+    // Also copy UserState.ts alongside so the relative resolve works.
+    fs.copyFileSync(
+      path.join(EXAMPLES, 'UserState.ts'),
+      path.join(path.dirname(tmp), 'UserState.ts'),
+    );
+
+    const expr = 'u.';
+    const items = await svc.getCompletions(
+      tsSchema,
+      expr,
+      expr.length,
+      loopUri,
+      2, // line inside the loop
+      html,
+    );
+    const labels = items.map((i) => i.label);
+    expect(labels).toEqual(expect.arrayContaining(['id', 'name', 'email']));
+  });
+});

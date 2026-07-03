@@ -1,48 +1,77 @@
-# VS Code Extension Release Workflow
+# VS Code Extension release workflow.
+# Runs tests on every PR touching the extension, then packages + releases
+# on tags.
 name: Release Extension
 
 on:
   push:
     tags:
       - 'v*'
+  pull_request:
+    paths:
+      - 'tooling/velin-language-support/**'
+      - '.github/workflows/release-extension.yml'
 
 jobs:
-  release:
+  test:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '18'
-        
-    - name: Install dependencies
-      run: |
-        cd tooling/velin-language-support
-        npm ci
-        
-    - name: Build extension
-      run: |
-        cd tooling/velin-language-support
-        npm run build
-        npm run package:vscode
-        
-    - name: Create Release
-      uses: softprops/action-gh-release@v1
-      with:
-        files: tooling/velin-language-support/vscode-extension/*.vsix
-        body: |
-          ## Velin Language Support v${{ github.ref_name }}
-          
-          ### Installation
-          1. Download the .vsix file
-          2. In VS Code: Command Palette > "Extensions: Install from VSIX"
-          3. Select the downloaded file
-          
-          ### Features
-          - IntelliSense for Velin directives
-          - TypeScript-aware completions
-          - Syntax highlighting for expressions
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        working-directory: tooling/velin-language-support
+        run: npm ci
+
+      - name: Build
+        working-directory: tooling/velin-language-support
+        run: npm run build
+
+      - name: Test
+        working-directory: tooling/velin-language-support
+        run: npm test
+
+  release:
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        working-directory: tooling/velin-language-support
+        run: npm ci
+
+      - name: Build & package
+        working-directory: tooling/velin-language-support
+        run: |
+          npm run build
+          npm run package:vscode
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: tooling/velin-language-support/vscode-extension/*.vsix
+          body: |
+            ## Velin Language Support v${{ github.ref_name }}
+
+            ### Installation
+            1. Download the `.vsix` file
+            2. In VS Code: Command Palette → "Extensions: Install from VSIX"
+            3. Select the downloaded file
+
+            ### Features
+            - Syntax highlighting for Velin `vln-*` directives (injected into HTML)
+            - JavaScript grammar embedded inside directive expressions
+            - TypeScript-aware IntelliSense driven by `<!-- @velin-schema -->` comments
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -12,11 +12,24 @@ import {
   TextDocumentSyncKind,
   InitializeResult,
   SemanticTokensParams,
-  SemanticTokens
+  SemanticTokens,
+  Diagnostic,
+  DiagnosticSeverity,
 } from 'vscode-languageserver/node';
 
 import { TextDocument } from 'vscode-languageserver-textdocument';
-import { SchemaParser, DirectiveParser, CompletionItem, CompletionItemKind } from '@velin/shared';
+import {
+  SchemaParser,
+  DirectiveParser,
+  CompletionItem,
+  CompletionItemKind,
+  VELIN_DIRECTIVE_META,
+  findDirectiveMeta,
+  directivesValidAt,
+  validateDirectivePlacement,
+  scanElements,
+  findElementAt,
+} from '@velin/shared';
 import { TypeScriptService } from './typescript-service';
 
 // Create a connection for the server
@@ -56,6 +69,7 @@ connection.onInitialize((params: InitializeParams) => {
       completionProvider: {
         resolveProvider: true,
         triggerCharacters: ['.', '(', '"', "'"]      },
+      definitionProvider: true,
       semanticTokensProvider: {
         legend: {
           tokenTypes: [
@@ -93,6 +107,58 @@ connection.onInitialized(() => {
     });
   }
 });
+
+// Validate the document whenever it changes, publishing diagnostics for
+// misplaced directives (e.g. vln-vars on a non-<template>).
+documents.onDidChangeContent((change) => {
+  const diagnostics = validateVelinPlacement(change.document);
+  connection.sendDiagnostics({ uri: change.document.uri, diagnostics });
+});
+
+documents.onDidClose((e) => {
+  connection.sendDiagnostics({ uri: e.document.uri, diagnostics: [] });
+});
+
+function validateVelinPlacement(document: TextDocument): Diagnostic[] {
+  const diagnostics: Diagnostic[] = [];
+  const text = document.getText();
+
+  for (const el of scanElements(text)) {
+    const siblings = el.attributes.map((a) => a.name.toLowerCase());
+    for (const attr of el.attributes) {
+      if (!attr.name.startsWith('vln-')) continue;
+      const base = attr.name.split(':')[0];
+      const err = validateDirectivePlacement(base, {
+        tagName: el.tagName.toLowerCase(),
+        siblingAttributes: siblings,
+      });
+      if (!err) continue;
+      diagnostics.push({
+        severity: DiagnosticSeverity.Error,
+        range: {
+          start: document.positionAt(attr.nameStart),
+          end: document.positionAt(attr.nameStart + attr.name.length),
+        },
+        message: err.message,
+        source: 'velin',
+        code: err.code,
+      });
+    }
+  }
+  return diagnostics;
+}
+
+function getElementContextAt(
+  document: TextDocument,
+  offset: number,
+): { tagName: string; siblings: string[] } | null {
+  const el = findElementAt(document.getText(), offset);
+  if (!el) return null;
+  return {
+    tagName: el.tagName.toLowerCase(),
+    siblings: el.attributes.map((a) => a.name.toLowerCase()),
+  };
+}
 
 // Handle completion requests
 connection.onCompletion(
@@ -148,33 +214,34 @@ connection.onCompletion(
       
       if (attributeMatch) {
         const partial = attributeMatch[1];
+        const offset = document.offsetAt(position);
+        const ctx = getElementContextAt(document, offset);
+        const availableCompletions = getDirectiveCompletions(ctx);
 
-        const matchingCompletions = getBasicDirectiveCompletions().filter(item => 
-          item.label.startsWith(partial)
+        const matchingCompletions = availableCompletions.filter((item) =>
+          item.label.startsWith(partial),
         );
-        
-        // If no matches with the partial, try matching any vln-* directive (for cases like "v" -> "vln-text")
-        const allDirectiveCompletions = matchingCompletions.length > 0 
-          ? matchingCompletions 
-          : getBasicDirectiveCompletions();
-        
-        return allDirectiveCompletions.map(item => ({
+        const allDirectiveCompletions =
+          matchingCompletions.length > 0 ? matchingCompletions : availableCompletions;
+
+        return allDirectiveCompletions.map((item) => ({
           ...item,
-          // Fix the insertion to replace the partial text
           textEdit: {
             range: {
               start: { line: position.line, character: position.character - partial.length },
-              end: { line: position.line, character: position.character }
+              end: { line: position.line, character: position.character },
             },
-            newText: item.label
-          }
+            newText: item.label,
+          },
         }));
       }
-      
+
       // Check if we're typing a directive name after vln-
       if (beforeCursor.includes('vln-') && beforeCursor.match(/vln-[\w-]*$/)) {
-        connection.console.log(`Providing basic directive completions`);
-        return getBasicDirectiveCompletions();
+        const offset = document.offsetAt(position);
+        const ctx = getElementContextAt(document, offset);
+        connection.console.log(`Providing directive completions for context: ${JSON.stringify(ctx)}`);
+        return getDirectiveCompletions(ctx);
       }
       connection.console.log(`No directive context found`);
       return [];
@@ -187,9 +254,11 @@ connection.onCompletion(
     connection.console.log(`Schema context: ${JSON.stringify(schemaContext.schemaRef)}`);
     
     if (!schemaContext.schemaRef) {
-      // No schema found, provide basic expression completions
-      connection.console.log(`No schema found, providing basic expression completions`);
-      return getBasicExpressionCompletions();
+      // No schema found — no way to produce meaningful completions.
+      // The built-in JavaScript grammar (injected by the extension) still
+      // guides typing visually.
+      connection.console.log(`No schema found; no completions.`);
+      return [];
     }
 
     // Get schema-aware completions
@@ -199,14 +268,15 @@ connection.onCompletion(
         directiveContext.directive.expression,
         directiveContext.expressionPos,
         document.uri,
-        position.line // Pass line number for scope analysis
+        position.line,
+        document.getText(),
       );
-      
+
       connection.console.log(`Found ${completions.length} schema completions`);
       return completions.map(convertToLSPCompletion);
     } catch (error) {
       connection.console.error(`Error getting schema completions: ${error}`);
-      return getBasicExpressionCompletions();
+      return [];
     }
   }
 );
@@ -215,6 +285,54 @@ connection.onCompletion(
 connection.onCompletionResolve((item: LSPCompletionItem): LSPCompletionItem => {
   // Add additional details if needed
   return item;
+});
+
+// Go-to-definition on identifiers inside directive expressions.
+connection.onDefinition(async (params) => {
+  const document = documents.get(params.textDocument.uri);
+  if (!document) return null;
+
+  const position = params.position;
+  const line = document.getText({
+    start: { line: position.line, character: 0 },
+    end: { line: position.line, character: Number.MAX_SAFE_INTEGER },
+  });
+
+  const directives = directiveParser.findDirectivesInLine(line, position.line);
+  let ctx: { directive: any; expressionPos: number } | null = null;
+  for (const d of directives) {
+    const equalsPos = line.indexOf('=', d.position.start);
+    if (equalsPos === -1) continue;
+    let pos = equalsPos + 1;
+    while (pos < line.length && /\s/.test(line[pos])) pos++;
+    if (pos >= line.length || (line[pos] !== '"' && line[pos] !== "'")) continue;
+    const quoteChar = line[pos];
+    const quoteStart = pos;
+    const quoteEnd = line.indexOf(quoteChar, quoteStart + 1);
+    if (quoteEnd === -1) continue;
+    if (position.character > quoteStart && position.character <= quoteEnd) {
+      ctx = { directive: d, expressionPos: position.character - quoteStart - 1 };
+      break;
+    }
+  }
+  if (!ctx) return null;
+
+  const schemaContext = schemaParser.findSchemaContext(document.getText(), position.line);
+  if (!schemaContext.schemaRef) return null;
+
+  const loc = await tsService.getDefinition(
+    schemaContext.schemaRef,
+    ctx.directive.expression,
+    ctx.expressionPos,
+    document.uri,
+    position.line,
+    document.getText(),
+  );
+  if (!loc) return null;
+  return {
+    uri: loc.uri,
+    range: loc.range,
+  };
 });
 
 // Handle semantic tokens requests
@@ -296,11 +414,20 @@ async function getSchemaCompletions(
   expression: string,
   cursorPos: number,
   documentUri: string,
-  currentLine?: number
+  currentLine?: number,
+  documentText?: string,
 ): Promise<CompletionItem[]> {
   switch (schemaRef.type) {
     case 'typescript':
-      return await tsService.getCompletions(schemaRef, expression, cursorPos, documentUri, currentLine);
+    case 'global-type':
+      return await tsService.getCompletions(
+        schemaRef,
+        expression,
+        cursorPos,
+        documentUri,
+        currentLine,
+        documentText,
+      );
     case 'jsdoc':
       return await tsService.getJSDocCompletions(schemaRef, expression, cursorPos, documentUri);
     case 'json':
@@ -312,48 +439,21 @@ async function getSchemaCompletions(
   }
 }
 
-function getBasicDirectiveCompletions(): LSPCompletionItem[] {
-  const directives = [
-    'vln-text',
-    'vln-input',
-    'vln-if',
-    'vln-class',
-    'vln-attr',
-    'vln-on',
-    'vln-loop',
-    'vln-fragment'
-  ];
+function getDirectiveCompletions(
+  ctx: { tagName: string; siblings: string[] } | null,
+): LSPCompletionItem[] {
+  const list = ctx
+    ? directivesValidAt({ tagName: ctx.tagName, siblingAttributes: ctx.siblings })
+    : VELIN_DIRECTIVE_META;
 
-  return directives.map(directive => ({
-    label: directive,
+  return list.map((meta) => ({
+    label: meta.name + (meta.hasSubkey ? ':' : ''),
     kind: LSPCompletionItemKind.Keyword,
-    data: directive,
-    detail: `Velin directive: ${directive}`,
-    documentation: getDirectiveDocumentation(directive)
+    data: meta.name,
+    detail: meta.usage || `Velin directive: ${meta.name}`,
+    documentation: meta.documentation,
+    insertText: meta.hasSubkey ? `${meta.name}:` : meta.name,
   }));
-}
-
-function getBasicExpressionCompletions(): LSPCompletionItem[] {
-  return [
-    {
-      label: 'this',
-      kind: LSPCompletionItemKind.Variable,
-      data: 'this',
-      detail: 'Reference to the bound state object'
-    },
-    {
-      label: 'user',
-      kind: LSPCompletionItemKind.Variable,
-      data: 'user',
-      detail: 'User object (from schema)'
-    },
-    {
-      label: 'count',
-      kind: LSPCompletionItemKind.Variable,
-      data: 'count',
-      detail: 'Count property (example)'
-    }
-  ];
 }
 
 function getJSONSchemaCompletions(schemaRef: any, expression: string, cursorPos: number): CompletionItem[] {
@@ -367,17 +467,7 @@ function getInlineSchemaCompletions(schemaRef: any, expression: string, cursorPo
 }
 
 function getDirectiveDocumentation(directive: string): string {
-  const docs: Record<string, string> = {
-    'vln-text': 'Sets the text content of an element. Usage: vln-text="expression"',
-    'vln-input': 'Creates two-way data binding for form controls. Usage: vln-input="propertyName"',
-    'vln-if': 'Conditionally shows/hides element based on expression. Usage: vln-if="condition"',
-    'vln-class': 'Dynamically sets CSS classes. Usage: vln-class="classExpression"',
-    'vln-attr': 'Sets HTML attributes dynamically. Usage: vln-attr:attrName="value"',
-    'vln-on': 'Binds event handlers. Usage: vln-on:eventName="handler"',
-    'vln-loop': 'Repeats element for each array item. Usage: vln-loop:item="arrayExpression"',
-    'vln-fragment': 'Renders template by ID. Usage: vln-fragment="templateId"'
-  };
-  return docs[directive] || '';
+  return findDirectiveMeta(directive)?.documentation ?? '';
 }
 
 function convertToLSPCompletion(completion: CompletionItem): LSPCompletionItem {

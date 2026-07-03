@@ -8,13 +8,13 @@
     "shared"
   ],
   "scripts": {
-    "build": "npm run build -w lsp-server && npm run build -w vscode-extension",
-    "clean": "npm run clean -w lsp-server && npm run clean -w vscode-extension",
+    "build": "npm run build -w shared && npm run build -w lsp-server && npm run build -w vscode-extension",
+    "clean": "npm run clean -w shared && npm run clean -w lsp-server && npm run clean -w vscode-extension",
+    "test": "npm run test -w shared && npm run test -w lsp-server && npm run test -w vscode-extension",
     "dev:lsp": "npm run dev -w lsp-server",
     "dev:vscode": "npm run dev -w vscode-extension",
     "package:vscode": "npm run package -w vscode-extension",
-    "publish:vscode": "npm run publish -w vscode-extension",
-    "test": "echo 'Running workspace build test...' && npm run build"
+    "publish:vscode": "npm run publish -w vscode-extension"
   },
   "devDependencies": {
     "typescript": "^5.8.3",

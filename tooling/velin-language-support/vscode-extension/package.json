@@ -27,31 +27,37 @@
     "typescript"
   ],
   "main": "./dist/extension.js",
+  "activationEvents": [
+    "onLanguage:html"
+  ],
   "contributes": {
-    "languages": [
-      {
-        "id": "html-velin",
-        "aliases": ["HTML with Velin", "html-velin"],
-        "extensions": [".html"],
-        "configuration": "./language-configuration.json"
-      }
-    ],
     "grammars": [
       {
-        "language": "html-velin",
-        "scopeName": "text.html.velin",
-        "path": "./syntaxes/html-velin.tmLanguage.json",
+        "scopeName": "html-velin.injection",
+        "path": "./syntaxes/html-velin.injection.json",
+        "injectTo": [
+          "text.html.basic",
+          "text.html.derivative"
+        ],
         "embeddedLanguages": {
-          "source.js": "javascript",
-          "source.ts": "typescript"
+          "meta.embedded.expression.velin": "javascript"
         }
       }
     ],
     "configurationDefaults": {
       "editor.language.brackets": [
-        ["{", "}"],
-        ["[", "]"],
-        ["(", ")"]
+        [
+          "{",
+          "}"
+        ],
+        [
+          "[",
+          "]"
+        ],
+        [
+          "(",
+          ")"
+        ]
       ]
     },
     "configuration": {
@@ -65,7 +71,11 @@
         },
         "velin.trace.server": {
           "type": "string",
-          "enum": ["off", "messages", "verbose"],
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
           "default": "off",
           "description": "Trace level for the language server"
         }
@@ -79,18 +89,23 @@
     ]
   },
   "scripts": {
-    "build": "tsc -p ./",
-    "dev": "tsc -watch -p ./",
-    "package": "vsce package",
-    "publish": "vsce publish",
-    "pretest": "npm run build",
-    "test": "node ./dist/test/runTest.js"
+    "typecheck": "tsc -p ./ --noEmit",
+    "build": "npm run typecheck && node esbuild.mjs",
+    "dev": "node esbuild.mjs --watch",
+    "package": "npm run build && vsce package",
+    "publish": "npm run build && vsce publish",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "devDependencies": {
-    "@types/vscode": "^1.90.0",
     "@types/node": "^18.0.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.1.1",
+    "esbuild": "^0.28.1",
     "typescript": "^5.8.3",
-    "@vscode/vsce": "^3.1.1"
+    "vitest": "^3.2.6",
+    "vscode-oniguruma": "^2.0.1",
+    "vscode-textmate": "^9.3.2"
   },
   "dependencies": {
     "@velin/lsp-server": "*",

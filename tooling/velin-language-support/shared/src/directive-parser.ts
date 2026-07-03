@@ -7,14 +7,18 @@ export class DirectiveParser {
   findDirectivesInLine(line: string, lineNumber: number): VelinDirective[] {
     const directives: VelinDirective[] = [];
     
-    // Match vln-* attributes with their expressions
-    // Pattern: vln-text="expression" or vln-on:click="expression"
-    const directivePattern = /(vln-[\w-]+(?::\w+)?)\s*=\s*["']([^"']*?)["']/g;
-    
+    // Match vln-* attributes with their expressions.
+    // Pattern: vln-text="expression" or vln-on:click="expression".
+    // HTML forbids the matching quote inside an attribute value (escaped as
+    // &quot; / &apos;), but the *other* quote is legal — so match the outer
+    // quote and read until its exact partner.
+    // (?<![-\w]) prevents `data-vln-text` from matching as `vln-text`.
+    const directivePattern = /(?<![-\w])(vln-[\w-]+(?::[\w-]+)?)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
+
     let match;
     while ((match = directivePattern.exec(line)) !== null) {
       const fullAttribute = match[1];
-      const expression = match[2];
+      const expression = match[2] !== undefined ? match[2] : match[3] || '';
       const startPos = match.index;
       const endPos = match.index + match[0].length;
       

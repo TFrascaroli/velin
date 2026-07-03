@@ -54,15 +54,6 @@ export enum CompletionItemKind {
   Reference = 18
 }
 
-export const VELIN_DIRECTIVES = [
-  'vln-text',
-  'vln-input', 
-  'vln-if',
-  'vln-class',
-  'vln-attr',
-  'vln-on',
-  'vln-loop',
-  'vln-fragment'
-] as const;
-
-export type VelinDirectiveName = typeof VELIN_DIRECTIVES[number];
+// Re-exports kept for backwards compatibility; canonical source is ./directives.
+export { VELIN_DIRECTIVES, VELIN_DIRECTIVE_META, findDirectiveMeta, isValidDirectiveName } from './directives';
+export type { VelinDirectiveName, DirectiveMeta } from './directives';
