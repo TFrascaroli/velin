@@ -92,23 +92,23 @@
     "typecheck": "tsc -p ./ --noEmit",
     "build": "npm run typecheck && node esbuild.mjs",
     "dev": "node esbuild.mjs --watch",
-    "package": "npm run build && vsce package",
-    "publish": "npm run build && vsce publish",
+    "package": "npm run build && vsce package --no-dependencies",
+    "publish:vsce": "npm run build && vsce publish --no-dependencies",
+    "publish:ovsx": "npm run build && ovsx publish --no-dependencies",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "devDependencies": {
     "@types/node": "^18.0.0",
     "@types/vscode": "^1.90.0",
+    "@velin/lsp-server": "*",
     "@vscode/vsce": "^3.1.1",
     "esbuild": "^0.28.1",
+    "ovsx": "^0.10.1",
     "typescript": "^5.8.3",
     "vitest": "^3.2.6",
+    "vscode-languageclient": "^9.0.1",
     "vscode-oniguruma": "^2.0.1",
     "vscode-textmate": "^9.3.2"
-  },
-  "dependencies": {
-    "@velin/lsp-server": "*",
-    "vscode-languageclient": "^9.0.1"
   }
 }
