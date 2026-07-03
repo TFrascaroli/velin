@@ -61,6 +61,11 @@ describe('SchemaParser.parseSchemaComment', () => {
     expect(ref).toEqual({ type: 'inline-script' });
   });
 
+  it('parses @velin-schema: script#id (targeted-script mode)', () => {
+    const ref = p.parseSchemaComment('<!-- @velin-schema: script#state -->');
+    expect(ref).toEqual({ type: 'inline-script', typeName: 'state' });
+  });
+
   it('returns null for unrelated comments', () => {
     expect(p.parseSchemaComment('<!-- just a comment -->')).toBeNull();
     expect(p.parseSchemaComment('<!-- @other-schema: foo.ts -->')).toBeNull();
@@ -116,6 +121,34 @@ describe('SchemaParser.findSchemaContext', () => {
     expect(ctx.schemaRef?.type).toBe('inline-script');
     expect(ctx.schemaRef?.source).toContain('Velin.bind');
     expect(ctx.schemaRef?.sourceOffset).toBeGreaterThan(0);
+  });
+
+  it('picks the <script> by id when the comment is `script#id`', () => {
+    const doc = [
+      '<!-- @velin-schema: script#state -->',
+      '<div vln-text="user.name"></div>',
+      '<script id="other">const noise = {};</script>',
+      '<script id="state">',
+      '  const state = { user: { name: "x" } };',
+      '  Velin.bind(document.body, state);',
+      '</script>',
+    ].join('\n');
+    const ctx = p.findSchemaContext(doc, 1);
+    expect(ctx.schemaRef?.type).toBe('inline-script');
+    expect(ctx.schemaRef?.typeName).toBe('state');
+    expect(ctx.schemaRef?.source).toContain('Velin.bind');
+    expect(ctx.schemaRef?.source).not.toContain('noise');
+  });
+
+  it('records linkedPath when the targeted <script> has a src attribute', () => {
+    const doc = [
+      '<!-- @velin-schema: script#state -->',
+      '<script id="state" src="./state.js"></script>',
+    ].join('\n');
+    const ctx = p.findSchemaContext(doc, 0);
+    expect(ctx.schemaRef?.type).toBe('inline-script');
+    expect(ctx.schemaRef?.linkedPath).toBe('./state.js');
+    expect(ctx.schemaRef?.source).toBeUndefined();
   });
 
   it('prefers the more recent schema comment when multiple exist', () => {

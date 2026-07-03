@@ -42,6 +42,18 @@ or inline:
 </script>
 ```
 
+or point at a linked script by id — the server reads the referenced file
+and runs the same `Velin.bind()` inference against it:
+
+```html
+<!-- @velin-schema: script#state -->
+<div id="app">…</div>
+<script id="state" src="./state.js"></script>
+```
+
+Bare `script` picks the nearest `<script>` tag; `script#id` selects one
+explicitly, which is required when several script tags coexist.
+
 Global bare-name references (`@velin-schema: AppState`) trigger a
 project-wide type search.
 

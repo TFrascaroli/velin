@@ -3,10 +3,14 @@
 export interface VelinSchemaReference {
   type: 'typescript' | 'jsdoc' | 'json' | 'inline' | 'global-type' | 'inline-script';
   source?: string; // File path, inline definition, or (for inline-script) the script body
-  typeName?: string; // For TypeScript/JSDoc references
+  typeName?: string; // For TypeScript/JSDoc references; for inline-script, the target <script id="..."> if named
   // For inline-script: offset in the enclosing HTML document where `source` begins.
   // Used to translate declaration positions back to HTML coordinates for F12.
   sourceOffset?: number;
+  // For inline-script pointing at `<script src="...">`: absolute path to the
+  // linked file. When set, F12 targets that file and inline offset mapping is
+  // skipped.
+  linkedPath?: string;
 }
 
 export interface VelinDirective {

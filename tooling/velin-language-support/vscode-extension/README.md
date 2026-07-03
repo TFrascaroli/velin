@@ -30,7 +30,7 @@ Add a comment above the region that binds to a Velin state:
 </div>
 ```
 
-or infer directly from the inline `<script>`:
+or infer directly from a `<script>` — inline or linked, targeted by id:
 
 ```html
 <!-- @velin-schema: script -->
@@ -39,6 +39,9 @@ or infer directly from the inline `<script>`:
   const state = { user: { name: 'Alice' } };
   Velin.bind(document.getElementById('app'), state);
 </script>
+
+<!-- @velin-schema: script#state -->
+<script id="state" src="./state.js"></script>
 ```
 
 Global type references also work — `@velin-schema: AppState` will search

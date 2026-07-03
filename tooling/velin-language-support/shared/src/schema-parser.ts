@@ -11,10 +11,15 @@ export class SchemaParser {
     if (typeMatch) {
       const typeStr = typeMatch[4].trim();
 
-      // Inline-script mode: infer the state shape from a <script> block in the
-      // same document. findSchemaContext locates the block and fills in source.
+      // Script-inference mode: infer the state shape from a <script> block in
+      // the same document. `script` picks the nearest tag; `script#id` selects
+      // the tag with that HTML id, which is required when several <script>s
+      // coexist or the target is a linked file.
       if (typeStr === 'script') {
         return { type: 'inline-script' };
+      }
+      if (/^script#[\w-]+$/.test(typeStr)) {
+        return { type: 'inline-script', typeName: typeStr.slice('script#'.length) };
       }
 
       // Handle path#TypeName format
@@ -65,10 +70,19 @@ export class SchemaParser {
       const schemaRef = this.parseSchemaComment(lines[i]);
       if (schemaRef) {
         if (schemaRef.type === 'inline-script') {
-          const script = this.findInlineScript(documentText, lines, i);
+          const script = this.findScriptTag(
+            documentText,
+            lines,
+            i,
+            schemaRef.typeName,
+          );
           if (script) {
-            schemaRef.source = script.body;
-            schemaRef.sourceOffset = script.offset;
+            if (script.linkedPath) {
+              schemaRef.linkedPath = script.linkedPath;
+            } else {
+              schemaRef.source = script.body;
+              schemaRef.sourceOffset = script.offset;
+            }
           }
         }
         // Find the end of this schema's scope
@@ -112,16 +126,17 @@ export class SchemaParser {
   }
 
   /**
-   * Find a <script> block whose body should be treated as the schema source.
-   * Prefers the last block that appears before the schema comment; falls back
-   * to the last block after it (common when the state lives at the bottom of
-   * the file).
+   * Find a <script> tag to treat as the schema source. When `id` is given,
+   * matches by `id=` attribute — required when several script tags coexist or
+   * the target is a linked file. Without an id, prefers the nearest inline
+   * block before the comment, then after.
    */
-  private findInlineScript(
+  private findScriptTag(
     documentText: string,
     lines: string[],
     commentLine: number,
-  ): { body: string; offset: number } | null {
+    id?: string,
+  ): ScriptMatch | null {
     // Compute the absolute offset of the schema comment line.
     let commentOffset = 0;
     for (let k = 0; k < commentLine; k++) commentOffset += lines[k].length + 1;
@@ -132,22 +147,59 @@ export class SchemaParser {
     const scrubbed = documentText.replace(/<!--[\s\S]*?-->/g, (m) =>
       m.replace(/[^\n]/g, ' '),
     );
-    const re = /<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi;
+    const re = /<script((?:\s[^>]*)?)>([\s\S]*?)<\/script>/gi;
     let match: RegExpExecArray | null;
-    let before: { body: string; offset: number } | null = null;
-    let after: { body: string; offset: number } | null = null;
+    let before: ScriptMatch | null = null;
+    let after: ScriptMatch | null = null;
     while ((match = re.exec(scrubbed))) {
-      const body = match[1];
-      if (!body.trim()) continue; // skip external <script src="..."> and empty blocks
+      const attrs = parseAttrs(match[1]);
+      if (id !== undefined) {
+        if (attrs.id !== id) continue;
+      }
+
       const openTagEnd = scrubbed.indexOf('>', match.index) + 1;
-      // Read the real body from the un-scrubbed source so nothing is missing.
-      const bodyEnd = openTagEnd + body.length;
-      const entry = { body: documentText.slice(openTagEnd, bodyEnd), offset: openTagEnd };
+      let entry: ScriptMatch;
+      if (attrs.src) {
+        entry = { linkedPath: attrs.src };
+      } else {
+        const body = match[2];
+        if (!body.trim()) continue; // empty inline block
+        const bodyEnd = openTagEnd + body.length;
+        entry = {
+          body: documentText.slice(openTagEnd, bodyEnd),
+          offset: openTagEnd,
+        };
+      }
+
+      // With an explicit id there's exactly one match — return immediately.
+      if (id !== undefined) return entry;
+
       if (match.index < commentOffset) before = entry;
       else if (!after) after = entry;
     }
     return before ?? after;
   }
+}
+
+type ScriptMatch =
+  | { body: string; offset: number; linkedPath?: undefined }
+  | { linkedPath: string; body?: undefined; offset?: undefined };
+
+/**
+ * Parse a run of HTML attributes into a name→value map. Only extracts the
+ * subset we care about (id, src). Values are unquoted.
+ */
+function parseAttrs(attrRun: string): { id?: string; src?: string } {
+  const out: { id?: string; src?: string } = {};
+  const re = /(\w[\w-]*)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(attrRun))) {
+    const name = m[1].toLowerCase();
+    const val = m[2] ?? m[3] ?? m[4];
+    if (name === 'id') out.id = val;
+    else if (name === 'src') out.src = val;
+  }
+  return out;
 }
 
 export default SchemaParser;

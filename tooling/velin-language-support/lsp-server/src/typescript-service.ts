@@ -226,8 +226,8 @@ export class TypeScriptService {
     const workspaceRoot = this.getWorkspaceRoot(documentUri);
 
     if (schemaRef.type === 'inline-script') {
-      if (!schemaRef.source) return null;
-      const compiled = this.compileInlineScript(documentUri, schemaRef.source);
+      if (!schemaRef.source && !schemaRef.linkedPath) return null;
+      const compiled = this.compileInlineScript(documentUri, schemaRef);
       if (!compiled?.rootType) return null;
       return { program: compiled.program, rootType: compiled.rootType };
     }
@@ -279,8 +279,8 @@ export class TypeScriptService {
     currentLine?: number,
     documentText?: string,
   ): Promise<CompletionItem[]> {
-    if (!schemaRef.source) return [];
-    const compiled = this.compileInlineScript(documentUri, schemaRef.source);
+    if (!schemaRef.source && !schemaRef.linkedPath) return [];
+    const compiled = this.compileInlineScript(documentUri, schemaRef);
     if (!compiled?.rootType) return [];
 
     const expressionContext = this.parseExpression(expression, cursorPos);
@@ -626,19 +626,32 @@ export class TypeScriptService {
   }
 
   /**
-   * Compile the body of an inline `<script>` block and locate the state
-   * expression to use as the root type. Prefers the second argument of a
-   * `Velin.bind(el, state)` call; falls back to the first top-level object
-   * literal declaration.
+   * Compile a <script>'s contents and locate the state expression to use as
+   * the root type. Handles two flavours:
+   *
+   * - inline: schemaRef.source is the script body. We inject a synthetic file
+   *   with a `declare const Velin` prelude so `Velin.bind(...)` parses.
+   * - linked: schemaRef.linkedPath is a src attribute value; we resolve it
+   *   against the HTML document and compile the referenced file directly.
+   *
+   * In both cases, once we have a program we scan for `Velin.bind(el, state)`
+   * and read the type of the second argument. Falls back to the first
+   * top-level object literal.
    */
   private compileInlineScript(
     documentUri: string,
-    scriptBody: string,
+    schemaRef: VelinSchemaReference,
   ): { program: ts.Program; rootType: ts.Type } | null {
-    const cacheKey = `inline:${documentUri}:${hashString(scriptBody)}`;
+    const linked = schemaRef.linkedPath
+      ? this.resolveLinkedScript(documentUri, schemaRef.linkedPath)
+      : null;
+
+    const filename = linked?.absPath ?? INLINE_SCRIPT_FILENAME;
+    const scriptBody = linked?.body ?? schemaRef.source ?? '';
+    const cacheKey = `inline:${filename}:${hashString(scriptBody)}`;
     if (this.programs.has(cacheKey)) {
       const program = this.programs.get(cacheKey)!;
-      const sf = program.getSourceFile(INLINE_SCRIPT_FILENAME);
+      const sf = program.getSourceFile(filename);
       if (sf) {
         const rootType = findInlineRootType(program, sf);
         if (rootType) return { program, rootType };
@@ -656,39 +669,59 @@ export class TypeScriptService {
       strict: false,
     };
 
-    // Prepend a minimal declaration for the `Velin` global so `Velin.bind(...)`
-    // parses cleanly and we can locate the call.
-    const prelude = `declare const Velin: { bind(el: unknown, state: any): unknown };\n`;
+    // For inline scripts, prepend a `declare const Velin` prelude so
+    // `Velin.bind(...)` parses even without the runtime. Linked files are
+    // real modules and can import their own types — no prelude needed.
+    const prelude = linked
+      ? ''
+      : `declare const Velin: { bind(el: unknown, state: any): unknown };\n`;
     const fullSource = prelude + scriptBody;
     const sourceFile = ts.createSourceFile(
-      INLINE_SCRIPT_FILENAME,
+      filename,
       fullSource,
       ts.ScriptTarget.ES2020,
       true,
-      ts.ScriptKind.TS,
+      filename.endsWith('.js') ? ts.ScriptKind.JS : ts.ScriptKind.TS,
     );
 
     const host = ts.createCompilerHost(options, true);
     const originalGetSourceFile = host.getSourceFile.bind(host);
     host.getSourceFile = (fileName, langVersion, onErr, shouldCreate) => {
-      if (fileName === INLINE_SCRIPT_FILENAME) return sourceFile;
+      if (fileName === filename) return sourceFile;
       return originalGetSourceFile(fileName, langVersion, onErr, shouldCreate);
     };
     host.fileExists = (fileName) =>
-      fileName === INLINE_SCRIPT_FILENAME || ts.sys.fileExists(fileName);
+      fileName === filename || ts.sys.fileExists(fileName);
     host.readFile = (fileName) =>
-      fileName === INLINE_SCRIPT_FILENAME ? fullSource : ts.sys.readFile(fileName);
+      fileName === filename ? fullSource : ts.sys.readFile(fileName);
 
-    const program = ts.createProgram(
-      [INLINE_SCRIPT_FILENAME],
-      options,
-      host,
-    );
+    const program = ts.createProgram([filename], options, host);
     this.programs.set(cacheKey, program);
 
     const rootType = findInlineRootType(program, sourceFile);
     if (!rootType) return null;
     return { program, rootType };
+  }
+
+  /**
+   * Resolve a linked script's src against the HTML document's directory and
+   * read it from disk. Returns null if the file doesn't exist or is remote
+   * (http/https URLs — nothing to inspect statically).
+   */
+  private resolveLinkedScript(
+    documentUri: string,
+    src: string,
+  ): { absPath: string; body: string } | null {
+    if (/^https?:/i.test(src) || src.startsWith('//')) return null;
+    try {
+      const docPath = URI.parse(documentUri).fsPath;
+      const absPath = path.resolve(path.dirname(docPath), src);
+      if (!fs.existsSync(absPath)) return null;
+      const body = fs.readFileSync(absPath, 'utf8');
+      return { absPath, body };
+    } catch {
+      return null;
+    }
   }
 
   private analyzeScopeAtLine(

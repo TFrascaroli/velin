@@ -270,6 +270,41 @@ describe('TypeScriptService.getCompletions (inline-script)', () => {
   });
 });
 
+describe('TypeScriptService.getCompletions (linked script)', () => {
+  const svc = new TypeScriptService();
+
+  it('reads a linked .js file and infers the Velin.bind state', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'velin-linked-'));
+    const jsPath = path.join(dir, 'state.js');
+    fs.writeFileSync(
+      jsPath,
+      `const state = {
+         user: { name: 'x', email: 'y' },
+         users: [{ id: 1 }],
+         greet() {},
+       };
+       Velin.bind(document.body, state);`,
+      'utf8',
+    );
+    const htmlUri = URI.file(path.join(dir, 'index.html')).toString();
+
+    const inlineSchema = {
+      type: 'inline-script' as const,
+      typeName: 'state',
+      linkedPath: './state.js',
+    };
+    const expr = 'user.';
+    const items = await svc.getInlineScriptCompletions(
+      inlineSchema,
+      expr,
+      expr.length,
+      htmlUri,
+    );
+    const labels = items.map((i) => i.label);
+    expect(labels).toEqual(expect.arrayContaining(['name', 'email']));
+  });
+});
+
 describe('TypeScriptService.getCompletions (loop scope)', () => {
   const svc = new TypeScriptService();
 
