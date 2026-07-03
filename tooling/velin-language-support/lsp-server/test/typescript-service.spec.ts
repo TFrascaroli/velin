@@ -273,6 +273,35 @@ describe('TypeScriptService.getCompletions (inline-script)', () => {
 describe('TypeScriptService.getCompletions (linked script)', () => {
   const svc = new TypeScriptService();
 
+  it('reads a bare-path linked file (no <script> in HTML needed)', async () => {
+    // Path comes straight from the schema comment, not from a <script src>.
+    // Useful when the runtime bundle differs from the compile-time source.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'velin-bare-'));
+    const tsPath = path.join(dir, 'app.ts');
+    fs.writeFileSync(
+      tsPath,
+      `interface AppState { count: number; name: string; }
+       declare const Velin: { bind(el: unknown, s: AppState): unknown };
+       const state: AppState = { count: 0, name: 'x' };
+       Velin.bind(document.body, state);`,
+      'utf8',
+    );
+    const htmlUri = URI.file(path.join(dir, 'index.html')).toString();
+
+    const inlineSchema = {
+      type: 'inline-script' as const,
+      linkedPath: './app.ts',
+    };
+    const items = await svc.getInlineScriptCompletions(
+      inlineSchema,
+      '',
+      0,
+      htmlUri,
+    );
+    const labels = items.map((i) => i.label);
+    expect(labels).toEqual(expect.arrayContaining(['count', 'name']));
+  });
+
   it('reads a linked .js file and infers the Velin.bind state', async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'velin-linked-'));
     const jsPath = path.join(dir, 'state.js');

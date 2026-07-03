@@ -66,6 +66,24 @@ describe('SchemaParser.parseSchemaComment', () => {
     expect(ref).toEqual({ type: 'inline-script', typeName: 'state' });
   });
 
+  it('parses a bare JS/TS path as an inline-script linkedPath', () => {
+    // The runtime <script src="..."> may point at a bundled asset — a bare
+    // path in the comment lets the user pick the "reachable at compile time"
+    // source instead.
+    expect(p.parseSchemaComment('<!-- @velin-schema: ./src/app.ts -->')).toEqual({
+      type: 'inline-script',
+      linkedPath: './src/app.ts',
+    });
+    expect(p.parseSchemaComment('<!-- @velin-schema: ./state.js -->')).toEqual({
+      type: 'inline-script',
+      linkedPath: './state.js',
+    });
+    expect(p.parseSchemaComment('<!-- @velin-schema: ./state.mjs -->')).toEqual({
+      type: 'inline-script',
+      linkedPath: './state.mjs',
+    });
+  });
+
   it('returns null for unrelated comments', () => {
     expect(p.parseSchemaComment('<!-- just a comment -->')).toBeNull();
     expect(p.parseSchemaComment('<!-- @other-schema: foo.ts -->')).toBeNull();

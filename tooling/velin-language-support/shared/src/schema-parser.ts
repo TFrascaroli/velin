@@ -54,6 +54,17 @@ export class SchemaParser {
           source: typeStr
         };
       }
+
+      // Bare path to a JS/TS module — run Velin.bind() inference against it.
+      // This is the "reachable at compile time" escape hatch: the runtime HTML
+      // may point <script src=""> at a bundled asset, but the schema comment
+      // can point directly at the source module the checker can actually read.
+      if (/\.(m?[jt]sx?|cjs)$/.test(typeStr)) {
+        return {
+          type: 'inline-script',
+          linkedPath: typeStr,
+        };
+      }
     }
 
     return null;
@@ -69,7 +80,9 @@ export class SchemaParser {
     for (let i = line; i >= 0; i--) {
       const schemaRef = this.parseSchemaComment(lines[i]);
       if (schemaRef) {
-        if (schemaRef.type === 'inline-script') {
+        if (schemaRef.type === 'inline-script' && !schemaRef.linkedPath) {
+          // Only look up a <script> tag if the comment didn't already name a
+          // file path directly (bare-path form).
           const script = this.findScriptTag(
             documentText,
             lines,

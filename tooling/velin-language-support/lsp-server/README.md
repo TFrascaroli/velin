@@ -54,6 +54,17 @@ and runs the same `Velin.bind()` inference against it:
 Bare `script` picks the nearest `<script>` tag; `script#id` selects one
 explicitly, which is required when several script tags coexist.
 
+If the runtime `<script src="">` points at a bundled asset that the
+server can't usefully read (a minified vendor bundle, a rollup output),
+name the compile-time source directly:
+
+```html
+<!-- @velin-schema: ./src/app.ts -->
+<script src="./dist/bundle.min.js"></script>
+```
+
+The comment path wins; the HTML `src` is left alone.
+
 Global bare-name references (`@velin-schema: AppState`) trigger a
 project-wide type search.
 
