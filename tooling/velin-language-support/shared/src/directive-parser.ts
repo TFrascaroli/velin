@@ -1,97 +1,56 @@
 import { VelinDirective, VELIN_DIRECTIVES } from './types';
 
+// (?<![-\w]) prevents `data-vln-text` from matching as `vln-text`.
+// Value grammar: either "…" or '…' — the *inner* quote is legal since HTML
+// forbids the matching one inside an attribute value.
+const DIRECTIVE_RE =
+  /(?<![-\w])(vln-[\w-]+(?::[\w-]+)?)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
+
 export class DirectiveParser {
-  /**
-   * Find all Velin directives in a line of text
-   */
-  findDirectivesInLine(line: string, lineNumber: number): VelinDirective[] {
-    const directives: VelinDirective[] = [];
-    
-    // Match vln-* attributes with their expressions.
-    // Pattern: vln-text="expression" or vln-on:click="expression".
-    // HTML forbids the matching quote inside an attribute value (escaped as
-    // &quot; / &apos;), but the *other* quote is legal — so match the outer
-    // quote and read until its exact partner.
-    // (?<![-\w]) prevents `data-vln-text` from matching as `vln-text`.
-    const directivePattern = /(?<![-\w])(vln-[\w-]+(?::[\w-]+)?)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
+  /** Find every Velin directive on a line, with expression span info. */
+  findDirectivesInLine(line: string, _lineNumber: number): VelinDirective[] {
+    const out: VelinDirective[] = [];
+    DIRECTIVE_RE.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = DIRECTIVE_RE.exec(line))) {
+      const attribute = m[1];
+      const expression = m[2] ?? m[3] ?? '';
+      const baseName = attribute.split(':')[0];
+      if (!VELIN_DIRECTIVES.includes(baseName as any)) continue;
 
-    let match;
-    while ((match = directivePattern.exec(line)) !== null) {
-      const fullAttribute = match[1];
-      const expression = match[2] !== undefined ? match[2] : match[3] || '';
-      const startPos = match.index;
-      const endPos = match.index + match[0].length;
-      
-      // Extract base directive name (e.g., "vln-on:click" -> "vln-on")
-      const baseName = fullAttribute.split(':')[0];
-      
-      if (this.isValidVelinDirective(baseName)) {
-        const directive = {
-          name: baseName,
-          attribute: fullAttribute,
-          expression,
-          position: {
-            start: startPos,
-            end: endPos
-          }
-        };
-        directives.push(directive);
-      }
+      const start = m.index;
+      const end = start + m[0].length;
+      // The value sits at the tail of the match, wrapped in one char of quote
+      // on each side. Derive its inner span from that invariant.
+      const expressionEnd = end - 1;
+      const expressionStart = expressionEnd - expression.length;
+
+      out.push({
+        name: baseName,
+        attribute,
+        expression,
+        position: { start, end },
+        expressionStart,
+        expressionEnd,
+      });
     }
-    
-    return directives;
+    return out;
   }
 
   /**
-   * Get the directive at a specific character position in a line
+   * If `character` sits inside a directive's expression, return the directive
+   * plus the cursor's zero-based offset within the expression.
    */
-  getDirectiveAtPosition(line: string, character: number): VelinDirective | null {
-    const directives = this.findDirectivesInLine(line, 0);
-    
-    for (const directive of directives) {
-      if (character >= directive.position.start && character <= directive.position.end) {
-        return directive;
+  isInDirectiveExpression(
+    line: string,
+    character: number,
+  ): { directive: VelinDirective; expressionPos: number } | null {
+    for (const d of this.findDirectivesInLine(line, 0)) {
+      if (character > d.expressionStart - 1 && character <= d.expressionEnd) {
+        return { directive: d, expressionPos: character - d.expressionStart };
       }
     }
-    
     return null;
-  }
-
-  /**
-   * Check if cursor is within the expression part of a directive
-   */
-  isInDirectiveExpression(line: string, character: number): { directive: VelinDirective; expressionPos: number } | null {
-    const directives = this.findDirectivesInLine(line, 0);
-    
-    for (const directive of directives) {
-      // Exact copy of the working server logic
-      const attrStart = directive.position.start;
-      const equalsPos = line.indexOf('=', attrStart);
-      if (equalsPos !== -1) {
-        let pos = equalsPos + 1;
-        while (pos < line.length && /\s/.test(line[pos])) pos++;
-        
-        if (pos < line.length && (line[pos] === '"' || line[pos] === "'")) {
-          const quoteChar = line[pos];
-          const quoteStart = pos;
-          const quoteEnd = line.indexOf(quoteChar, quoteStart + 1);
-          
-          if (quoteStart !== -1 && quoteEnd !== -1 && 
-              character > quoteStart && character <= quoteEnd) {
-            return {
-              directive,
-              expressionPos: character - quoteStart - 1
-            };
-          }
-        }
-      }
-    }
-    
-    return null;
-  }
-
-  private isValidVelinDirective(directiveName: string): boolean {
-    return VELIN_DIRECTIVES.includes(directiveName as any);
   }
 }
 

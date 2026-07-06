@@ -235,7 +235,7 @@ describe('TypeScriptService.getCompletions (inline-script)', () => {
       sourceOffset: 0,
     };
     const expr = 'user.';
-    const items = await svc.getInlineScriptCompletions(
+    const items = await svc.getCompletions(
       inlineSchema,
       expr,
       expr.length,
@@ -258,7 +258,7 @@ describe('TypeScriptService.getCompletions (inline-script)', () => {
       source: script,
       sourceOffset: 0,
     };
-    const items = await svc.getInlineScriptCompletions(
+    const items = await svc.getCompletions(
       inlineSchema,
       '',
       0,
@@ -292,7 +292,7 @@ describe('TypeScriptService.getCompletions (linked script)', () => {
       type: 'inline-script' as const,
       linkedPath: './app.ts',
     };
-    const items = await svc.getInlineScriptCompletions(
+    const items = await svc.getCompletions(
       inlineSchema,
       '',
       0,
@@ -323,7 +323,7 @@ describe('TypeScriptService.getCompletions (linked script)', () => {
       linkedPath: './state.js',
     };
     const expr = 'user.';
-    const items = await svc.getInlineScriptCompletions(
+    const items = await svc.getCompletions(
       inlineSchema,
       expr,
       expr.length,
@@ -331,6 +331,53 @@ describe('TypeScriptService.getCompletions (linked script)', () => {
     );
     const labels = items.map((i) => i.label);
     expect(labels).toEqual(expect.arrayContaining(['name', 'email']));
+  });
+});
+
+describe('TypeScriptService.getCompletions (nested loop scope)', () => {
+  const svc = new TypeScriptService();
+
+  it('resolves vln-loop:o="u.orders" through the parent loop var', async () => {
+    // Regression for P0.7: elementTypeOfProperty used to receive "u.orders"
+    // as a single property name and fail to resolve. The chain resolver must
+    // walk `u` (a loop-scope var) and then `.orders`.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'velin-nested-'));
+    const schemaPath = path.join(dir, 'State.ts');
+    fs.writeFileSync(
+      schemaPath,
+      `export interface State {
+         users: Array<{
+           id: string;
+           orders: Array<{ total: number; sku: string }>;
+         }>;
+       }`,
+      'utf8',
+    );
+
+    const html = [
+      '<!-- @velin-schema: ./State.ts#State -->',
+      '<div vln-loop:u="users">',
+      '  <div vln-loop:o="u.orders">',
+      '    <span vln-text="o."></span>',
+      '  </div>',
+      '</div>',
+    ].join('\n');
+    const htmlPath = path.join(dir, 'index.html');
+    fs.writeFileSync(htmlPath, html, 'utf8');
+    const htmlUri = URI.file(htmlPath).toString();
+
+    const nestedSchema = {
+      type: 'typescript' as const,
+      source: './State.ts',
+      typeName: 'State',
+    };
+    const expr = 'o.';
+    const items = await svc.getCompletions(
+      nestedSchema, expr, expr.length, htmlUri, 3, html,
+    );
+    const labels = items.map((i) => i.label);
+    expect(labels).toEqual(expect.arrayContaining(['total', 'sku']));
+    expect(labels).not.toContain('orders');
   });
 });
 

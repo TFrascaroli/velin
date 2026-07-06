@@ -21,6 +21,10 @@ export interface VelinDirective {
     start: number;
     end: number;
   };
+  /** Char index of the first char of the value (right after the opening quote). */
+  expressionStart: number;
+  /** Char index of the closing quote (exclusive end of the value). */
+  expressionEnd: number;
 }
 
 export interface VelinSchemaContext {

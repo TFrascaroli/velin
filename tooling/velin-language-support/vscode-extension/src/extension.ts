@@ -26,9 +26,10 @@ export function activate(context: vscode.ExtensionContext) {
   const clientOptions: LanguageClientOptions = {
     documentSelector: [{ scheme: 'file', language: 'html' }],
     synchronize: {
+      // Only source files whose contents feed the TS type resolver need to
+      // invalidate the program cache. HTML edits and JSON files don't.
       fileEvents: [
-        vscode.workspace.createFileSystemWatcher('**/*.{ts,js,json}'),
-        vscode.workspace.createFileSystemWatcher('**/*.html'),
+        vscode.workspace.createFileSystemWatcher('**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}'),
       ],
       // Forward velin.* setting changes to the server via
       // `workspace/didChangeConfiguration`. No restart needed.
@@ -98,5 +99,11 @@ function updateStatus(
 }
 
 export function deactivate(): Thenable<void> | undefined {
-  return client?.stop();
+  if (!client) return undefined;
+  // Cap shutdown at 5s. If the server hangs (e.g. inside a TS program dispose)
+  // we don't want to block VS Code's reload indefinitely.
+  return Promise.race([
+    client.stop(),
+    new Promise<void>((resolve) => setTimeout(resolve, 5000)),
+  ]);
 }
