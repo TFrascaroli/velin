@@ -4,7 +4,7 @@ import setupVelinStd from "../../../src/velin-standard";
 
 describe("Performance Backstops", () => {
   beforeEach(() => {
-    Velin.ø__updateCounter = 0;
+    (window as any).__VELIN_DEVTOOLS_HOOK__.stats.updateCounter = 0;
     // Register standard plugins
     setupVelinStd(Velin);
   });
@@ -17,7 +17,7 @@ describe("Performance Backstops", () => {
     Velin.bind(root, { count: 1 });
     
     // Should be low and stable
-    expect(Velin.ø__updateCounter).toBeLessThan(10);
+    expect((window as any).__VELIN_DEVTOOLS_HOOK__.stats.updateCounter).toBeLessThan(10);
   });
 
   it("should have linear effect growth for complex trees", () => {
@@ -32,11 +32,11 @@ describe("Performance Backstops", () => {
     Velin.bind(root, { count: 1 });
     
     // Triggering one change should only affect nodes bound to that prop
-    Velin.ø__updateCounter = 0;
+    (window as any).__VELIN_DEVTOOLS_HOOK__.stats.updateCounter = 0;
     Velin.ø__internal.boundState.root.state.count = 2;
     Velin.ø__internal.triggerEffects('root.count', Velin.ø__internal.boundState.root);
     
     // Each of the 20 nodes should have 1 effect triggered.
-    expect(Velin.ø__updateCounter).toBe(20);
+    expect((window as any).__VELIN_DEVTOOLS_HOOK__.stats.updateCounter).toBe(20);
   });
 });

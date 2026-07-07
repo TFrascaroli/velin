@@ -1,6 +1,12 @@
 /// <reference path="./global.d.ts" />
 // @ts-check
 
+// The dev hook lives in a separate module. Under __DEV__=false the entire
+// dynamic-import branch below folds away and esbuild drops the module —
+// static named imports would still shift the minifier's identifier budget,
+// so the require lives inside the guarded branch.
+// eslint-disable-next-line no-var
+
 /**
  * @typedef {Object} DepCapture
  * @property {boolean} capturingDeps Whether dependencies are being captured
@@ -295,6 +301,18 @@ const pluginStates = new WeakMap();
 /** @type {{root?: ReactiveState}} */
 const boundState = { root: undefined };
 
+if (__DEV__) {
+  // eslint-disable-next-line
+  var { createDevHook, DEBUG_PATH_RING } = require("./velin-devhook.js");
+  // eslint-disable-next-line no-var
+  var hook = createDevHook();
+  hook.plugins = plugins;
+  hook.pluginStates = pluginStates;
+  if (typeof window !== "undefined") {
+    /** @type {any} */ (window).__VELIN_DEVTOOLS_HOOK__ = hook;
+  }
+}
+
 /**
  *
  * @param {Array} arr
@@ -462,7 +480,10 @@ function buildChildContext(parentState, init) {
       return ctx;
     },
     /** @param {Node} node */
-    processNode(node) { processNode(node, childState); },
+    processNode(node) {
+      if (__DEV__) hook.ø__registerStateNode(childState, node);
+      processNode(node, childState);
+    },
     /** @param {Node=} node */
     cleanup(node) { cleanupState(parentState, childState, node); },
     /** @param {string} prop */
@@ -519,6 +540,7 @@ function processPlugin(
   nodeState[stateKey] = {};
 
   const compiledExpression = compile(expr);
+  if (__DEV__) hook.ø__emit({ kind: "compile", expr });
   nodeState[stateKey + "__ø__exprAST"] = compiledExpression;
   if (!nodeState["ø__originalNode"]) {
     nodeState["ø__originalNode"] = node.cloneNode(true);
@@ -541,6 +563,7 @@ function processPlugin(
           attributeValue,
         });
       }
+      if (__DEV__) hook.ø__emit({ kind: "plugin", name: plugin.name, node, expr, subkey, phase: "destroy" });
       nodeState[stateKey] = null;
       nodeState[stateKey + "__ø__exprAST"] = null;
       nodeState[stateKey + "__ø__lastTriggerID"] = null;
@@ -565,8 +588,10 @@ function processPlugin(
           })
         : null;
     try {
+      if (__DEV__) hook.ø__emit({ kind: "plugin", name: plugin.name, node, expr, subkey, phase: "track" });
       track();
     } catch (error) {
+      if (__DEV__) hook.ø__emit({ kind: "warn", code: "W004", message: `track-throw in ${plugin.name}: ${error && error.message}`, ref: { expr, node } });
       console.error(
         `Error occurred while tracking expression '${expr}' in plugin '${plugin.name}':`,
         error,
@@ -577,6 +602,7 @@ function processPlugin(
     const effect = () => {
       if (!nodeState?.[stateKey]) return; // Is finalized
       const tracked = track();
+      if (__DEV__) hook.ø__emit({ kind: "plugin", name: plugin.name, node, expr, subkey, phase: "render" });
       const control = plugin.render({
         ...reactiveState.ø__helpers,
         compiledExpression,
@@ -595,6 +621,13 @@ function processPlugin(
 
       return control;
     };
+    if (__DEV__) {
+      /** @type {any} */ (effect).ø__debug = {
+        node, expr, pluginName: plugin.name, subkey,
+        recentPaths: new Array(DEBUG_PATH_RING),
+        ø__pathRingHead: 0,
+      };
+    }
     const entries = [...depCapture.deps];
     // Filter out any dep that is at or above ANY trickling root in the stack.
     // Stacking matters for nested loops: the inner loop must not lose the outer
@@ -1202,6 +1235,7 @@ function lerp(intKey, reactiveState) {
 function compile(expr) {
   const tokens = tokenize(expr);
   const ast = parse(tokens);
+  if (__DEV__ && ast && typeof ast === "object") /** @type {any} */ (ast).ø__src = expr;
   return ast;
 }
 
@@ -1234,6 +1268,22 @@ function evaluateAst(ast, reactiveState) {
       return Reflect.set(target, prop, value);
     },
   });
+  if (__DEV__) {
+    const t0 = hook.ø__now();
+    try {
+      const r = evalAst(ast, contextualizedProxy, reactiveState);
+      const dt = hook.ø__now() - t0;
+      const src = (ast && /** @type {any} */ (ast).ø__src) || "";
+      hook.ø__recordExpressionEval(src, dt);
+      hook.ø__emit({ kind: "evaluate", expr: src, durationMs: dt, ok: true });
+      if (dt > 8) hook.ø__emit({ kind: "warn", code: "W002", message: `slow-expression: ${src} took ${dt.toFixed(1)}ms`, ref: { expr: src } });
+      return r;
+    } catch (err) {
+      const dt = hook.ø__now() - t0;
+      hook.ø__emit({ kind: "evaluate", expr: (ast && /** @type {any} */ (ast).ø__src) || "", durationMs: dt, ok: false, error: err && err.message });
+      throw err;
+    }
+  }
   return evalAst(ast, contextualizedProxy, reactiveState);
 }
 
@@ -1351,17 +1401,30 @@ function triggerEffects(prop, reactiveState) {
   if (!reactiveState.bindings.has(prop)) return;
   const ctrl = reactiveState.ø__control;
   if (__DEV__) {
-    console.log(prop + " changed, " + (ctrl.batchDepth > 0 ? "queuing" : "triggering") + " effects. " + (reactiveState.bindings.get(prop)?.size ?? 0) + " found");
+    hook.ø__emit({ kind: "trigger", state: reactiveState, path: prop, queued: ctrl.batchDepth > 0, effectCount: reactiveState.bindings.get(prop)?.size ?? 0 });
   }
   for (const effect of reactiveState.bindings.get(prop) || []) {
+    if (__DEV__ && /** @type {any} */ (effect).ø__debug) {
+      const dbg = /** @type {any} */ (effect).ø__debug;
+      dbg.recentPaths[dbg.ø__pathRingHead] = prop;
+      dbg.ø__pathRingHead = (dbg.ø__pathRingHead + 1) % DEBUG_PATH_RING;
+    }
     if (ctrl.batchDepth > 0) {
       ctrl.batchQueue.add(effect);
     } else {
       if (__DEV__) {
-        // @ts-ignore
-        Velin.ø__updateCounter = (Velin.ø__updateCounter || 0) + 1;
+        hook.stats.updateCounter++;
+        const t0 = hook.ø__now();
+        effect();
+        const dbg = /** @type {any} */ (effect).ø__debug;
+        hook.ø__emit({ kind: "effect", state: reactiveState, path: prop, node: dbg?.node, expr: dbg?.expr, pluginName: dbg?.pluginName, durationMs: hook.ø__now() - t0 });
+        if (dbg && dbg.node && typeof document !== "undefined" && !document.contains(dbg.node)) {
+          hook.stats.orphanedEffectsSinceStart++;
+          hook.ø__emit({ kind: "warn", code: "W001", message: "dangling-effect: effect ran on detached node", ref: { path: prop, expr: dbg.expr } });
+        }
+      } else {
+        effect();
       }
-      effect();
     }
   }
 }
@@ -1389,10 +1452,14 @@ function batch(fn) {
       ctrl.batchQueue.clear();
       for (const effect of effects) {
         if (__DEV__) {
-          // @ts-ignore
-          Velin.ø__updateCounter = (Velin.ø__updateCounter || 0) + 1;
+          hook.stats.updateCounter++;
+          const t0 = hook.ø__now();
+          effect();
+          const dbg = /** @type {any} */ (effect).ø__debug;
+          hook.ø__emit({ kind: "effect", state: reactiveState, path: dbg?.recentPaths?.[dbg?.ø__pathRingHead === 0 ? DEBUG_PATH_RING - 1 : dbg.ø__pathRingHead - 1] ?? "", node: dbg?.node, expr: dbg?.expr, pluginName: dbg?.pluginName, durationMs: hook.ø__now() - t0 });
+        } else {
+          effect();
         }
-        effect();
       }
     }
   }
@@ -1469,6 +1536,7 @@ function setupState(obj) {
         const result = Reflect.set(target, prop, value);
 
         if (old !== value && !init && !ø__control.wrapping) {
+          if (__DEV__) hook.ø__emit({ kind: "mutate", state: reactiveState, path: path + "." + prop.toString(), op: "set", from: old, to: value });
           triggerEffects(path + "." + prop.toString(), reactiveState);
         }
         return result;
@@ -1514,6 +1582,7 @@ function setupState(obj) {
           return function (...args) {
             const result = value.apply(target, args);
             if (!init) {
+              if (__DEV__) hook.ø__emit({ kind: "mutate", state: reactiveState, path, op: "arrayMethod", method: prop.toString() });
               triggerEffects(path, reactiveState);
             }
             return result;
@@ -1555,11 +1624,14 @@ function setupState(obj) {
         ) {
           const innerPath = path + "[" + prop.toString() + "]";
           if (old !== value && !init) {
+            if (__DEV__) hook.ø__emit({ kind: "mutate", state: reactiveState, path: innerPath, op: "set", from: old, to: value });
             triggerEffects(innerPath, reactiveState);
           }
         } else if (old !== value && !init && !ø__control.wrapping) {
+          if (__DEV__) hook.ø__emit({ kind: "mutate", state: reactiveState, path: path + "." + prop.toString(), op: "set", from: old, to: value });
           triggerEffects(path + "." + prop.toString(), reactiveState);
           if (prop === "length") {
+            if (__DEV__) hook.ø__emit({ kind: "mutate", state: reactiveState, path, op: "set", from: old, to: value });
             triggerEffects(path, reactiveState);
           }
         }
@@ -1632,6 +1704,11 @@ function composeState(reactiveState, interpolations) {
   };
   inner.ø__helpers = buildPluginHelpers(inner);
   reactiveState.ø__innerStates.add(inner);
+  if (__DEV__) {
+    hook.ø__trackState(inner);
+    hook.ø__registerParent(inner, reactiveState);
+    hook.ø__emit({ kind: "compose", parent: reactiveState, child: inner });
+  }
   return inner;
 }
 
@@ -1644,6 +1721,8 @@ function composeState(reactiveState, interpolations) {
  */
 function cleanupState(parentState, innerState, node = null) {
   if (parentState === innerState) return;
+
+  if (__DEV__) hook.ø__emit({ kind: "cleanup", state: innerState, node });
 
   if (node) {
     emitLifecycle(node, "destroy", { state: innerState });
@@ -1841,8 +1920,10 @@ function processNode(node, reactiveState) {
       // a raw ReactiveState (legacy direct-callers like Velin.composeState).
       const scoped =
         /** @type {any} */ (control.scopedState).ø__reactiveState ?? control.scopedState;
-      if (!scopedReactiveState) scopedReactiveState = scoped;
-      else
+      if (!scopedReactiveState) {
+        scopedReactiveState = scoped;
+        if (__DEV__) hook.ø__registerStateNode(scoped, node);
+      } else
         throw new Error(
           `[VLN012] Multiple plugins on the same node cannot create scoped states. Plugin '${plugin.name}' attempted to create a scoped state, but one already exists from a previous plugin.`,
         );
@@ -1873,6 +1954,11 @@ function bind(root, initialState) {
   const reactiveState = setupState(initialState);
   processNode(root, reactiveState);
   boundState.root = reactiveState;
+  if (__DEV__) {
+    hook.ø__trackState(reactiveState);
+    hook.ø__registerStateNode(reactiveState, root);
+    hook.ø__emit({ kind: "bind", state: reactiveState, rootNode: root });
+  }
   return reactiveState.state;
 }
 
