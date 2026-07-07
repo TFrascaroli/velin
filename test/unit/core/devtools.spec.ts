@@ -226,6 +226,36 @@ describe("Devtools hook (D1)", () => {
       expect(state.warns.length).toBe(100);
     });
 
+    it("does not advance emitSeq for events from an ignored state", () => {
+      // Regression: devtools' poller uses hook.emitSeq as a "host has
+      // changed" signal. If the poller's own reactive writes fed back into
+      // emitSeq, every poll would find seq changed → snapshot again →
+      // fire own effects → advance seq → infinite feedback.
+      const div = document.createElement("div");
+      div.innerHTML = '<div vln-text="count"></div>';
+      const state = Velin.bind(div, { count: 0 });
+      const wrapper = Velin.ø__internal.getWrapper(state)!;
+      getHook().ø__ignoreState(wrapper);
+
+      const seqBefore = getHook().emitSeq;
+      state.count = 1; // mutate + trigger + effect + (potentially) evaluate
+      state.count = 2;
+      state.count = 3;
+      const seqAfter = getHook().emitSeq;
+
+      expect(seqAfter).toBe(seqBefore); // no host activity → no advance
+    });
+
+    it("advances emitSeq for events from a non-ignored root", () => {
+      const div = document.createElement("div");
+      div.innerHTML = '<div vln-text="count"></div>';
+      const state = Velin.bind(div, { count: 0 });
+
+      const seqBefore = getHook().emitSeq;
+      state.count = 1;
+      expect(getHook().emitSeq).toBeGreaterThan(seqBefore);
+    });
+
     it("still emits for a sibling (non-ignored) root", () => {
       const divA = document.createElement("div");
       divA.innerHTML = '<div vln-text="x"></div>';

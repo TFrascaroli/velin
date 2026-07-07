@@ -42,6 +42,13 @@ export function createDevHook() {
   let frameScheduled = false;
   const THRASH_LIMIT = 32;
 
+  // Monotonic counter advanced once per accepted (non-ignored) emit.
+  // Consumers polling for host-page activity read this and skip work when
+  // it hasn't moved — a clean signal that avoids the trap of relying on
+  // stats.updateCounter (which is incremented for the poller's own
+  // reactive writes too, causing feedback).
+  let emitSeq = 0;
+
   function emit(ev) {
     if (ev.state) {
       // Walk parent chain — a substate under an ignored root (composed via
@@ -51,6 +58,7 @@ export function createDevHook() {
         if (ignoredStates.has(s)) return;
       }
     }
+    emitSeq++;
     ev.t = ev.t ?? now();
     log[logHead] = ev;
     logHead = (logHead + 1) % logCap;
@@ -169,6 +177,8 @@ export function createDevHook() {
       return () => listeners.delete(fn);
     },
     get log() { return readLog(); },
+    /** Monotonic counter that advances once per non-ignored emit. Poll this to detect host-page activity without paying the cost of reading hook.log. */
+    get emitSeq() { return emitSeq; },
     setLogCapacity(n) {
       if (typeof n !== "number" || n < 1) return;
       const snap = readLog();
