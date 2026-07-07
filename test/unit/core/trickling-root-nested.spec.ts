@@ -20,7 +20,7 @@ describe("Trickling root in nested loops", () => {
       </table>
     `;
 
-    Velin.bind(root, {
+    const state = Velin.bind(root, {
       rows: [
         { a: 1, b: 2, c: 3 },
         { a: 4, b: 5, c: 6 },
@@ -28,8 +28,8 @@ describe("Trickling root in nested loops", () => {
       cols: ["a", "b", "c"],
     });
 
-    const boundState = (Velin as any).ø__internal.boundState.root;
-    const bindings: Map<string, Set<any>> = boundState.bindings;
+    const wrapper = (Velin as any).ø__internal.getWrapper(state);
+    const bindings: Map<string, Set<any>> = wrapper.bindings;
 
     const rowsKey = "root.rows";
     const colsKey = "root.cols";

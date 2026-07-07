@@ -26,7 +26,7 @@ describe("Template interpolation with nested property updates", () => {
     expect(span?.textContent).toBe("initial");
 
     // Update using getSetter
-    const reactiveState = Velin.ø__internal.boundState.root!;
+    const reactiveState = Velin.ø__internal.getWrapper(state)!;
     const setter = Velin.getSetter(reactiveState, "items[0].html");
     setter("updated");
 
@@ -56,7 +56,7 @@ describe("Template interpolation with nested property updates", () => {
     expect(itemDivs[1]?.textContent).toBe("b");
 
     // Update second item
-    const reactiveState = Velin.ø__internal.boundState.root!;
+    const reactiveState = Velin.ø__internal.getWrapper(state)!;
     const setter = Velin.getSetter(reactiveState, "items[1].value");
     setter("updated-b");
 

@@ -14,7 +14,7 @@ describe("getSetter with array index paths", () => {
       ],
     });
 
-    const reactiveState = Velin.ø__internal.boundState.root!;
+    const reactiveState = Velin.ø__internal.getWrapper(state)!;
     const setter = Velin.getSetter(reactiveState, "examples[0].html");
     setter("<div>test</div>");
 
@@ -32,7 +32,7 @@ describe("getSetter with array index paths", () => {
     const span = div.querySelector("span");
     expect(span?.textContent).toBe("initial");
 
-    const reactiveState = Velin.ø__internal.boundState.root!;
+    const reactiveState = Velin.ø__internal.getWrapper(state)!;
     const setter = Velin.getSetter(reactiveState, "examples[0].html");
     setter("updated");
 
@@ -49,7 +49,7 @@ describe("getSetter with array index paths", () => {
       ],
     });
 
-    const reactiveState = Velin.ø__internal.boundState.root!;
+    const reactiveState = Velin.ø__internal.getWrapper(state)!;
 
     for (let i = 0; i < 3; i++) {
       const setter = Velin.getSetter(reactiveState, `examples[${i}].value`);

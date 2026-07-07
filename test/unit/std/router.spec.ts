@@ -10,10 +10,10 @@ describe("Velin Router", () => {
 
   it("should sync URL with state using vln-router", () => {
     root.setAttribute("vln-router", "myRoute");
-    Velin.bind(root, {});
-    
-    expect(Velin.ø__internal.boundState.root.state.myRoute).toBeDefined();
-    expect(Velin.ø__internal.boundState.root.state.myRoute.path).toBe(window.location.pathname);
+    const state = Velin.bind(root, {});
+
+    expect(Velin.ø__internal.getWrapper(state)!.state.myRoute).toBeDefined();
+    expect(Velin.ø__internal.getWrapper(state)!.state.myRoute.path).toBe(window.location.pathname);
   });
 
   it("should conditionally render based on vln-route", async () => {
@@ -23,14 +23,14 @@ describe("Velin Router", () => {
       </div>
     `;
     
-    Velin.bind(root, {
+    const state = Velin.bind(root, {
       myRoute: { path: '/test-route', params: {}, query: {}, error: null, loading: false }
     });
-    
+
     expect(root.querySelector("#target")).toBeNull();
-    
-    Velin.ø__internal.boundState.root.state.myRoute.path = '/other';
-    Velin.ø__internal.triggerEffects('root.myRoute.path', Velin.ø__internal.boundState.root);
+
+    Velin.ø__internal.getWrapper(state)!.state.myRoute.path = '/other';
+    Velin.ø__internal.triggerEffects('root.myRoute.path', Velin.ø__internal.getWrapper(state)!);
     
     await new Promise(resolve => setTimeout(resolve, 50));
     
@@ -60,9 +60,9 @@ describe("Velin Router", () => {
 
   it("should provide navigateTo function", () => {
     root.setAttribute("vln-router", "myRoute");
-    Velin.bind(root, {});
-    
-    const routeState = Velin.ø__internal.boundState.root.state.myRoute;
+    const state = Velin.bind(root, {});
+
+    const routeState = Velin.ø__internal.getWrapper(state)!.state.myRoute;
     expect(typeof routeState.navigateTo).toBe("function");
     
     routeState.navigateTo('/new-path');

@@ -132,7 +132,7 @@ describe("Object replacement reactivity", () => {
       });
 
       // Count how many times the effect actually runs
-      const reactiveState = Velin.ø__internal.boundState.root!;
+      const reactiveState = Velin.ø__internal.getWrapper(state)!;
       const originalBindings = new Map(reactiveState.bindings);
 
       // Wrap all effects to count executions

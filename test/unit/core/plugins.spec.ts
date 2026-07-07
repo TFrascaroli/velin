@@ -12,8 +12,8 @@ describe("Velin Public API", () => {
     const mock = { name: "testplugin", render: vitest.fn() };
     Velin.plugins.registerPlugin(mock);
     node.setAttribute("vln-testplugin", "true");
-    Velin.bind(node, {});
-    Velin.processNode(node, Velin.ø__internal.boundState.root!);
+    const state = Velin.bind(node, {});
+    Velin.processNode(node, Velin.ø__internal.getWrapper(state)!);
     expect(mock.render).toHaveBeenCalled();
   });
 
@@ -22,8 +22,8 @@ describe("Velin Public API", () => {
     Velin.plugins.registerPlugin({ name: "known1", render: () => {} });
     Velin.plugins.registerPlugin({ name: "known2", render: () => {} });
 
-    Velin.bind(document.createElement("div"), {});
-    const rootState = Velin.ø__internal.boundState.root!;
+    const state = Velin.bind(document.createElement("div"), {});
+    const rootState = Velin.ø__internal.getWrapper(state)!;
     
     // We expect an error containing "Available plugins"
     expect(() => {
@@ -48,6 +48,6 @@ describe("Velin Public API", () => {
 //   });
 
 // it('bound should be a defined object', () => {
-//   expect(typeof Velin.ø__internal.boundState.root).toBe('object');
+//   expect(typeof Velin.ø__internal.getWrapper(state)).toBe('object');
 // });
 // });

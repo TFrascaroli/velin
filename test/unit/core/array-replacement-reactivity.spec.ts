@@ -63,7 +63,6 @@ describe("Array replacement reactivity (avoiding hyper-reactivity)", () => {
       `;
 
       const effectSpy = vi.fn();
-      const reactiveState = Velin.ø__internal.boundState.root!;
 
       const state = Velin.bind(div, {
         users: [
@@ -71,6 +70,7 @@ describe("Array replacement reactivity (avoiding hyper-reactivity)", () => {
           { name: "Jane", email: "jane@example.com" },
         ],
       });
+      const reactiveState = Velin.ø__internal.getWrapper(state)!;
 
       // Count how many bindings exist for paths with array indices
       let arrayIndexBindings = 0;
@@ -227,7 +227,7 @@ describe("Array replacement reactivity (avoiding hyper-reactivity)", () => {
 
       // Count effects triggered
       let effectCount = 0;
-      const reactiveState = Velin.ø__internal.boundState.root!;
+      const reactiveState = Velin.ø__internal.getWrapper(state)!;
       const originalBindings = new Map(reactiveState.bindings);
 
       for (const [path, effects] of originalBindings.entries()) {

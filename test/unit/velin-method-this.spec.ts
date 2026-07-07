@@ -112,7 +112,7 @@ describe("Velin Method this binding", () => {
       },
     });
 
-    const reactiveState = Velin.ø__internal.boundState.root!;
+    const reactiveState = Velin.ø__internal.getWrapper(state)!;
 
     // Simulate directive call like vln-on:click="increment()"
     const result = Velin.evaluate(reactiveState, "increment()", true);

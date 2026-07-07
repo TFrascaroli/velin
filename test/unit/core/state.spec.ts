@@ -10,12 +10,12 @@ describe("Velin Public API", () => {
   describe("evaluate", () => {
     let reactiveState: ReactiveState;
     beforeEach(() => {
-      Velin.bind(node, {
+      const state = Velin.bind(node, {
         x: 5,
         y: (val: number) => val + 65,
         abc: { a: { b: { c: "hi" } } },
       });
-      reactiveState = Velin.ø__internal.boundState.root!;
+      reactiveState = Velin.ø__internal.getWrapper(state)!;
     });
 
     it("should compute expression in reactive context", () => {
@@ -40,11 +40,11 @@ describe("Velin Public API", () => {
     });
 
     it("should evaluate object literals", () => {
-      Velin.bind(node, {
+      const state2 = Velin.bind(node, {
         isActive: true,
         isEnabled: false,
       });
-      const reactiveState2 = Velin.ø__internal.boundState.root!;
+      const reactiveState2 = Velin.ø__internal.getWrapper(state2)!;
       const result = Velin.evaluate(
         reactiveState2,
         "{ active: isActive, disabled: !isEnabled }"
@@ -69,7 +69,7 @@ describe("Velin Public API", () => {
         abc: { a: { b: { c: "hi" } } },
         arr: [{ name: "a" }, { name: "b" }, { name: "c" }],
       });
-      reactiveState = Velin.ø__internal.boundState.root!;
+      reactiveState = Velin.ø__internal.getWrapper(state)!;
     });
 
     it("should set a value with a simple chained expression", () => {
@@ -128,7 +128,7 @@ describe("Velin Public API", () => {
         friend: { score: { low: 2, high: 23 } },
       });
       innerState = Velin.composeState(
-        Velin.ø__internal.boundState.root!,
+        Velin.ø__internal.getWrapper(state)!,
         new Map([["score", {type: 'EXPR', value: {expr: "friend.score"}}]])
       );
     });

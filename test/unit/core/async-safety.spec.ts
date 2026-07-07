@@ -8,8 +8,8 @@ describe("Velin Async Mutation Safety", () => {
   });
 
   it("should throw [VLN014] when mutating via contextualizedProxy after cleanup", async () => {
-    Velin.bind(node, { count: 0 });
-    const rootState = Velin.ø__internal.boundState.root;
+    const state = Velin.bind(node, { count: 0 });
+    const rootState = Velin.ø__internal.getWrapper(state)!;
     
     // Create a substate so we can cleanup without rootState being null
     const substate = Velin.composeState(rootState, new Map());

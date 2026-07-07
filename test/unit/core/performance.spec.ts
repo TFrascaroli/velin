@@ -29,12 +29,12 @@ describe("Performance Backstops", () => {
     }
     root.innerHTML = html;
     
-    Velin.bind(root, { count: 1 });
-    
+    const state = Velin.bind(root, { count: 1 });
+
     // Triggering one change should only affect nodes bound to that prop
     (window as any).__VELIN_DEVTOOLS_HOOK__.stats.updateCounter = 0;
-    Velin.ø__internal.boundState.root.state.count = 2;
-    Velin.ø__internal.triggerEffects('root.count', Velin.ø__internal.boundState.root);
+    Velin.ø__internal.getWrapper(state)!.state.count = 2;
+    Velin.ø__internal.triggerEffects('root.count', Velin.ø__internal.getWrapper(state)!);
     
     // Each of the 20 nodes should have 1 effect triggered.
     expect((window as any).__VELIN_DEVTOOLS_HOOK__.stats.updateCounter).toBe(20);

@@ -14,13 +14,13 @@ describe("Object Shorthand Syntax", () => {
 
   describe("evaluate()", () => {
     beforeEach(() => {
-      Velin.bind(node, {
+      const state = Velin.bind(node, {
         username: "Alice",
         age: 30,
         isActive: true,
         count: 5
       });
-      reactiveState = Velin.ø__internal.boundState.root!;
+      reactiveState = Velin.ø__internal.getWrapper(state)!;
     });
 
     it("should evaluate shorthand single property", () => {
@@ -76,7 +76,7 @@ describe("Object Shorthand Syntax", () => {
       });
 
       // Set obj using shorthand syntax evaluation
-      const rs = Velin.ø__internal.boundState.root!;
+      const rs = Velin.ø__internal.getWrapper(state)!;
       state.obj = Velin.evaluate(rs, "{ username, age }");
 
       const span = div.querySelector('span');
@@ -91,12 +91,12 @@ describe("Object Shorthand Syntax", () => {
 
   describe("Nested objects with shorthand", () => {
     beforeEach(() => {
-      Velin.bind(node, {
+      const state = Velin.bind(node, {
         x: 1,
         y: 2,
         nested: { a: 10, b: 20 }
       });
-      reactiveState = Velin.ø__internal.boundState.root!;
+      reactiveState = Velin.ø__internal.getWrapper(state)!;
     });
 
     it("should handle nested object with shorthand", () => {
@@ -118,8 +118,8 @@ describe("Object Shorthand Syntax", () => {
 
   describe("Error cases", () => {
     beforeEach(() => {
-      Velin.bind(node, { foo: "bar" });
-      reactiveState = Velin.ø__internal.boundState.root!;
+      const state = Velin.bind(node, { foo: "bar" });
+      reactiveState = Velin.ø__internal.getWrapper(state)!;
     });
 
     it("should error on shorthand with string key", () => {

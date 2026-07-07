@@ -14,7 +14,7 @@ describe("Velin Event Orchestration", () => {
     
     // Process the node
     const state = Velin.bind(document.body, {});
-    Velin.processNode(node, Velin.ø__internal.boundState.root!);
+    Velin.processNode(node, Velin.ø__internal.getWrapper(state)!);
     
     // Trigger source event
     node.dispatchEvent(new CustomEvent("source"));
@@ -31,8 +31,8 @@ describe("Velin Event Orchestration", () => {
 
     parent.setAttribute("vln-evt-contain", "'click'");
 
-    Velin.bind(parent, {});
-    Velin.processNode(parent, Velin.ø__internal.boundState.root!);
+    const state = Velin.bind(parent, {});
+    Velin.processNode(parent, Velin.ø__internal.getWrapper(state)!);
 
     child.dispatchEvent(new CustomEvent("click", { bubbles: true }));
     expect(parentFn).not.toHaveBeenCalled();
@@ -50,8 +50,8 @@ describe("Velin Event Orchestration", () => {
 
     parent.setAttribute("vln-evt-contain", "['click', 'keypress']");
 
-    Velin.bind(parent, {});
-    Velin.processNode(parent, Velin.ø__internal.boundState.root!);
+    const state = Velin.bind(parent, {});
+    Velin.processNode(parent, Velin.ø__internal.getWrapper(state)!);
 
     child.dispatchEvent(new CustomEvent("click", { bubbles: true }));
     child.dispatchEvent(new CustomEvent("keypress", { bubbles: true }));

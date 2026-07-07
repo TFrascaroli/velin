@@ -3,7 +3,8 @@ import { describe, it, expect } from "vitest";
 
 const { compile, evaluateAst } = Velin;
 
-const context = Velin.ø__internal.boundState.root!;
+const state = Velin.bind(document.createElement("div"), {});
+const context = Velin.ø__internal.getWrapper(state)!;
 
 describe('Evaluator Security Tests', () => {
   it('should throw an error when attempting to access the global object', () => {

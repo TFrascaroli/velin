@@ -74,7 +74,7 @@ describe("Devtools hook (D1)", () => {
     const div = document.createElement("div");
     div.innerHTML = '<div vln-text="a.b"></div>';
     const state = Velin.bind(div, { a: { b: 1 } }) as any;
-    const rs = (Velin as any).ø__internal.boundState.root;
+    const rs = (Velin as any).ø__internal.getWrapper(state);
     const sizeBefore = rs.bindings.size;
     const val = getHook().peek(rs, ["a", "b"]);
     expect(val).toBe(1);
@@ -85,7 +85,7 @@ describe("Devtools hook (D1)", () => {
     const div = document.createElement("div");
     div.innerHTML = '<div vln-text="a + b"></div>';
     const state = Velin.bind(div, { a: 1, b: 2 });
-    const rs = (Velin as any).ø__internal.boundState.root;
+    const rs = (Velin as any).ø__internal.getWrapper(state);
     const effect = [...rs.bindings.get("root.a")][0];
     state.a = 3;
     state.b = 4;
