@@ -152,4 +152,100 @@ describe("Devtools hook (D1)", () => {
     off();
     expect(seen.length).toBeGreaterThan(0);
   });
+
+  describe("ø__ignoreState", () => {
+    it("gates emits for the ignored root's own events", () => {
+      const div = document.createElement("div");
+      div.innerHTML = '<div vln-text="count"></div>';
+      const state = Velin.bind(div, { count: 1 });
+      const wrapper = Velin.ø__internal.getWrapper(state)!;
+
+      const seen: any[] = [];
+      const off = getHook().subscribe((e: any) => seen.push(e));
+      getHook().ø__ignoreState(wrapper);
+
+      state.count = 5; // would normally emit mutate + trigger + effect
+      off();
+
+      const kinds = new Set(seen.map((e) => e.kind));
+      expect(kinds.has("mutate")).toBe(false);
+      expect(kinds.has("trigger")).toBe(false);
+      expect(kinds.has("effect")).toBe(false);
+    });
+
+    it("gates emits for substates composed under an ignored root", () => {
+      // Regression: composeState creates a NEW ReactiveState object, so
+      // identity-only checks would miss substates. The gate must walk the
+      // parent chain via hook.parents / ø__registerParent.
+      const div = document.createElement("div");
+      div.innerHTML = '<div vln-loop:it="items" vln-text="it"></div>';
+      const state = Velin.bind(div, { items: [1, 2, 3] });
+      const wrapper = Velin.ø__internal.getWrapper(state)!;
+
+      const seen: any[] = [];
+      const off = getHook().subscribe((e: any) => seen.push(e));
+      getHook().ø__ignoreState(wrapper);
+
+      // Mutating items rebuilds substates (each a new ReactiveState under
+      // the ignored root). No listener callback should fire.
+      state.items = [10, 20, 30];
+      off();
+
+      expect(seen.length).toBe(0);
+    });
+
+    it("prevents recursion when a listener mutates an ignored state", () => {
+      // Regression: devtools listener pushes into its own reactive state on
+      // every warn event. Without proper gating, that push triggered effects
+      // that emitted more warns → infinite recursion → stack overflow.
+      const div = document.createElement("div");
+      div.innerHTML = '<div vln-loop:w="warns" vln-text="w"></div>';
+      const state = Velin.bind(div, { warns: [] as any[] });
+      const wrapper = Velin.ø__internal.getWrapper(state)!;
+      getHook().ø__ignoreState(wrapper);
+
+      let listenerCalls = 0;
+      const off = getHook().subscribe((e: any) => {
+        listenerCalls++;
+        if (e.kind === "warn") {
+          // This unshift used to feed back and detonate the stack.
+          state.warns.unshift(e.message);
+        }
+      });
+
+      // Emit a burst of warn events (simulating W002 slow-expression spam
+      // from a host page with high mutation frequency).
+      for (let i = 0; i < 100; i++) {
+        getHook().ø__emit({ kind: "warn", code: "TEST", message: `w${i}` });
+      }
+      off();
+
+      // Every emit should have called the listener exactly once. If the
+      // gate leaked, listenerCalls would grow super-linearly (or overflow).
+      expect(listenerCalls).toBe(100);
+      expect(state.warns.length).toBe(100);
+    });
+
+    it("still emits for a sibling (non-ignored) root", () => {
+      const divA = document.createElement("div");
+      divA.innerHTML = '<div vln-text="x"></div>';
+      const stateA = Velin.bind(divA, { x: 1 });
+      const divB = document.createElement("div");
+      divB.innerHTML = '<div vln-text="y"></div>';
+      const stateB = Velin.bind(divB, { y: 1 });
+
+      const wrapperA = Velin.ø__internal.getWrapper(stateA)!;
+      getHook().ø__ignoreState(wrapperA);
+
+      const seen: any[] = [];
+      const off = getHook().subscribe((e: any) => seen.push(e));
+      stateA.x = 2;
+      stateB.y = 2;
+      off();
+
+      const kinds = seen.map((e) => e.kind + "@" + (e.path ?? ""));
+      expect(kinds.some((k) => k.startsWith("mutate@") && k.includes("root.y"))).toBe(true);
+      expect(kinds.some((k) => k.startsWith("mutate@") && k.includes("root.x"))).toBe(false);
+    });
+  });
 });

@@ -43,7 +43,14 @@ export function createDevHook() {
   const THRASH_LIMIT = 32;
 
   function emit(ev) {
-    if (ev.state && ignoredStates.has(ev.state)) return;
+    if (ev.state) {
+      // Walk parent chain — a substate under an ignored root (composed via
+      // vln-loop, vln-fragment, etc.) is a new ReactiveState object, so we
+      // can't rely on identity alone. Cheap: depth is usually 1–3.
+      for (let s = ev.state; s; s = parents.get(s) || null) {
+        if (ignoredStates.has(s)) return;
+      }
+    }
     ev.t = ev.t ?? now();
     log[logHead] = ev;
     logHead = (logHead + 1) % logCap;

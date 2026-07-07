@@ -545,7 +545,7 @@ function processPlugin(
   nodeState[stateKey] = {};
 
   const compiledExpression = compile(expr);
-  if (__DEV__) hook.ø__emit({ kind: "compile", expr });
+  if (__DEV__) hook.ø__emit({ kind: "compile", state: reactiveState, expr });
   nodeState[stateKey + "__ø__exprAST"] = compiledExpression;
   if (!nodeState["ø__originalNode"]) {
     nodeState["ø__originalNode"] = node.cloneNode(true);
@@ -568,7 +568,7 @@ function processPlugin(
           attributeValue,
         });
       }
-      if (__DEV__) hook.ø__emit({ kind: "plugin", name: plugin.name, node, expr, subkey, phase: "destroy" });
+      if (__DEV__) hook.ø__emit({ kind: "plugin", state: reactiveState, name: plugin.name, node, expr, subkey, phase: "destroy" });
       nodeState[stateKey] = null;
       nodeState[stateKey + "__ø__exprAST"] = null;
       nodeState[stateKey + "__ø__lastTriggerID"] = null;
@@ -593,10 +593,10 @@ function processPlugin(
           })
         : null;
     try {
-      if (__DEV__) hook.ø__emit({ kind: "plugin", name: plugin.name, node, expr, subkey, phase: "track" });
+      if (__DEV__) hook.ø__emit({ kind: "plugin", state: reactiveState, name: plugin.name, node, expr, subkey, phase: "track" });
       track();
     } catch (error) {
-      if (__DEV__) hook.ø__emit({ kind: "warn", code: "W004", message: `track-throw in ${plugin.name}: ${error && error.message}`, ref: { expr, node } });
+      if (__DEV__) hook.ø__emit({ kind: "warn", code: "W004", state: reactiveState, message: `track-throw in ${plugin.name}: ${error && error.message}`, ref: { expr, node } });
       console.error(
         `Error occurred while tracking expression '${expr}' in plugin '${plugin.name}':`,
         error,
@@ -607,7 +607,7 @@ function processPlugin(
     const effect = () => {
       if (!nodeState?.[stateKey]) return; // Is finalized
       const tracked = track();
-      if (__DEV__) hook.ø__emit({ kind: "plugin", name: plugin.name, node, expr, subkey, phase: "render" });
+      if (__DEV__) hook.ø__emit({ kind: "plugin", state: reactiveState, name: plugin.name, node, expr, subkey, phase: "render" });
       const control = plugin.render({
         ...reactiveState.ø__helpers,
         compiledExpression,
@@ -1280,12 +1280,12 @@ function evaluateAst(ast, reactiveState) {
       const dt = hook.ø__now() - t0;
       const src = (ast && /** @type {any} */ (ast).ø__src) || "";
       hook.ø__recordExpressionEval(src, dt);
-      hook.ø__emit({ kind: "evaluate", expr: src, durationMs: dt, ok: true });
-      if (dt > 8) hook.ø__emit({ kind: "warn", code: "W002", message: `slow-expression: ${src} took ${dt.toFixed(1)}ms`, ref: { expr: src } });
+      hook.ø__emit({ kind: "evaluate", state: reactiveState, expr: src, durationMs: dt, ok: true });
+      if (dt > 8) hook.ø__emit({ kind: "warn", code: "W002", state: reactiveState, message: `slow-expression: ${src} took ${dt.toFixed(1)}ms`, ref: { expr: src } });
       return r;
     } catch (err) {
       const dt = hook.ø__now() - t0;
-      hook.ø__emit({ kind: "evaluate", expr: (ast && /** @type {any} */ (ast).ø__src) || "", durationMs: dt, ok: false, error: err && err.message });
+      hook.ø__emit({ kind: "evaluate", state: reactiveState, expr: (ast && /** @type {any} */ (ast).ø__src) || "", durationMs: dt, ok: false, error: err && err.message });
       throw err;
     }
   }
@@ -1425,7 +1425,7 @@ function triggerEffects(prop, reactiveState) {
         hook.ø__emit({ kind: "effect", state: reactiveState, path: prop, node: dbg?.node, expr: dbg?.expr, pluginName: dbg?.pluginName, durationMs: hook.ø__now() - t0 });
         if (dbg && dbg.node && typeof document !== "undefined" && !document.contains(dbg.node)) {
           hook.stats.orphanedEffectsSinceStart++;
-          hook.ø__emit({ kind: "warn", code: "W001", message: "dangling-effect: effect ran on detached node", ref: { path: prop, expr: dbg.expr } });
+          hook.ø__emit({ kind: "warn", code: "W001", message: "dangling-effect: effect ran on detached node", state: reactiveState, ref: { path: prop, expr: dbg.expr } });
         }
       } else {
         effect();
@@ -1714,7 +1714,7 @@ function composeState(reactiveState, interpolations) {
   if (__DEV__) {
     hook.ø__trackState(inner);
     hook.ø__registerParent(inner, reactiveState);
-    hook.ø__emit({ kind: "compose", parent: reactiveState, child: inner });
+    hook.ø__emit({ kind: "compose", state: inner, parent: reactiveState, child: inner });
   }
   return inner;
 }
