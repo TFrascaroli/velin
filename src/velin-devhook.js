@@ -23,6 +23,8 @@ export function createDevHook() {
   const stateNodes = new WeakMap();
   /** @type {WeakMap<any, any>} */
   const parents = new WeakMap();
+  /** @type {WeakSet<any>} States marked as "internal" — devtools' own bind, other overlays. Excluded from ø__emit, hook.states, and enumerateBindings. */
+  const ignoredStates = new WeakSet();
 
   const stats = {
     updateCounter: 0,
@@ -41,6 +43,7 @@ export function createDevHook() {
   const THRASH_LIMIT = 32;
 
   function emit(ev) {
+    if (ev.state && ignoredStates.has(ev.state)) return;
     ev.t = ev.t ?? now();
     log[logHead] = ev;
     logHead = (logHead + 1) % logCap;
@@ -75,7 +78,10 @@ export function createDevHook() {
     *[Symbol.iterator]() {
       for (const ref of Array.from(stateRefs)) {
         const s = ref.deref();
-        if (s && s.bindings) yield s;
+        if (s && s.bindings) {
+          if (ignoredStates.has(s)) continue;
+          yield s;
+        }
         else stateRefs.delete(ref);
       }
     },
@@ -179,6 +185,21 @@ export function createDevHook() {
     ø__trackState: trackState,
     ø__registerStateNode(state, node) { if (state && node) stateNodes.set(state, node); },
     ø__registerParent(child, parent) { if (child && parent) parents.set(child, parent); },
+    /** Marks a state as internal (devtools overlay, panels, etc.) so it's excluded from hook.states and future emits. Also purges log entries already recorded for this state. */
+    ø__ignoreState(state) {
+      if (!state) return;
+      ignoredStates.add(state);
+      const snap = readLog();
+      const kept = snap.filter((ev) => !(ev.state === state));
+      log = new Array(logCap);
+      logHead = 0;
+      logSize = 0;
+      for (const ev of kept) {
+        log[logHead] = ev;
+        logHead = (logHead + 1) % logCap;
+        if (logSize < logCap) logSize++;
+      }
+    },
     nodeFor(state) { return stateNodes.get(state) || null; },
     parentOf(state) { return parents.get(state) || null; },
     ø__emit: emit,
