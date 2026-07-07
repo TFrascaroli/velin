@@ -317,8 +317,9 @@ render: ({ evaluate, expr, node, subkey }) => {
 
 **When to use the top-level form:**
 - Direct programmatic evaluation outside a plugin (tests, host code).
-- Inside extensions that operate on a `ReactiveState` you obtained from
-  `Velin.ø__internal.boundState`.
+- Inside extensions that operate on a `ReactiveState` obtained via
+  `Velin.ø__internal.getWrapper(state)`, where `state` is the proxy returned
+  by `Velin.bind()`.
 
 ### `Velin.getSetter(reactiveState, expr)`
 
@@ -368,10 +369,11 @@ returned by `compose()`; this top-level form is for host code and tests.
 
 **Direct use — making a dynamically-added element reactive:**
 ```javascript
+const state = Velin.bind(document.body, { message: 'hi' });
 const newDiv = document.createElement('div');
 newDiv.setAttribute('vln-text', 'message');
 document.body.appendChild(newDiv);
-Velin.processNode(newDiv, Velin.ø__internal.boundState.root);
+Velin.processNode(newDiv, Velin.ø__internal.getWrapper(state));
 ```
 
 **Plugin use (via `ChildContext`):**

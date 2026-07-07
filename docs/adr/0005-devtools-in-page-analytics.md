@@ -456,7 +456,7 @@ surfaced in the panel:
 - **W002 `slow-expression`** — any `evaluate` with `durationMs > 8`
   (configurable).
 - **W003 `mutation-thrash`** — > N `mutate` events on the same path
-  within one animation frame. Likely a missing `Velin.batch()`.
+  within one animation frame. Likely a missing `ctrl.batch()`.
 - **W004 `track-throw`** — plugin `track()` threw. Currently
   `console.error`'d by `processPlugin`; additionally emit as
   `warn` with the error.
