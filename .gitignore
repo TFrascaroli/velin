@@ -5,3 +5,4 @@ priv/
 .journal
 .plans/
 .claude/
+playground/vendor/
