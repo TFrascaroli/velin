@@ -220,6 +220,7 @@ const DRIBBLE_BG_COUNT     = 200; // random full-set mutations per tick
 let dribbleTimer = null;
 let pulseRafId   = null;
 let state        = null; // set by the bootstrap IIFE below
+let ctrl         = null; // Velin scheduler control; set alongside `state`
 
 // Reactive-op counter: incremented on every proxy write we control (dribble
 // mutateRow calls + pulse ticker row.pulse writes). FPS ticker resets it each
@@ -260,7 +261,7 @@ function dribbleTick() {
   const slots   = state && state.myTable && state.myTable.visibleItems;
   if (!allRows || !allRows.length) return;
 
-  Velin.batch(() => {
+  ctrl.batch(() => {
     // Foreground: many visible rows every tick → obvious on-screen motion.
     const visN = Math.ceil((slots ? slots.length : 0) * DRIBBLE_VISIBLE_FRAC);
     for (let i = 0; i < visN; i++) {
@@ -284,7 +285,7 @@ function pulseTick() {
   const slots = state && state.myTable && state.myTable.visibleItems;
   if (!slots || !slots.length) return;
   const t = performance.now() / 1000;
-  Velin.batch(() => {
+  ctrl.batch(() => {
     for (let i = 0; i < slots.length; i++) {
       const row = slots[i] && slots[i].row;
       if (!row) continue;
@@ -368,10 +369,10 @@ async function injectTemplate(url) {
           state.myTable.selectedCount = 0;
           state.perf.editMs = (performance.now() - t0).toFixed(2) + ' ms';
         },
-        // Uses Velin.batch() so N per-row writes coalesce into a single
+        // Uses ctrl.batch() so N per-row writes coalesce into a single
         // downstream flush — the visible reason batch() exists.
         clearSelection() {
-          Velin.batch(() => {
+          ctrl.batch(() => {
             const rows = state.myTable.rows;
             for (let i = 0; i < rows.length; i++) {
               if (rows[i].selected) rows[i].selected = false;
@@ -564,7 +565,7 @@ async function injectTemplate(url) {
       const def = COL_DEFS[colId];
       if (!def || !def.sortable) return;
       const t = state.myTable;
-      Velin.batch(() => {
+      ctrl.batch(() => {
         if (t.sortCol !== colId) {
           t.sortCol = colId;
           t.sortDir = 'asc';
@@ -661,7 +662,7 @@ async function injectTemplate(url) {
       const sort    = params.get('sort')   || '';
       const density = parseInt(params.get('density') || '', 10);
       const t = state.myTable;
-      Velin.batch(() => {
+      ctrl.batch(() => {
         if (t.filterRaw !== filter) t.filterRaw = filter;
         if (sort) {
           const [col, dir] = sort.split(':');
@@ -693,6 +694,7 @@ async function injectTemplate(url) {
       }
     },
   });
+  ctrl = Velin.getController(state);
 
   // Scroll → state bridge. The listener does one thing: push scrollTop into
   // reactive state. refreshwindow reacts to that write and updates the ring

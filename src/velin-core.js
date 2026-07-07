@@ -17,8 +17,10 @@
  * @typedef {Object} VelinStateControl
  * @property {boolean} evaluating Whether or not we are currently in an evaluation (to prevent multi-sets in evaluation)
  * @property {boolean} wrapping Whether or not we are currently wrapping nested objects (to prevent false positives when setting the wrapped values)
+ * @property {any} currentCycleID Marker used to deduplicate re-entrant dependency capture cycles
  * @property {number} batchDepth Nesting depth of active batch() calls; effects are queued when > 0
  * @property {Set<Function>} batchQueue Deferred effects collected while batchDepth > 0
+ * @property {(fn: () => void) => void} batch Defers effects triggered inside fn until fn returns, then flushes once (deduplicated). Safe to nest.
  */
 
 /**
@@ -65,6 +67,7 @@
  * @property {(init: Object | Map<string, Interpolation>) => ChildContext} compose Pre-bound compose (returns ChildContext)
  * @property {(node: Node, name?: string, value?: string) => void} consume Pre-bound consumeAttribute
  * @property {(prop: string) => void} triggerEffects Pre-bound triggerEffects
+ * @property {(fn: () => void) => void} batch Pre-bound batch on this state's tree control
  */
 
 /**
@@ -220,7 +223,7 @@ const DefaultPluginPriorities = {
 /**
  * @typedef {Object} VelinInternal
  * @property {WeakMap<Node, any>} pluginStates
- * @property {{root?: ReactiveState}} boundState
+ * @property {(state: any) => ReactiveState | undefined} getWrapper Test/introspection helper: look up the ReactiveState wrapper for a proxy previously returned by Velin.bind().
  * @property {(node: Element, attr: string, expr: string) => void} consumeAttribute
  * @property {(prop: string, reactiveState: ReactiveState) => void} triggerEffects
  */
@@ -290,7 +293,7 @@ const DefaultPluginPriorities = {
  * @property {CleanupState} cleanupState
  * @property {ProcessNode} processNode
  * @property {Trackers} trackers
- * @property {(fn: () => void) => void} batch
+ * @property {(state: any) => VelinStateControl} getController Returns the scheduler control for a bound state (as returned by Velin.bind()). Use `.batch(fn)` on the result to batch effects across mutations.
  * @property {VelinInternal} ø__internal
  */
 
@@ -298,8 +301,8 @@ const DefaultPluginPriorities = {
 const plugins = new Map();
 /** @type {WeakMap<Node, any>} */
 const pluginStates = new WeakMap();
-/** @type {{root?: ReactiveState}} */
-const boundState = { root: undefined };
+/** @type {WeakMap<object, ReactiveState>} */
+const rootStates = new WeakMap();
 
 if (__DEV__) {
   // eslint-disable-next-line
@@ -516,6 +519,8 @@ function buildPluginHelpers(reactiveState) {
     consume: (node, name, value) => consumeAttribute(node, name, value),
     /** @param {string} prop */
     triggerEffects: (prop) => triggerEffects("root." + prop, reactiveState),
+    /** @param {() => void} fn */
+    batch: (fn) => reactiveState.ø__control.batch(fn),
   };
 }
 
@@ -1430,39 +1435,17 @@ function triggerEffects(prop, reactiveState) {
 }
 
 /**
- * Defers all reactive effects triggered inside `fn` until `fn` returns,
- * then runs them once (deduplicated). Safe to nest.
- * @param {() => void} fn
+ * Returns the scheduler control for a bound state (as returned by Velin.bind()).
+ * Callers use `.batch(fn)` on the result to coalesce effects across mutations.
+ * @param {any} state
+ * @returns {VelinStateControl}
  */
-function batch(fn) {
-  const reactiveState = boundState.root;
-  if (!reactiveState) {
-    if (__DEV__) console.warn("[Velin] Velin.batch() called before Velin.bind() — running fn() eagerly with no batching.");
-    fn();
-    return;
+function getController(state) {
+  const wrapper = rootStates.get(state);
+  if (!wrapper) {
+    throw new Error("[Velin] getController: argument is not a state returned by Velin.bind().");
   }
-  const ctrl = reactiveState.ø__control;
-  ctrl.batchDepth++;
-  try {
-    fn();
-  } finally {
-    ctrl.batchDepth--;
-    if (ctrl.batchDepth === 0) {
-      const effects = [...ctrl.batchQueue];
-      ctrl.batchQueue.clear();
-      for (const effect of effects) {
-        if (__DEV__) {
-          hook.stats.updateCounter++;
-          const t0 = hook.ø__now();
-          effect();
-          const dbg = /** @type {any} */ (effect).ø__debug;
-          hook.ø__emit({ kind: "effect", state: reactiveState, path: dbg?.recentPaths?.[dbg?.ø__pathRingHead === 0 ? DEBUG_PATH_RING - 1 : dbg.ø__pathRingHead - 1] ?? "", node: dbg?.node, expr: dbg?.expr, pluginName: dbg?.pluginName, durationMs: hook.ø__now() - t0 });
-        } else {
-          effect();
-        }
-      }
-    }
-  }
+  return wrapper.ø__control;
 }
 
 /**
@@ -1472,6 +1455,7 @@ function batch(fn) {
  */
 function setupState(obj) {
   const ø__depCaptures = [];
+  /** @type {VelinStateControl} */
   const ø__control = {
     evaluating: false,
     wrapping: false,
@@ -1479,6 +1463,29 @@ function setupState(obj) {
     batchDepth: 0,
     /** @type {Set<Function>} */
     batchQueue: new Set(),
+    batch(fn) {
+      this.batchDepth++;
+      try {
+        fn();
+      } finally {
+        this.batchDepth--;
+        if (this.batchDepth === 0 && this.batchQueue.size) {
+          const effects = [...this.batchQueue];
+          this.batchQueue.clear();
+          for (const effect of effects) {
+            if (__DEV__) {
+              hook.stats.updateCounter++;
+              const t0 = hook.ø__now();
+              effect();
+              const dbg = /** @type {any} */ (effect).ø__debug;
+              hook.ø__emit({ kind: "effect", state: reactiveState, path: dbg?.recentPaths?.[dbg?.ø__pathRingHead === 0 ? DEBUG_PATH_RING - 1 : dbg.ø__pathRingHead - 1] ?? "", node: dbg?.node, expr: dbg?.expr, pluginName: dbg?.pluginName, durationMs: hook.ø__now() - t0 });
+            } else {
+              effect();
+            }
+          }
+        }
+      }
+    },
   };
   /** @type {ReactiveState} */
   const reactiveState = {
@@ -1953,7 +1960,7 @@ function bind(root, initialState) {
   if (initialState === undefined) initialState = {};
   const reactiveState = setupState(initialState);
   processNode(root, reactiveState);
-  boundState.root = reactiveState;
+  rootStates.set(reactiveState.state, reactiveState);
   if (__DEV__) {
     hook.ø__trackState(reactiveState);
     hook.ø__registerStateNode(reactiveState, root);
@@ -1972,7 +1979,7 @@ const Velin = {
   compile,
   evaluate,
   evaluateAst,
-  batch,
+  getController,
   plugins: {
     registerPlugin,
     processPlugin,
@@ -1983,7 +1990,7 @@ const Velin = {
   trackers,
   ø__internal: {
     pluginStates,
-    boundState,
+    getWrapper: (state) => rootStates.get(state),
     consumeAttribute,
     triggerEffects: (prop, reactiveState) => {
       triggerEffects("root." + prop, reactiveState);
