@@ -41,7 +41,7 @@ function setupTemplatesAndFragments(vln) {
    *
    * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/templates.md|Templates & Fragments Guide}
    * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/directives.md|Directives Guide}
-   * @see {@link https://github.com/TFrascaroli/velin/blob/main/playground/examples.html|Interactive Examples}
+   * @see {@link https://github.com/TFrascaroli/velin/blob/main/playground/index.html|Interactive Examples}
    */
   vln.plugins.registerPlugin({
     name: "fragment",

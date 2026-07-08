@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <script src="vendor/velin.js"></script>
+  <style>
+    body { font-family: sans-serif; padding: 2rem; }
+    nav { margin-bottom: 1rem; border-bottom: 1px solid #ccc; padding-bottom: 1rem; }
+    nav button { margin-right: 0.5rem; padding: 0.4rem 0.8rem; }
+    .card { border: 1px solid #ddd; padding: 1rem; margin-top: 1rem; border-radius: 4px; }
+  </style>
+</head>
+<body>
+
+  <div id="app">
+    <nav>
+      <button vln-on:click="myRoute.navigateTo('/')">Home</button>
+      <button vln-on:click="myRoute.navigateTo('/profile/alice')">Alice</button>
+      <button vln-on:click="myRoute.navigateTo('/profile/bob')">Bob</button>
+    </nav>
+
+    <div vln-router="myRoute">
+
+      <div vln-route="'/'">
+        <h1>Home</h1>
+        <p>Welcome to the Velin SPA example.</p>
+      </div>
+
+      <div vln-route="'/profile/:id'">
+        <div vln-fragment="'profile-template'" vln-var:id="routeUserId(myRoute.path)"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <template id="profile-template" vln-vars="id">
+    <div class="card"
+         vln-on:init="onmount(id)"
+         vln-on:destroy="onunmount()">
+      <h1>Profile</h1>
+      <p>User ID: <span vln-text="id"></span></p>
+      <p vln-watch:logchange="id">Watching ID changes...</p>
+    </div>
+  </template>
+
+  <script>
+    // Two workarounds baked in:
+    //   1. `routeUserId(path)` sidesteps a parser gap — `.split('/')[2]`
+    //      inline doesn't consume the trailing `[2]`, so the id would be
+    //      the whole array. Wrapping it in a state method dodges that.
+    //   2. Lifecycle & watch handlers can't reach `console` from an
+    //      expression; the evaluator only sees state. So we route logs
+    //      through named methods on state.
+    Velin.bind(document.getElementById('app'), {
+      myRoute: { path: '/', query: {}, error: null, loading: false },
+
+      routeUserId(path) {
+        return (path || '').split('/')[2] || 'unknown';
+      },
+      onmount(id) { console.log('Profile mounted for:', id); },
+      onunmount() { console.log('Profile unmounted'); },
+      logchange(id) { console.log('User ID changed to:', id); }
+    });
+  </script>
+</body>
+</html>

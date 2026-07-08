@@ -10,7 +10,7 @@ Velin's documentation is organized into several key sections:
 
 **New to Velin?** Start here:
 1. [Getting Started](./getting-started.md) - Installation, first app, core concepts
-2. [Interactive Examples](../playground/examples.html) - See Velin in action
+2. [Interactive Examples](../playground/index.html) - See Velin in action
 3. [Directives Guide](./directives.md) - Learn all built-in directives
 
 **Building with Velin:**
@@ -23,13 +23,13 @@ Velin's documentation is organized into several key sections:
 ### Quick Start by Use Case
 
 #### "I want to build a simple reactive UI"
-→ Start with [Getting Started](./getting-started.md), then try the [Form Validation example](../playground/examples.html)
+→ Start with [Getting Started](./getting-started.md), then try the [Form Validation example](../playground/index.html)
 
 #### "I need to understand what each directive does"
 → [Directives Guide](./directives.md) has detailed reference for all `vln-*` attributes
 
 #### "I want to see real working examples"
-→ [Interactive Examples](../playground/examples.html) - Live demos you can interact with
+→ [Interactive Examples](../playground/index.html) - Live demos you can interact with
 
 #### "I need to create a custom directive"
 → [Creating Plugins](./plugins.md) + [API Reference: Advanced APIs](./api-reference.md#advanced-apis)
@@ -69,9 +69,12 @@ docs/
 └── templates.md           # Advanced templates
 
 playground/
-├── examples.html          # Interactive examples browser
-├── index.html             # Main playground
-└── ...                    # Other demos
+├── index.html                # Sidebar landing — vln-load fragments
+├── examples/                 # Fragment examples (form, crud, tabs, …)
+├── benchmarks/               # Virtual table + stress test
+├── hello-world.html          # Minimal standalone
+├── router.html               # Router & lifecycle
+└── directive-inspector.html  # 4-quadrant directive diff view
 
 dist/types/                # TypeScript type definitions
 └── velin-core.d.ts

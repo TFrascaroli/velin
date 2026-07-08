@@ -4,7 +4,7 @@ import Velin from '../../../src/velin-all';
 /**
  * Regression: node traversal used to bail on any non-HTMLElement, so children
  * of an <svg> were never visited. As a result, `vln-attr:points` on a
- * <polyline> never fired — the sparkline in playground/efficient-table.html
+ * <polyline> never fired — the sparkline in playground/benchmarks/virtual-table.html
  * showed nothing. These tests pin the fixed behavior.
  */
 describe('SVG traversal + vln-attr on SVG elements', () => {

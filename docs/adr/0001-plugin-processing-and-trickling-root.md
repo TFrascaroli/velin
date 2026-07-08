@@ -5,7 +5,7 @@ Status: **Implemented** (landed in commit `8ae2568 fix(core): stack trickling ro
 ## Context
 
 Two related concerns triggered this ADR while building the `efficient-table`
-example (`playground/efficient-table.{html,js,tpl.html}`):
+example (`playground/benchmarks/virtual-table.{html,js,tpl.html}`):
 
 1. The example needed a way for an application plugin (`vln-table`) to expand
    into a small set of plumbing directives (`vln-var:tabledata`, `vln-fragment`)
@@ -207,5 +207,5 @@ spec does and stop relying on the bundled artifact.
 - `src/velin-core.js:1609` — `processNode` linked-list walk
 - `src/velin-standard.js:465`, `:493` — `tricklingRoot` overwrite sites
 - `src/velin-templates-and-fragments.js:46` — `vln-fragment` (priority `LATE`)
-- `playground/efficient-table.{html,js,tpl.html}` — the motivating example
+- `playground/benchmarks/virtual-table.{html,js,tpl.html}` — the motivating example
 - `test/unit/core/trickling-root-nested.spec.ts` — repro

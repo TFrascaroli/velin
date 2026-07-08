@@ -255,7 +255,7 @@ Changing either `firstName` or `lastName` will update `fullName`.
 
 - Read the [Directives Guide](./directives.md) for detailed information on each directive
 - Check out the [API Reference](./api-reference.md) for advanced features
-- Explore [Interactive Examples](../playground/examples.html) for common use cases
+- Explore [Interactive Examples](../playground/index.html) for common use cases
 - Learn about [Creating Plugins](./plugins.md) to extend Velin
 
 ## Common Patterns
@@ -349,7 +349,7 @@ const vln = Velin.bind(root, {
 ## See Also
 
 - **[Directives Guide](./directives.md)** - Complete reference for all `vln-*` directives
-- **[Interactive Examples](../playground/examples.html)** - Working demos of forms, CRUD, modals, and more
+- **[Interactive Examples](../playground/index.html)** - Working demos of forms, CRUD, modals, and more
 - **[API Reference](./api-reference.md)** - Deep dive into Velin's JavaScript API
 - **[Creating Plugins](./plugins.md)** - Build your own custom directives
 - **[Documentation Hub](./README.md)** - Navigate all Velin documentation

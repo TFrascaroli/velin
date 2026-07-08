@@ -1,5 +1,5 @@
 /**
- * @typedef {import('../src/velin-core').VelinCore} VelinCore
+ * @typedef {import('../../src/velin-core').VelinCore} VelinCore
  */
 const Velin = /** @type {globalThis & {Velin: VelinCore}} */ (globalThis).Velin;
 
@@ -313,7 +313,7 @@ async function injectTemplate(url) {
 }
 
 (async () => {
-  await injectTemplate('efficient-table.tpl.html');
+  await injectTemplate('virtual-table.tpl.html');
 
   const viewport = document.querySelector('.vt-viewport');
 
