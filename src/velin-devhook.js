@@ -31,7 +31,7 @@ export function createDevHook() {
     effectCount: 0,
     bindingsCount: 0,
     orphanedEffectsSinceStart: 0,
-    /** @type {Map<string, {calls: number, totalMs: number, lastCall: number}>} */
+    /** @type {Map<string, {calls: number, totalMs: number, maxMs: number, lastCall: number}>} */
     expressionEvalTime: new Map(),
   };
 
@@ -60,6 +60,7 @@ export function createDevHook() {
     }
     emitSeq++;
     ev.t = ev.t ?? now();
+    ev.ø__seq = emitSeq;
     log[logHead] = ev;
     logHead = (logHead + 1) % logCap;
     if (logSize < logCap) logSize++;
@@ -168,6 +169,39 @@ export function createDevHook() {
     return rows;
   }
 
+  // Bounded top-N by effect count. Skips cheap-inner work: only pays the
+  // node/expr allocations for paths that make the cut. On efficient-table
+  // this avoids the thousand-row allocation that enumerateBindings does.
+  function topBindings(limit) {
+    const heap = []; // sorted asc by effectCount; keep at most `limit`
+    let stateIdx = 0;
+    for (const s of statesIterable) {
+      for (const [path, effects] of s.bindings) {
+        const n = effects.size;
+        if (heap.length >= limit && n <= heap[0].effectCount) continue;
+        let sampleExpr = "";
+        const nodes = [];
+        for (const e of effects) {
+          const dbg = e.ø__debug;
+          if (dbg) {
+            if (!sampleExpr && dbg.expr) sampleExpr = dbg.expr;
+            if (dbg.node) nodes.push(dbg.node);
+          }
+        }
+        const row = { stateIdx, path, effectCount: n, sampleExpr, nodes };
+        if (heap.length < limit) {
+          heap.push(row);
+          heap.sort((a, b) => a.effectCount - b.effectCount);
+        } else {
+          heap[0] = row;
+          heap.sort((a, b) => a.effectCount - b.effectCount);
+        }
+      }
+      stateIdx++;
+    }
+    return heap.sort((a, b) => b.effectCount - a.effectCount);
+  }
+
   const hook = {
     states: statesIterable,
     plugins: null, // wired below by core
@@ -197,6 +231,7 @@ export function createDevHook() {
     peek,
     whyDidThisRun,
     enumerateBindings,
+    topBindings,
 
     // internal wiring called by core
     ø__trackState: trackState,
@@ -231,11 +266,12 @@ export function createDevHook() {
           }
           if (oldestKey !== undefined) stats.expressionEvalTime.delete(oldestKey);
         }
-        e = { calls: 0, totalMs: 0, lastCall: 0 };
+        e = { calls: 0, totalMs: 0, maxMs: 0, lastCall: 0 };
         stats.expressionEvalTime.set(expr, e);
       }
       e.calls++;
       e.totalMs += ms;
+      if (ms > e.maxMs) e.maxMs = ms;
       e.lastCall = now();
     },
     ø__now: now,

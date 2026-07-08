@@ -9,10 +9,15 @@
  *
  * Refresh model: **polled**. The panel does NOT subscribe to per-event
  * hook writes. When open, a setInterval snapshots hook.log, hook.states,
- * enumerateBindings, etc. into reactive arrays. Templates re-render off
- * those arrays. This decouples panel work from host-page mutation rate —
- * a 60 fps table firing thousands of events/sec costs the panel exactly
- * one snapshot every REFRESH_MS regardless of volume.
+ * topBindings, etc. into reactive arrays. Templates re-render off those
+ * arrays. This decouples panel work from host-page mutation rate — a 60
+ * fps table firing thousands of events/sec costs the panel exactly one
+ * snapshot every REFRESH_MS regardless of volume.
+ *
+ * All vln-loops use keyed diffs (`{collection, key: 'id'}`) with ids
+ * derived from stable data (state identity, event ø__seq, expression
+ * text) so substates get reused across polls instead of being torn down
+ * and rebuilt every 500ms.
  *
  * The only per-event subscribe is the highlight-on-update flash, gated
  * by a cached boolean so a disabled toggle is truly zero-cost.
@@ -24,15 +29,16 @@
   if (typeof window === "undefined") return;
   if (window.__VELIN_DEVTOOLS_COMPANION__) return;
 
-  const VERSION = "0.2.0";
+  const VERSION = "0.1.0-alpha.0";
   const HOOK_KEY = "__VELIN_DEVTOOLS_HOOK__";
   const REFRESH_MS = 500;
   const LOG_VIEW_MAX = 200;
   const STATES_VIEW_MAX = 400;
-  const BINDINGS_VIEW_MAX = 300;
-  const EFFECTS_VIEW_MAX = 200;
+  const BINDINGS_VIEW_MAX = 100;
+  const EFFECTS_VIEW_MAX = 100;
   const PERF_VIEW_MAX = 40;
   const WARNINGS_VIEW_MAX = 200;
+  const SNAPSHOT_BUDGET_MS = 30;
 
   const off =
     new URLSearchParams(location.search).get("velin-devtools") === "off" ||
@@ -84,44 +90,65 @@
     const shadow = host.attachShadow({ mode: "open" });
     shadow.innerHTML = TEMPLATE_HTML;
     document.documentElement.appendChild(host);
-    // Velin.bind on a ShadowRoot is a no-op (processNode requires Element);
-    // bind the .panel div itself so its own vln-attr:class is processed.
     const panelRoot = shadow.querySelector(".panel");
+    const bodyEl = shadow.querySelector(".body");
 
     // ── Non-reactive lookup tables ────────────────────────────────────────
-    // Keep DOM/state refs out of Velin's Proxy world. Cleared each snapshot.
+    // Stable across polls so keyed vln-loops reuse rows / substate effects.
+    /** @type {WeakMap<any, number>} state → id */
+    const stateIds = new WeakMap();
+    let stateIdSeq = 0;
+    const idFor = (s) => {
+      let id = stateIds.get(s);
+      if (id == null) { id = ++stateIdSeq; stateIds.set(s, id); }
+      return id;
+    };
+
+    // Non-reactive lookups keyed by row id → repopulated each snapshot.
+    /** @type {Map<string|number, {nodes: any[]}>} */
     const bindingsById = new Map();
+    /** @type {Map<string|number, Node>} */
     const nodesById = new Map();
-    let idCounter = 0;
-    const nextId = () => ++idCounter;
+
+    // State-tab expand/collapse. Plain Set of state ids the user has
+    // explicitly collapsed. Default: every node expanded. Toggling forces
+    // a snapshot rebuild rather than firing effects on writes.
+    /** @type {Set<number>} */
+    const collapsedStates = new Set();
 
     // ── Cached UI flags — the hot path never reads state via Proxy ────────
     let cachedOpen = localStorage.getItem("velinDevtools.open") === "1";
     let cachedHighlight = localStorage.getItem("velinDevtools.hl") === "1";
 
+    // Snapshot-to-snapshot delta tracking for Perf churn indicator.
+    let lastUpdateCounter = 0;
+
     // ── Reactive state ────────────────────────────────────────────────────
     const savedTab = localStorage.getItem("velinDevtools.tab") || "Log";
+    const TABS = ["State", "Bindings", "Log", "Effects", "Perf", "Warnings"];
     const initial = {
       open: cachedOpen,
-      activeTab: ["State", "Bindings", "Log", "Effects", "Perf", "Warnings"].includes(savedTab) ? savedTab : "Log",
+      activeTab: TABS.includes(savedTab) ? savedTab : "Log",
       highlightOn: cachedHighlight,
       logFilter: "",
+      logGrouping: true,
 
-      TABS: ["State", "Bindings", "Log", "Effects", "Perf", "Warnings"],
+      TABS,
       LOG_KINDS: ["", "bind", "compose", "mutate", "trigger", "effect", "compile", "evaluate", "plugin", "cleanup", "warn"],
 
       logEntries: [],
       stateEntries: [],
       bindingRows: [],
-      effectsGroups: [],
+      effectsRuns: [],
       perfRows: [],
-      perfStats: { updateCounter: 0, effectCount: 0, bindingsCount: 0, orphanedEffectsSinceStart: 0 },
+      perfStats: { updateCounter: 0, updatesDelta: 0, effectCount: 0, bindingsCount: 0, orphanedEffectsSinceStart: 0 },
       warningsList: [],
 
       setTab(t) {
         this.activeTab = t;
         localStorage.setItem("velinDevtools.tab", t);
-        snapshot();
+        stickToTop = true; // fresh tab → allow snapping to top
+        snapshot({ force: true });
       },
       close() {
         this.open = false;
@@ -141,6 +168,10 @@
         cachedHighlight = this.highlightOn;
         localStorage.setItem("velinDevtools.hl", cachedHighlight ? "1" : "0");
       },
+      toggleLogGrouping() {
+        this.logGrouping = !this.logGrouping;
+        snapshot({ force: true });
+      },
       clearLog() {
         hook.setLogCapacity(hook.log.length || 500);
         snapshot({ force: true });
@@ -157,6 +188,15 @@
       hoverOutState(id) {
         const node = nodesById.get(id);
         if (node instanceof Element) removeOutline(node);
+      },
+      toggleStateRow(id) {
+        if (collapsedStates.has(id)) collapsedStates.delete(id);
+        else collapsedStates.add(id);
+        snapshot({ force: true });
+      },
+      flashEffect(id) {
+        const b = bindingsById.get(id);
+        if (b) for (const n of b.nodes) flashNode(n);
       },
     };
 
@@ -183,13 +223,22 @@
       pollerId = null;
     }
 
+    // ── Sticky-scroll for Log tab ────────────────────────────────────────
+    // Newest events land at the top of the list. `stickToTop` mirrors the
+    // classic "stay at bottom" behavior of chat/log UIs, inverted. On any
+    // user scroll away from top we release; scrolling back to top rearms.
+    let stickToTop = true;
+    if (bodyEl) {
+      bodyEl.addEventListener("scroll", () => {
+        stickToTop = bodyEl.scrollTop <= 2;
+      }, { passive: true });
+    }
+
     // Two-stage: (1) acquire + process into a plain view model, (2) commit
     // to reactive state in one batched write. Only the ACTIVE tab is
     // computed — hidden tabs' arrays stay untouched so their vln-loop
     // effects don't re-fire (vln-if uses display:none, not unmount, so
     // reassigning their data would trigger diff work on invisible DOM).
-    // A no-op poll (same activeTab, no host mutations since last poll)
-    // exits before any reactive write.
     function snapshot({ force = false } = {}) {
       if (!cachedOpen) return;
       const seq = hook.emitSeq;
@@ -199,22 +248,30 @@
       lastTabSnapshotted = tab;
       hook.refreshStats();
 
+      const t0 = performance.now();
+
       // Stage 1: acquire + process. Zero reactive writes, no proxy traps.
       let view;
       switch (tab) {
         case "Log":       view = { logEntries: snapshotLog() }; break;
         case "State":     view = { stateEntries: snapshotStates() }; break;
         case "Bindings":  view = { bindingRows: snapshotBindings() }; break;
-        case "Effects":   view = { effectsGroups: snapshotEffects() }; break;
-        case "Perf":      view = {
-          perfRows: snapshotPerf(),
-          perfStats: {
-            updateCounter: counter,
-            effectCount: hook.stats.effectCount,
-            bindingsCount: hook.stats.bindingsCount,
-            orphanedEffectsSinceStart: hook.stats.orphanedEffectsSinceStart,
-          },
-        }; break;
+        case "Effects":   view = { effectsRuns: snapshotEffects() }; break;
+        case "Perf":      {
+          const uc = hook.stats.updateCounter;
+          view = {
+            perfRows: snapshotPerf(),
+            perfStats: {
+              updateCounter: uc,
+              updatesDelta: uc - lastUpdateCounter,
+              effectCount: hook.stats.effectCount,
+              bindingsCount: hook.stats.bindingsCount,
+              orphanedEffectsSinceStart: hook.stats.orphanedEffectsSinceStart,
+            },
+          };
+          lastUpdateCounter = uc;
+          break;
+        }
         case "Warnings":  view = { warningsList: snapshotWarnings() }; break;
         default:          return;
       }
@@ -225,6 +282,16 @@
       ctrl.batch(() => {
         for (const k in view) state[k] = view[k];
       });
+
+      const elapsed = performance.now() - t0;
+      if (elapsed > SNAPSHOT_BUDGET_MS) {
+        console.warn(`[Velin devtools] ${tab} snapshot took ${elapsed.toFixed(1)}ms (budget ${SNAPSHOT_BUDGET_MS}ms).`);
+      }
+
+      // Log tab: honor sticky-scroll after DOM applies.
+      if (tab === "Log" && stickToTop && bodyEl) {
+        requestAnimationFrame(() => { bodyEl.scrollTop = 0; });
+      }
     }
 
     // ── Hook subscribers — flash ONLY ─────────────────────────────────────
@@ -262,102 +329,163 @@
     // ── Snapshot builders ─────────────────────────────────────────────────
     function snapshotLog() {
       const raw = hook.log;
-      const start = Math.max(0, raw.length - LOG_VIEW_MAX);
+      const filter = state.logFilter;
+      const grouping = state.logGrouping;
       const out = [];
-      for (let i = raw.length - 1; i >= start; i--) {
+      // Walk newest → oldest; stop when we've filled the view budget.
+      for (let i = raw.length - 1; i >= 0 && out.length < LOG_VIEW_MAX; i--) {
         const ev = raw[i];
+        if (filter && ev.kind !== filter) continue;
+        if (grouping && out.length > 0) {
+          const prev = out[out.length - 1];
+          if (prev.kind === ev.kind && prev._groupKey === groupKeyFor(ev)) {
+            prev.count++;
+            prev.earliestT = ev.t;
+            continue;
+          }
+        }
         out.push({
-          id: nextId(),
+          id: ev.ø__seq,
           kind: ev.kind,
           summary: shortSummary(ev),
           raw: safeStringify(ev),
           t: ev.t,
+          earliestT: ev.t,
+          count: 1,
+          _groupKey: groupKeyFor(ev),
         });
+      }
+      // Compute display timestamps: relative to the previous (older) event.
+      // Since out is newest-first, prev-in-time is the next entry in the
+      // array. Format as "+Δs" so the eye scans deltas, not absolutes.
+      for (let i = 0; i < out.length; i++) {
+        const older = out[i + 1];
+        out[i].tRel = older ? fmtDelta(out[i].earliestT - older.earliestT) : fmtAbs(out[i].earliestT);
+        out[i].summaryDisplay = out[i].count > 1
+          ? `${out[i].summary}  ×${out[i].count}`
+          : out[i].summary;
       }
       return out;
     }
 
+    function groupKeyFor(ev) {
+      // Same-kind bursts on the same target collapse. "target" varies by
+      // kind — path for mutate/trigger/effect, expr for evaluate/compile,
+      // code for warn, name for plugin, else the state identity.
+      switch (ev.kind) {
+        case "mutate":
+        case "trigger":
+        case "effect":  return ev.path || "";
+        case "evaluate":
+        case "compile": return ev.expr || "";
+        case "warn":    return ev.code || "";
+        case "plugin":  return ev.name + "@" + (ev.phase || "");
+        default:        return "";
+      }
+    }
+
     function snapshotWarnings() {
-      // Filter warnings straight out of hook.log — no separate buffer.
+      // Group by (code, ref-identity). Newest first, cap by view budget.
+      const groups = new Map();
       const raw = hook.log;
-      const out = [];
-      for (let i = raw.length - 1; i >= 0 && out.length < WARNINGS_VIEW_MAX; i--) {
+      for (let i = raw.length - 1; i >= 0; i--) {
         const ev = raw[i];
         if (ev.kind !== "warn") continue;
-        out.push({ id: nextId(), code: ev.code, message: ev.message, t: ev.t });
+        const refKey = ev.ref
+          ? (ev.ref.path || ev.ref.expr || JSON.stringify(ev.ref))
+          : ev.message;
+        const key = ev.code + "::" + refKey;
+        let g = groups.get(key);
+        if (!g) {
+          if (groups.size >= WARNINGS_VIEW_MAX) continue;
+          g = { id: key, code: ev.code, sample: ev.message, count: 0, lastT: ev.t };
+          groups.set(key, g);
+        }
+        g.count++;
+        if (ev.t > g.lastT) g.lastT = ev.t;
       }
-      return out;
+      const now = hook.ø__now();
+      return [...groups.values()]
+        .sort((a, b) => b.lastT - a.lastT)
+        .map((g) => ({
+          id: g.id,
+          code: g.code,
+          sample: g.sample,
+          count: g.count,
+          lastAgo: fmtAgo(now - g.lastT),
+        }));
     }
 
     function snapshotStates() {
       nodesById.clear();
       const out = [];
-      const walk = (s, depth) => {
+      const walk = (s, depth, parentId) => {
         if (out.length >= STATES_VIEW_MAX) return;
-        const id = nextId();
+        const id = idFor(s);
         const node = hook.nodeFor(s);
         const inners = s.ø__innerStates ? [...s.ø__innerStates] : [];
         nodesById.set(id, node);
+        const isCollapsed = collapsedStates.has(id);
         out.push({
           id,
-          label: node ? nodePath(node) : "state " + out.length,
+          parentId,
+          label: node ? nodePath(node) : "state " + id,
           indent: depth,
           innersCount: inners.length,
           hasNode: !!node,
+          hasTricklingRoots: !!(s.tricklingRoots && s.tricklingRoots.length),
+          collapsed: isCollapsed,
         });
-        for (const inner of inners) walk(inner, depth + 1);
+        if (!isCollapsed) for (const inner of inners) walk(inner, depth + 1, id);
       };
       for (const s of hook.states) {
         if (hook.parentOf(s)) continue;
-        walk(s, 0);
+        walk(s, 0, 0);
       }
       return out;
     }
 
     function snapshotBindings() {
       bindingsById.clear();
-      const rows = hook.enumerateBindings().slice(0, BINDINGS_VIEW_MAX);
+      const rows = hook.topBindings(BINDINGS_VIEW_MAX);
       return rows.map((r) => {
-        const id = nextId();
-        bindingsById.set(id, { nodes: r.nodes, effects: r.effects || [] });
+        const id = r.stateIdx + "@" + r.path;
+        bindingsById.set(id, { nodes: r.nodes });
         return {
           id,
           path: r.path,
           effectCount: r.effectCount,
-          exprsSummary: r.exprs.join(", ").slice(0, 80) || "-",
+          sampleExpr: r.sampleExpr || "-",
           nodesCount: r.nodes.length,
         };
       });
     }
 
     function snapshotEffects() {
-      const groups = new Map();
-      for (const s of hook.states) {
-        for (const [path, effects] of s.bindings) {
-          for (const e of effects) {
-            const dbg = e.ø__debug;
-            const key = (dbg?.pluginName || "anon") + "@" + (dbg?.expr || path);
-            let g = groups.get(key);
-            if (!g) { g = { key, effects: new Set(), paths: new Set() }; groups.set(key, g); }
-            g.effects.add(e);
-            g.paths.add(path);
-          }
-        }
-      }
+      // "What just re-ran?" — the last N effect events out of hook.log,
+      // newest first. Whys come from whyDidThisRun on the effect object
+      // itself, but only the event has the node/path/expr we need to show
+      // per-run. For the why list we look up recentPaths via the effect
+      // debug ring — but events don't carry the effect ref. Instead we
+      // synthesize a "why" as the path of the log entry itself (that's
+      // literally what triggered this run).
+      bindingsById.clear();
+      const raw = hook.log;
+      const now = hook.ø__now();
       const out = [];
-      let i = 0;
-      for (const g of groups.values()) {
-        if (i++ >= EFFECTS_VIEW_MAX) break;
-        const whys = new Set();
-        for (const e of g.effects) {
-          for (const w of hook.whyDidThisRun(e, 8)) whys.add(w);
-        }
+      for (let i = raw.length - 1; i >= 0 && out.length < EFFECTS_VIEW_MAX; i--) {
+        const ev = raw[i];
+        if (ev.kind !== "effect") continue;
+        const id = ev.ø__seq;
+        if (ev.node) bindingsById.set(id, { nodes: [ev.node] });
         out.push({
-          id: nextId(),
-          key: g.key,
-          effectsCount: g.effects.size,
-          pathsCount: g.paths.size,
-          whysSummary: [...whys].join(", ") || "-",
+          id,
+          path: ev.path || "-",
+          expr: ev.expr || "-",
+          nodeLabel: ev.node ? nodePath(ev.node) : "-",
+          plugin: ev.pluginName || "-",
+          durationMs: typeof ev.durationMs === "number" ? +ev.durationMs.toFixed(2) : 0,
+          ago: fmtAgo(now - ev.t),
         });
       }
       return out;
@@ -366,10 +494,12 @@
     function snapshotPerf() {
       return [...hook.stats.expressionEvalTime.entries()]
         .map(([expr, v]) => ({
+          id: expr,
           expr,
           calls: v.calls,
           totalMs: +v.totalMs.toFixed(2),
           avg: +(v.totalMs / v.calls).toFixed(3),
+          maxMs: +(v.maxMs ?? 0).toFixed(2),
         }))
         .sort((a, b) => b.totalMs - a.totalMs)
         .slice(0, PERF_VIEW_MAX);
@@ -378,20 +508,51 @@
     // ── Formatting helpers ────────────────────────────────────────────────
     function shortSummary(ev) {
       switch (ev.kind) {
-        case "mutate": return `${ev.path} (${ev.op}${ev.method ? " " + ev.method : ""})`;
-        case "trigger": return `${ev.path} → ${ev.effectCount}${ev.queued ? " [q]" : ""}`;
-        case "effect": return `${ev.path} ${ev.pluginName || ""} ${ev.durationMs?.toFixed?.(2)}ms`;
-        case "evaluate": return `${ev.expr} ${ev.durationMs?.toFixed?.(2)}ms${ev.ok ? "" : " ERR"}`;
-        case "compile": return ev.expr || "";
-        case "plugin": return `${ev.name} ${ev.phase}`;
-        case "warn": return `[${ev.code}] ${ev.message}`;
-        default: return "";
+        case "bind":     return ev.rootNode ? `<${(ev.rootNode.nodeName || "node").toLowerCase()}>` : "";
+        case "compose":  return "substate";
+        case "cleanup":  return ev.node ? `<${(ev.node.nodeName || "node").toLowerCase()}>` : "state";
+        case "mutate":   return `${ev.path} (${ev.op}${ev.method ? " " + ev.method : ""})`;
+        case "trigger":  return `${ev.path} → ${ev.effectCount ?? 0}${ev.queued ? " [q]" : ""}`;
+        case "effect":   return `${ev.path || "-"} ${ev.pluginName || ""} ${fmtMs(ev.durationMs)}`;
+        case "evaluate": return `${ev.expr || "-"} ${fmtMs(ev.durationMs)}${ev.ok ? "" : " ERR"}`;
+        case "compile":  return ev.expr || "";
+        case "plugin":   return `${ev.name} ${ev.phase}${ev.expr ? " " + ev.expr : ""}`;
+        case "warn":     return `[${ev.code}] ${ev.message}`;
+        default:         return "";
       }
+    }
+
+    function fmtMs(ms) {
+      return typeof ms === "number" ? ms.toFixed(2) + "ms" : "";
+    }
+
+    function fmtDelta(deltaMs) {
+      if (!Number.isFinite(deltaMs) || deltaMs < 0) deltaMs = 0;
+      if (deltaMs < 1) return "+0ms";
+      if (deltaMs < 1000) return `+${deltaMs.toFixed(0)}ms`;
+      if (deltaMs < 60_000) return `+${(deltaMs / 1000).toFixed(1)}s`;
+      return `+${(deltaMs / 60_000).toFixed(1)}m`;
+    }
+
+    function fmtAbs(t) {
+      const d = new Date(performance.timeOrigin + t);
+      const hh = String(d.getHours()).padStart(2, "0");
+      const mm = String(d.getMinutes()).padStart(2, "0");
+      const ss = String(d.getSeconds()).padStart(2, "0");
+      return `${hh}:${mm}:${ss}`;
+    }
+
+    function fmtAgo(deltaMs) {
+      if (!Number.isFinite(deltaMs) || deltaMs < 0) return "just now";
+      if (deltaMs < 1000) return `${deltaMs.toFixed(0)}ms ago`;
+      if (deltaMs < 60_000) return `${(deltaMs / 1000).toFixed(1)}s ago`;
+      return `${(deltaMs / 60_000).toFixed(1)}m ago`;
     }
 
     function safeStringify(o) {
       const shallow = {};
       for (const k of Object.keys(o)) {
+        if (k === "ø__seq") continue;
         const v = o[k];
         if (v == null || typeof v !== "object") shallow[k] = v;
         else if (v instanceof Node) shallow[k] = "<" + (v.nodeName || "node") + ">";
@@ -450,12 +611,14 @@
   }
 
   // ── Template ────────────────────────────────────────────────────────────
+  // Per-kind colors (log tab): map kind → CSS var so the header legend and
+  // the row swatches stay in sync.
   const TEMPLATE_HTML = `
     <style>
       :host { all: initial; }
       .panel { font: 12px/1.4 ui-monospace, Menlo, Consolas, monospace; color: #ddd;
                background: #111a; backdrop-filter: blur(8px); border: 1px solid #444;
-               border-radius: 6px; width: 520px; height: 360px; display: none;
+               border-radius: 6px; width: 600px; height: 400px; display: none;
                resize: both; overflow: hidden; box-shadow: 0 6px 24px #000a; }
       .panel.open { display: flex; flex-direction: column; }
       header { display: flex; align-items: center; gap: 6px; padding: 4px 8px;
@@ -480,12 +643,44 @@
       details { margin-left: 8px; }
       summary { cursor: pointer; }
       table { width: 100%; border-collapse: collapse; }
-      th, td { text-align: left; padding: 2px 6px; border-bottom: 1px solid #333; }
-      th { color: #7cf; }
+      th, td { text-align: left; padding: 2px 6px; border-bottom: 1px solid #333;
+               vertical-align: top; }
+      th { color: #7cf; position: sticky; top: 0; background: #1a1a1a; }
+      td.num { text-align: right; font-variant-numeric: tabular-nums; }
       input[type=text], select { background: #222; color: #ddd; border: 1px solid #444;
                                  border-radius: 3px; padding: 2px 4px; font: inherit; }
-      .state-row { padding: 2px 0; border-bottom: 1px dotted #333; }
+      .state-row { padding: 2px 0; border-bottom: 1px dotted #333; cursor: pointer;
+                   display: flex; align-items: center; gap: 6px; }
       .state-row:hover { background: #222; }
+      .caret { display: inline-block; width: 10px; color: #888; }
+      .badge { display: inline-block; padding: 0 4px; border-radius: 3px;
+               font-size: 10px; line-height: 14px; background: #223; color: #7cf; }
+      .badge.trickle { background: #331; color: #eda; }
+      .badge.count { background: #333; color: #eda; }
+      .log-row { display: grid; grid-template-columns: 60px 60px 1fr; gap: 6px;
+                 padding: 2px 0; border-bottom: 1px dotted #333; align-items: baseline; }
+      .log-row .t { color: #888; font-variant-numeric: tabular-nums; }
+      .log-row .kind { display: inline-block; padding: 0 4px; border-radius: 3px;
+                       font-size: 10px; text-transform: uppercase; text-align: center; }
+      .log-row .summ { color: #eda; overflow: hidden; text-overflow: ellipsis;
+                       white-space: nowrap; }
+      /* Per-kind colors */
+      .kind.mutate   { background: #244; color: #9df; }
+      .kind.trigger  { background: #232; color: #ad9; }
+      .kind.effect   { background: #422; color: #fa9; }
+      .kind.evaluate { background: #443; color: #eda; }
+      .kind.compile  { background: #334; color: #ccf; }
+      .kind.plugin   { background: #333; color: #ccc; }
+      .kind.bind     { background: #224; color: #7cf; }
+      .kind.compose  { background: #234; color: #9cf; }
+      .kind.cleanup  { background: #322; color: #d99; }
+      .kind.warn     { background: #430; color: #fa7; }
+      .log-row details { margin: 0; grid-column: 1 / -1; }
+      .log-row pre { margin: 4px 0 4px 66px; padding: 4px 6px; background: #0a0a0a;
+                     border-left: 2px solid #333; color: #aaa; overflow: auto;
+                     max-height: 200px; }
+      .empty { color: #888; padding: 12px; text-align: center; }
+      .churn { color: #eda; font-weight: bold; }
     </style>
     <div class="panel" vln-attr:class="'panel ' + (open ? 'open' : '')">
       <header>
@@ -506,75 +701,117 @@
       <div class="body">
 
         <div vln-if="activeTab === 'State'">
-          <div vln-if="stateEntries.length === 0" class="dim">no bound states</div>
-          <div vln-loop:s="stateEntries" class="state-row"
-               vln-attr:style="'padding-left:' + (s.indent * 12) + 'px'"
+          <div vln-if="stateEntries.length === 0" class="empty">no bound states</div>
+          <div vln-loop:s="{collection: stateEntries, key: 'id'}"
+               class="state-row"
+               vln-attr:style="'padding-left:' + (s.indent * 14 + 4) + 'px'"
+               vln-on:click="toggleStateRow(s.id)"
                vln-on:mouseenter="hoverInState(s.id)"
                vln-on:mouseleave="hoverOutState(s.id)">
+            <span class="caret"
+                  vln-text="s.innersCount > 0 ? (s.collapsed ? '▶' : '▼') : ''"></span>
             <span class="k" vln-text="s.label"></span>
-            <span vln-if="s.innersCount > 0" class="dim" vln-text="' (' + s.innersCount + ')'"></span>
+            <span vln-if="s.innersCount > 0" class="badge count"
+                  vln-text="s.innersCount"></span>
+            <span vln-if="s.hasTricklingRoots" class="badge trickle" title="anchored state">↓</span>
           </div>
         </div>
 
         <div vln-if="activeTab === 'Bindings'">
-          <div vln-if="bindingRows.length === 0" class="dim">no bindings</div>
+          <div vln-if="bindingRows.length === 0" class="empty">no bindings</div>
           <table vln-if="bindingRows.length > 0">
             <tr>
-              <th>Path</th><th>#Effects</th><th>Exprs</th><th>Nodes</th>
+              <th>Path</th><th>#Effects</th><th>Sample expr</th><th>Nodes</th>
             </tr>
-            <tr vln-loop:b="bindingRows" class="row click" vln-on:click="flashBinding(b.id)">
+            <tr vln-loop:b="{collection: bindingRows, key: 'id'}"
+                class="row click"
+                vln-on:click="flashBinding(b.id)">
               <td vln-text="b.path"></td>
-              <td vln-text="b.effectCount"></td>
-              <td vln-text="b.exprsSummary"></td>
-              <td vln-text="b.nodesCount"></td>
+              <td class="num" vln-text="b.effectCount"></td>
+              <td vln-text="b.sampleExpr"></td>
+              <td class="num" vln-text="b.nodesCount"></td>
             </tr>
           </table>
         </div>
 
         <div vln-if="activeTab === 'Log'">
-          <div class="row">
-            <span>Filter: </span>
+          <div class="row" style="display:flex; gap:8px; align-items:center;">
+            <span>Filter</span>
             <select vln-input="logFilter">
               <option vln-loop:k="LOG_KINDS" vln-attr:value="k" vln-text="k || 'all'"></option>
             </select>
+            <label>
+              <input type="checkbox" vln-attr:checked="logGrouping"
+                     vln-on:change="toggleLogGrouping()">
+              group bursts
+            </label>
           </div>
-          <div vln-if="logEntries.length === 0" class="dim">no log entries</div>
-          <details vln-loop:ev="logEntries" class="row"
-                   vln-if="logFilter === '' || ev.kind === logFilter">
+          <div vln-if="logEntries.length === 0" class="empty">no log entries</div>
+          <details vln-loop:ev="{collection: logEntries, key: 'id'}" class="log-row">
             <summary>
-              <span class="k" vln-text="ev.kind"></span>
-              <span class="v" vln-text="' ' + ev.summary"></span>
+              <span class="t" vln-text="ev.tRel"></span>
+              <span vln-attr:class="'kind ' + ev.kind" vln-text="ev.kind"></span>
+              <span class="summ" vln-text="ev.summaryDisplay"></span>
             </summary>
-            <pre class="dim" vln-text="ev.raw"></pre>
+            <pre vln-text="ev.raw"></pre>
           </details>
         </div>
 
         <div vln-if="activeTab === 'Effects'">
-          <div vln-if="effectsGroups.length === 0" class="dim">no effects</div>
-          <details vln-loop:g="effectsGroups" class="row">
-            <summary vln-text="g.key + ' — ' + g.effectsCount + ' effect(s), ' + g.pathsCount + ' path(s)'"></summary>
-            <div class="dim" vln-text="'why: ' + g.whysSummary"></div>
-          </details>
+          <div vln-if="effectsRuns.length === 0" class="empty">no effects have run recently</div>
+          <table vln-if="effectsRuns.length > 0">
+            <tr>
+              <th>When</th><th>Path</th><th>Expr</th><th>Plugin</th><th>Node</th><th>ms</th>
+            </tr>
+            <tr vln-loop:r="{collection: effectsRuns, key: 'id'}"
+                class="row click"
+                vln-on:click="flashEffect(r.id)">
+              <td class="dim" vln-text="r.ago"></td>
+              <td vln-text="r.path"></td>
+              <td vln-text="r.expr"></td>
+              <td class="dim" vln-text="r.plugin"></td>
+              <td class="dim" vln-text="r.nodeLabel"></td>
+              <td class="num" vln-text="r.durationMs"></td>
+            </tr>
+          </table>
         </div>
 
         <div vln-if="activeTab === 'Perf'">
-          <table>
-            <tr><th>Expression</th><th>Calls</th><th>Total ms</th><th>Avg ms</th></tr>
-            <tr vln-loop:r="perfRows" class="row">
+          <div class="dim" style="margin-bottom:6px;">
+            updates: <span class="churn" vln-text="perfStats.updateCounter"></span>
+            (<span class="churn" vln-text="'+' + perfStats.updatesDelta"></span>/tick)
+             | effects: <span vln-text="perfStats.effectCount"></span>
+             | bindings: <span vln-text="perfStats.bindingsCount"></span>
+             | orphaned: <span vln-text="perfStats.orphanedEffectsSinceStart"></span>
+          </div>
+          <div vln-if="perfRows.length === 0" class="empty">no expressions evaluated yet</div>
+          <table vln-if="perfRows.length > 0">
+            <tr>
+              <th>Expression</th><th>Calls</th><th>Total ms</th><th>Avg ms</th><th>Max ms</th>
+            </tr>
+            <tr vln-loop:r="{collection: perfRows, key: 'id'}" class="row">
               <td vln-text="r.expr"></td>
-              <td vln-text="r.calls"></td>
-              <td vln-text="r.totalMs"></td>
-              <td vln-text="r.avg"></td>
+              <td class="num" vln-text="r.calls"></td>
+              <td class="num" vln-text="r.totalMs"></td>
+              <td class="num" vln-text="r.avg"></td>
+              <td class="num" vln-text="r.maxMs"></td>
             </tr>
           </table>
-          <div class="dim"
-               vln-text="'updates: ' + perfStats.updateCounter + ' | effects: ' + perfStats.effectCount + ' | bindings: ' + perfStats.bindingsCount + ' | orphaned: ' + perfStats.orphanedEffectsSinceStart"></div>
         </div>
 
         <div vln-if="activeTab === 'Warnings'">
-          <div vln-if="warningsList.length === 0" class="dim">no warnings</div>
-          <div vln-loop:w="warningsList" class="row warn"
-               vln-text="'[' + w.code + '] ' + w.message"></div>
+          <div vln-if="warningsList.length === 0" class="empty">no warnings</div>
+          <table vln-if="warningsList.length > 0">
+            <tr>
+              <th>Code</th><th>Sample</th><th>Count</th><th>Last</th>
+            </tr>
+            <tr vln-loop:w="{collection: warningsList, key: 'id'}" class="row warn">
+              <td vln-text="w.code"></td>
+              <td vln-text="w.sample"></td>
+              <td class="num" vln-text="w.count"></td>
+              <td class="dim" vln-text="w.lastAgo"></td>
+            </tr>
+          </table>
         </div>
 
       </div>

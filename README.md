@@ -2,6 +2,8 @@
 
 **A lightweight reactive library for building interactive UIs with a pure JavaScript model.**
 
+**Status:** Velin core is in **beta** (`1.0.0-beta.0`) — the API surface is mostly settled, performance and usability are where I want them, only a few kinks left. The companion **Velin devtools is in alpha** (`0.1.0-alpha.0`) — it works and answers the questions it claims to, but expect rough visuals and shifting user journeys.
+
 Velin is a fine-grained reactivity engine for plain HTML and JavaScript. It uses native Proxies to track state changes and surgically update the DOM, requiring no build step, no JSX, and no virtual DOM.
 
 ### Why Velin?
@@ -50,7 +52,7 @@ Add this to your HTML `<head>`:
 
 Velin is under active development. Current priorities:
 
--   **DevTools** - Browser extension for direct state inspection.
+-   **DevTools polish** - Devtools ships as an in-page companion (`./devtools`), currently in alpha; visual polish and clearer user journeys are next.
 -   **Stable Plugin API** - Frozen `PluginContext` surface so third-party plugins survive core refactors.
 -   **Async Patterns** - Standardized practices for loading and error states.
 

@@ -1,6 +1,6 @@
 {
   "name": "velin",
-  "version": "0.1.0",
+  "version": "1.0.0-beta.0",
   "main": "dist/build/velin-all.min.js",
   "types": "dist/types/velin-all.d.ts",
   "exports": {
