@@ -34,7 +34,6 @@ function setupVelinRouter(vln) {
         routerState.path = currentHash;
       }
       if (!routerState.params) routerState.params = {};
-      if (!routerState.query) routerState.query = {};
       if (routerState.error === undefined) routerState.error = null;
       if (routerState.loading === undefined) routerState.loading = false;
 
@@ -53,12 +52,6 @@ function setupVelinRouter(vln) {
 
           if (routerState.path !== hashPath) {
             routerState.path = hashPath;
-
-            const query = {};
-            new URLSearchParams(globalThis.location.search).forEach((value, key) => {
-              query[key] = value;
-            });
-            routerState.query = query;
           }
         };
 
