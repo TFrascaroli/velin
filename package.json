@@ -14,6 +14,9 @@
     "./std": {
       "import": "./src/velin-standard.js"
     },
+    "./common": {
+      "import": "./src/velin-common.js"
+    },
     "./templates": {
       "import": "./src/velin-templates-and-fragments.js"
     },

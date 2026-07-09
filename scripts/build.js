@@ -37,7 +37,7 @@ const buildFile = async (file, isDev) => {
   const baseName = file.replace('.js', '');
   const outfile = `${distDir}/${baseName}${isDev ? '.dev' : '.min'}.js`;
 
-  const includesCore = ['velin-core', 'velin-all', 'velin-devtools'].includes(baseName);
+  const includesCore = ['velin-core', 'velin-all', 'velin-common', 'velin-devtools'].includes(baseName);
 
   return esbuild.build({
     ...config,
