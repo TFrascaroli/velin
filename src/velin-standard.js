@@ -21,55 +21,27 @@ function setupVelinStd(vln) {
    *   inner states, NOT its own interpolations — the caller already
    *   updated those).
    * @param {string} key interpolation name to propagate
-   * @param {string} oldExpr expression string the old interpolation held
+   * @param {(cur: any) => boolean} match predicate over the current entry
+   *   at `key` — returns true when this substate's entry should be swapped
+   *   (see matchExpr / matchLiteral)
    * @param {any} newInterp new interpolation object to install
    */
-  function propagateInterpolation(childContext, key, oldExpr, newInterp) {
+  function propagateInterpolation(childContext, key, match, newInterp) {
     const rs = childContext && childContext.ø__reactiveState;
     if (!rs || !rs.ø__innerStates) return;
     /** @param {any} state */
     function walk(state) {
       if (!state) return;
-      if (state.interpolations) {
-        const cur = state.interpolations.get(key);
-        if (cur && cur.type === 'EXPR' && cur.value && cur.value.expr === oldExpr) {
-          state.interpolations.set(key, newInterp);
-        }
-      }
-      if (state.ø__innerStates) {
-        for (const inner of state.ø__innerStates) walk(inner);
-      }
+      const cur = state.interpolations && state.interpolations.get(key);
+      if (cur && match(cur)) state.interpolations.set(key, newInterp);
+      if (state.ø__innerStates) for (const inner of state.ø__innerStates) walk(inner);
     }
     for (const inner of rs.ø__innerStates) walk(inner);
   }
-
-  /**
-   * Same as propagateInterpolation but for LITERAL entries ($index). We
-   * compare LITERAL values by strict equality.
-   *
-   * @param {any} childContext
-   * @param {string} key
-   * @param {any} oldValue
-   * @param {any} newInterp
-   */
-  function propagateLiteralInterpolation(childContext, key, oldValue, newInterp) {
-    const rs = childContext && childContext.ø__reactiveState;
-    if (!rs || !rs.ø__innerStates) return;
-    /** @param {any} state */
-    function walk(state) {
-      if (!state) return;
-      if (state.interpolations) {
-        const cur = state.interpolations.get(key);
-        if (cur && cur.type === 'LITERAL' && cur.value === oldValue) {
-          state.interpolations.set(key, newInterp);
-        }
-      }
-      if (state.ø__innerStates) {
-        for (const inner of state.ø__innerStates) walk(inner);
-      }
-    }
-    for (const inner of rs.ø__innerStates) walk(inner);
-  }
+  const matchExpr = (oldExpr) => (cur) =>
+    cur.type === 'EXPR' && cur.value && cur.value.expr === oldExpr;
+  const matchLiteral = (oldValue) => (cur) =>
+    cur.type === 'LITERAL' && cur.value === oldValue;
 
   /**
    * Re-fire every unique effect owned by this substate and its descendants.
@@ -349,77 +321,52 @@ function setupVelinStd(vln) {
    * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/directives.md#vln-input|Directives Guide: vln-input}
    * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/getting-started.md#two-way-binding-vln-input|Getting Started: Two-Way Binding}
    */
+  // Roles collapse the four supported element flavours into a shared
+  // read/write/event contract, so the plugin body stays one-branch-per-role.
+  //   'toggle' — checkbox/radio; state ↔ node.checked
+  //   'value'  — text-y input or textarea; state ↔ node.value on 'input'
+  //   'select' — <select>; state ↔ node.value on 'change'
+  //   'text'   — contenteditable; state ↔ node.textContent on 'input'
+  function inputRole(node) {
+    if (node instanceof HTMLInputElement) {
+      return (node.type === 'checkbox' || node.type === 'radio') ? 'toggle' : 'value';
+    }
+    if (node instanceof HTMLTextAreaElement) return 'value';
+    if (node instanceof HTMLSelectElement) return 'select';
+    if (node instanceof HTMLElement && node.isContentEditable) return 'text';
+    return null;
+  }
+  function readInput(node, role) {
+    if (role === 'toggle') return node.checked;
+    if (role === 'text') return node.textContent || '';
+    return node.value;
+  }
+  function writeInput(node, role, v) {
+    if (role === 'toggle') { if (node.checked !== v) node.checked = v; return; }
+    if (role === 'text') { if ((node.textContent || '') !== v) node.textContent = v; return; }
+    if (node.value !== v) node.value = v;
+  }
+
   vln.plugins.registerPlugin({
     name: "input",
     track: vln.trackers.expressionTracker,
     render: ({ node, tracked, expr, getSetter, pluginState = {} }) => {
-      const isInput = node instanceof HTMLInputElement;
-      const isTextArea = node instanceof HTMLTextAreaElement;
-      const isSelect = node instanceof HTMLSelectElement;
-      const isContentEditable = node instanceof HTMLElement && node.isContentEditable;
-
-      if (!isInput && !isTextArea && !isSelect && !isContentEditable) {
-        console.warn(
-          "[VLN006] Target is not input, textarea, select, or contenteditable element"
-        );
+      const role = inputRole(node);
+      if (!role) {
+        console.warn("[VLN006] target is not input/textarea/select/contenteditable");
         return;
       }
-
-      const setter = getSetter(expr);
-
       if (!pluginState.initialized) {
-        if (isInput) {
-          node.addEventListener("input", (e) => {
-            if (!(e.target instanceof HTMLInputElement)) return;
-            switch (e.target.type) {
-              case "checkbox":
-              case "radio":
-                setter(e.target.checked);
-                break;
-              default:
-                setter(e.target.value);
-            }
-          });
-          if (node.type === "radio") {
-            node.addEventListener("change", (e) => {
-              if (!(e.target instanceof HTMLInputElement)) return;
-              setter(e.target.checked);
-            });
-          }
-        } else if (isTextArea) {
-          node.addEventListener("input", (e) => {
-            if (!(e.target instanceof HTMLTextAreaElement)) return;
-            setter(e.target.value);
-          });
-        } else if (isSelect) {
-          node.addEventListener("change", (e) => {
-            if (!(e.target instanceof HTMLSelectElement)) return;
-            setter(e.target.value);
-          });
-        } else if (isContentEditable) {
-          node.addEventListener("input", () => {
-            setter(node.textContent || "");
-          });
+        const setter = getSetter(expr);
+        const push = () => setter(readInput(node, role));
+        node.addEventListener(role === 'select' ? 'change' : 'input', push);
+        // Radio: clicking a member of the group fires 'change' but not
+        // always 'input' consistently across browsers — belt-and-braces.
+        if (node instanceof HTMLInputElement && node.type === 'radio') {
+          node.addEventListener('change', push);
         }
       }
-
-      if (isInput) {
-        switch (node.type) {
-          case "checkbox":
-          case "radio":
-            if (node.checked !== tracked) node.checked = tracked;
-            break;
-          default:
-            if (node.value !== tracked) node.value = tracked;
-        }
-      } else if (isTextArea) {
-        if (node.value !== tracked) node.value = tracked;
-      } else if (isSelect) {
-        if (node.value !== tracked) node.value = tracked;
-      } else if (isContentEditable) {
-        if ((node.textContent || "") !== tracked) node.textContent = tracked;
-      }
-
+      writeInput(node, role, tracked);
       return { pluginState: { initialized: true } };
     },
   });
@@ -551,6 +498,9 @@ function setupVelinStd(vln) {
       // Two supported shapes:
       //   plain iterable          → positional diff (existing behavior)
       //   { collection, key: '…' } → keyed diff (reuse by item identity)
+      // Two supported tracked shapes:
+      //   plain iterable            → positional diff (reuse by index)
+      //   { collection, key: '…' }  → keyed diff (reuse by item[key])
       let collection = tracked;
       let keyField = null;
       if (
@@ -563,180 +513,132 @@ function setupVelinStd(vln) {
         collection = tracked.collection;
         keyField = tracked.key != null ? String(tracked.key) : null;
       }
-
       const { template, placeholder } = pluginState;
       if (!collection || typeof collection[Symbol.iterator] !== 'function') {
         return { halt: true, pluginState };
       }
 
+      // The item interpolation path differs by shape: positional loops
+      // index the raw array; keyed loops index through `.collection` on
+      // the config object, so the array proxy still records real deps
+      // on `root.<arrayPath>[i]`.
+      const itemExprAt = keyField
+        ? (i) => `${expr}.collection[${i}]`
+        : (i) => `${expr}[${i}]`;
+
       const oldChildren = pluginState.children;
       const oldSubstates = pluginState.substates;
+      const oldKeys = pluginState.keys || [];
+      const oldByKey = keyField ? new Map(oldKeys.map((k, j) => [k, j])) : null;
 
-      // ── KEYED DIFF ────────────────────────────────────────────────────────
-      // Substates are matched to old ones by their key. When an item moves,
-      // its substate follows — we swap the item interpolation and refresh
-      // this substate's own effects so they re-eval against the new
-      // interpolation and capture fresh deps. The child template (and any
-      // expensive vln-fragment underneath it) survives untouched.
-      //
-      // The item interpolation uses `${expr}.collection[${i}]` so it
-      // evaluates the config object once and indexes the wrapped array;
-      // that indexing goes through the array proxy so effects still
-      // subscribe to the real underlying `root.<arrayPath>[i]` paths.
-      if (keyField) {
-        const oldKeys = pluginState.keys || [];
-        const oldByKey = new Map();
-        for (let j = 0; j < oldKeys.length; j++) oldByKey.set(oldKeys[j], j);
-
-        const newChildren = [];
-        const newSubstates = [];
-        const newKeys = [];
-        const usedOld = new Set();
-        const seen = new Set();
-
-        let lastInserted = placeholder;
-
-        for (let i = 0; i < collection.length; i++) {
-          const item = collection[i];
-          if (
-            item == null ||
-            typeof item !== 'object' ||
-            !Object.prototype.hasOwnProperty.call(item, keyField)
-          ) {
-            throw new Error(
-              `[VLN020] vln-loop: item at index ${i} has no own property ` +
-              `'${keyField}' — required by keyed loop config { key: '${keyField}' }.`,
-            );
-          }
-          const key = item[keyField];
-          if (seen.has(key)) {
-            throw new Error(
-              `[VLN021] vln-loop: duplicate key ${JSON.stringify(key)} ` +
-              `at index ${i} — keyed loops require every item's key to be unique.`,
-            );
-          }
-          seen.add(key);
-
-          const itemExpr = `${expr}.collection[${i}]`;
-
-          const oldIdx = oldByKey.get(key);
-          if (oldIdx !== undefined) {
-            const reusedNode = oldChildren[oldIdx];
-            const reusedChild = oldSubstates[oldIdx];
-            usedOld.add(oldIdx);
-            newChildren.push(reusedNode);
-            newSubstates.push(reusedChild);
-            newKeys.push(key);
-
-            // Point the item interpolation at its new position and refresh
-            // $index. `composeState` snapshots inherited interpolations
-            // into descendants, so we also propagate the swap into the
-            // subtree — otherwise vln-fragment/vln-use children still see
-            // the old expression.
-            const oldItemExpr = `${expr}.collection[${oldIdx}]`;
-            if (subkey) {
-              const newInterp = {
-                type: 'EXPR',
-                value: { expr: itemExpr, ast: vln.compile(itemExpr) },
-              };
-              reusedChild.setInterpolation(subkey, newInterp);
-              propagateInterpolation(reusedChild, subkey, oldItemExpr, newInterp);
-            }
-            reusedChild.anchor(expr);
-            const newIndexInterp = { type: 'LITERAL', value: i };
-            reusedChild.setInterpolation('$index', newIndexInterp);
-            propagateLiteralInterpolation(reusedChild, '$index', oldIdx, newIndexInterp);
-
-            // Only refresh when the substate actually moved — an in-place
-            // reuse points at the same array slot, so the existing
-            // subscriptions already match.
-            if (oldIdx !== i) refreshSubstateEffects(reusedChild);
-
-            // Move DOM into position only when needed.
-            if (reusedNode.previousSibling !== lastInserted) {
-              placeholder.parentNode.insertBefore(reusedNode, lastInserted.nextSibling);
-            }
-            lastInserted = reusedNode;
-          } else {
-            const clone = template.cloneNode(true);
-            newChildren.push(clone);
-            newKeys.push(key);
-
-            const init = subkey
-              ? { [subkey]: { expr: itemExpr }, $index: { literal: i } }
-              : { $index: { literal: i } };
-            const child = compose(init).anchor(expr);
-
-            newSubstates.push(child);
-            child.processNode(clone);
-            placeholder.parentNode.insertBefore(clone, lastInserted.nextSibling);
-            lastInserted = clone;
-          }
-        }
-
-        for (let j = 0; j < oldSubstates.length; j++) {
-          if (!usedOld.has(j)) {
-            const childNode = oldChildren[j];
-            childNode.remove?.();
-            oldSubstates[j].cleanup(childNode);
-          }
-        }
-
-        pluginState.children = newChildren;
-        pluginState.substates = newSubstates;
-        pluginState.keys = newKeys;
-        return { halt: true, pluginState };
-      }
-
-      // ── POSITIONAL DIFF (existing behavior) ───────────────────────────────
-      const newChildren = [];
-      const newSubstates = [];
+      const items = Array.from(collection);
+      const newChildren = new Array(items.length);
+      const newSubstates = new Array(items.length);
+      const newKeys = new Array(items.length);
+      const usedOld = new Set();
+      const seen = keyField ? new Set() : null;
 
       let lastInserted = placeholder;
 
-      for (let i = 0; i < collection.length; i++) {
-        if (oldChildren.length > i) {
-          const reusedNode = oldChildren[i];
-          const reusedChild = oldSubstates[i];
-          newChildren.push(reusedNode);
-          newSubstates.push(reusedChild);
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+
+        // Key derivation + validation (keyed only).
+        let key = i;
+        if (keyField) {
+          if (item == null || typeof item !== 'object' ||
+              !Object.prototype.hasOwnProperty.call(item, keyField)) {
+            throw new Error(
+              `[VLN020] vln-loop: item ${i} has no own '${keyField}' — required by { key: '${keyField}' }.`,
+            );
+          }
+          key = item[keyField];
+          if (seen.has(key)) {
+            throw new Error(
+              `[VLN021] vln-loop: duplicate key ${JSON.stringify(key)} at ${i}.`,
+            );
+          }
+          seen.add(key);
+        }
+
+        // Look up the old slot to reuse. Keyed loops match by identity;
+        // positional loops reuse the same slot (i).
+        const oldIdx = keyField
+          ? oldByKey.get(key)
+          : (i < oldChildren.length ? i : undefined);
+
+        if (oldIdx !== undefined) {
+          const reusedNode = oldChildren[oldIdx];
+          const reusedChild = oldSubstates[oldIdx];
+          usedOld.add(oldIdx);
+          newChildren[i] = reusedNode;
+          newSubstates[i] = reusedChild;
+          newKeys[i] = key;
+
+          // Point item + $index at the new slot. For keyed loops, also
+          // propagate into descendants because `composeState` snapshots
+          // parent interpolations at compose time — vln-fragment/vln-use
+          // children still see the old expression otherwise.
+          if (keyField && subkey) {
+            const newInterp = {
+              type: 'EXPR',
+              value: { expr: itemExprAt(i), ast: vln.compile(itemExprAt(i)) },
+            };
+            reusedChild.setInterpolation(subkey, newInterp);
+            propagateInterpolation(reusedChild, subkey, matchExpr(itemExprAt(oldIdx)), newInterp);
+          }
+          reusedChild.anchor(expr);
+          const newIndexInterp = { type: 'LITERAL', value: i };
+          reusedChild.setInterpolation('$index', newIndexInterp);
+          if (keyField) {
+            propagateInterpolation(reusedChild, '$index', matchLiteral(oldIdx), newIndexInterp);
+          }
+
+          if (keyField) {
+            // Fire effects only when the substate actually moved — an
+            // in-place reuse already subscribes to the right slot.
+            if (oldIdx !== i) refreshSubstateEffects(reusedChild);
+          } else {
+            // Positional: same slot, but items in it may have changed
+            // (array-in-place edit). Fire the tracked path so effects re-eval.
+            reusedChild.triggerEffects(`${expr}[${i}]`);
+            reusedChild.triggerEffects('$index');
+          }
+
+          // Only move DOM when the node isn't already in position.
+          if (reusedNode.previousSibling !== lastInserted) {
+            placeholder.parentNode.insertBefore(reusedNode, lastInserted.nextSibling);
+          }
           lastInserted = reusedNode;
-
-          // Re-anchor (idempotent) and refresh $index for the reused substate.
-          reusedChild
-            .anchor(expr)
-            .setInterpolation('$index', { type: 'LITERAL', value: i });
-
-          reusedChild.triggerEffects(`${expr}[${i}]`);
-          reusedChild.triggerEffects('$index');
         } else {
           const clone = template.cloneNode(true);
-          newChildren.push(clone);
+          newChildren[i] = clone;
+          newKeys[i] = key;
 
           const init = subkey
-            ? { [subkey]: { expr: `${expr}[${i}]` }, $index: { literal: i } }
+            ? { [subkey]: { expr: itemExprAt(i) }, $index: { literal: i } }
             : { $index: { literal: i } };
-          // Anchor this loop's array path on the trickling-root stack so deps
-          // at or above it are filtered out, while preserving any outer loop's
-          // anchor.
+          // Anchor the array path on the trickling-root stack so deps at
+          // or above it are filtered out, preserving any outer loop's anchor.
           const child = compose(init).anchor(expr);
-
-          newSubstates.push(child);
+          newSubstates[i] = child;
           child.processNode(clone);
           placeholder.parentNode.insertBefore(clone, lastInserted.nextSibling);
           lastInserted = clone;
         }
       }
 
-      for (let i = collection.length; i < oldChildren.length; i++) {
-        const childNode = oldChildren[i];
-        childNode.remove?.();
-        oldSubstates[i].cleanup(childNode);
+      for (let j = 0; j < oldSubstates.length; j++) {
+        if (!usedOld.has(j)) {
+          const childNode = oldChildren[j];
+          childNode.remove?.();
+          oldSubstates[j].cleanup(childNode);
+        }
       }
 
       pluginState.children = newChildren;
       pluginState.substates = newSubstates;
-
+      pluginState.keys = newKeys;
       return { halt: true, pluginState };
     },
   });
