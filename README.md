@@ -12,17 +12,25 @@ Velin is a fine-grained reactivity engine for plain HTML and JavaScript. It uses
 *   **Logic in JS, View in HTML**: Velin keeps your business logic in standard, testable JavaScript objects rather than embedding it in HTML attributes.
 *   **Fine-Grained Reactivity**: Changing a property only triggers updates for the specific DOM elements that depend on it.
 *   **Scale Naturally**: Designed for interactive widgets and light-to-medium SPAs. You can modularize your state naturally as your project grows.
-*   **Minimal Footprint**: ~8.5KB gzipped for the full bundle.
+*   **Minimal Footprint**: 9.8 KB gz for the everything-included bundle, 8.4 KB gz for the everyday combo (core + directives). Load only what you use — see [bundles](docs/bundles.md).
 
 ## Getting Started
 
 ### Via CDN
 
-Add this to your HTML `<head>`:
+Most apps only need core + directives — use `velin-common`:
 
 ```html
-<script src="https://unpkg.com/velin/dist/build/velin-all.min.js"></script>
+<script src="https://unpkg.com/velin/velin-common.min.js"></script>
 ```
+
+If you want the kitchen sink (adds fragments, router, event helpers):
+
+```html
+<script src="https://unpkg.com/velin/velin-all.min.js"></script>
+```
+
+See [docs/bundles.md](docs/bundles.md) for the full table and size-per-feature guidance.
 
 ### The Velin Pattern
 
