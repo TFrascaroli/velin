@@ -6,8 +6,9 @@
 # the resulting publish/ directory to npm — this includes every bundle
 # together, so consumers can pick which one they need.
 #
-# Required repository secrets:
-#   NPM_TOKEN — npm automation token with publish rights on the velin package.
+# Auth: uses npm Trusted Publishing (OIDC). No NPM_TOKEN secret required.
+# The `velin` package must have this repo + workflow registered as a Trusted
+# Publisher on npmjs.com. See docs/releasing.md.
 
 name: Main Library CI & Release
 
@@ -80,6 +81,10 @@ jobs:
           cache: 'npm'
           registry-url: 'https://registry.npmjs.org'
 
+      # Trusted Publishing requires npm >= 11.5.1; Node 20 ships with npm 10.x.
+      - name: Upgrade npm for OIDC support
+        run: npm install -g npm@latest
+
       - run: npm ci
 
       - name: Build
@@ -105,5 +110,3 @@ jobs:
       - name: Publish to npm
         working-directory: publish
         run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
