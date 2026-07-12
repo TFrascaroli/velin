@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <script src="vendor/velin.js"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; padding: 2rem; max-width: 820px; margin: auto; }
+    nav.top { display: flex; gap: 0.5rem; margin-bottom: 1.5rem; border-bottom: 1px solid #ccc; padding-bottom: 1rem; }
+    nav.top a { padding: 0.4rem 0.8rem; text-decoration: none; color: #333; border: 1px solid #ddd; border-radius: 4px; }
+    nav.top a.active { background: #333; color: white; border-color: #333; }
+    .card { border: 1px solid #ddd; padding: 1rem 1.5rem; margin-top: 1rem; border-radius: 6px; }
+    nav.tabs { display: flex; gap: 1rem; border-bottom: 1px solid #eee; margin: 0.5rem 0 1rem; }
+    nav.tabs a { padding: 0.5rem 0.25rem; text-decoration: none; color: #666; border-bottom: 2px solid transparent; }
+    nav.tabs a.active { color: #111; border-bottom-color: #333; font-weight: 600; }
+    .not-found { padding: 2rem; text-align: center; color: #999; background: #f8f8f8; border-radius: 6px; }
+    .muted { color: #888; font-size: 0.9em; }
+    .sort-row a { margin-right: 0.5rem; padding: 0.2rem 0.6rem; text-decoration: none; color: #444; border: 1px solid #ccc; border-radius: 4px; }
+    .sort-row a.active { background: #333; color: white; border-color: #333; }
+    code { background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 3px; }
+    ul { padding-left: 1.5rem; }
+  </style>
+</head>
+<body>
+
+  <div id="app">
+    <nav class="top">
+      <a vln-attr:href="'#/'"                vln-class="{ active: myRoute.path === '/' }">Home</a>
+      <a vln-attr:href="'#/profile/alice'"   vln-class="{ active: routeUserId(myRoute.path) === 'alice' }">Alice</a>
+      <a vln-attr:href="'#/profile/bob'"     vln-class="{ active: routeUserId(myRoute.path) === 'bob' }">Bob</a>
+      <a vln-attr:href="'#/nowhere'"         vln-class="{ active: !isKnownRoute(myRoute.path) }">Try a bad URL</a>
+    </nav>
+
+    <div vln-router="myRoute">
+
+      <div vln-route="'/'">
+        <h1>Home</h1>
+        <p>Velin router: active nav, sub-routes, 404, lifecycle. Positional URLs only — no query strings.</p>
+        <p class="muted">Click Alice or Bob, flip Overview / Posts / Settings, and watch the URL bar and console.</p>
+      </div>
+
+      <!-- Three sibling routes share one chrome via a fragment. -->
+      <div vln-route="'/profile/:id'">
+        <div vln-fragment="'profile-chrome'"
+             vln-var:id="routeUserId(myRoute.path)"
+             vln-var:tab="'overview'"
+             vln-var:sort="''"></div>
+      </div>
+      <div vln-route="'/profile/:id/posts/:sort'">
+        <div vln-fragment="'profile-chrome'"
+             vln-var:id="routeUserId(myRoute.path)"
+             vln-var:tab="'posts'"
+             vln-var:sort="routeSort(myRoute.path)"></div>
+      </div>
+      <div vln-route="'/profile/:id/settings'">
+        <div vln-fragment="'profile-chrome'"
+             vln-var:id="routeUserId(myRoute.path)"
+             vln-var:tab="'settings'"
+             vln-var:sort="''"></div>
+      </div>
+
+      <!-- Catch-all: no `*` pattern in the plugin yet, so key off a helper. -->
+      <div vln-if="!isKnownRoute(myRoute.path)" class="not-found">
+        <h2>404</h2>
+        <p><code vln-text="myRoute.path"></code> is not a known route.</p>
+        <p><a vln-attr:href="'#/'">← Back home</a></p>
+      </div>
+
+    </div>
+  </div>
+
+  <template id="profile-chrome" vln-vars="id,tab,sort">
+    <div class="card"
+         vln-on:init="onmount(id, tab)"
+         vln-on:destroy="onunmount()">
+      <h1>Profile: <span vln-text="id"></span></h1>
+
+      <nav class="tabs">
+        <a vln-attr:href="'#/profile/' + id"                    vln-class="{ active: tab === 'overview' }">Overview</a>
+        <a vln-attr:href="'#/profile/' + id + '/posts/recent'"  vln-class="{ active: tab === 'posts' }">Posts</a>
+        <a vln-attr:href="'#/profile/' + id + '/settings'"      vln-class="{ active: tab === 'settings' }">Settings</a>
+      </nav>
+
+      <div vln-if="tab === 'overview'">
+        <p vln-text="bioFor(id)"></p>
+        <p class="muted" vln-watch:logchange="id">Watching id — console fires on Alice ↔ Bob.</p>
+      </div>
+
+      <div vln-if="tab === 'posts'">
+        <p class="sort-row">
+          Sort:
+          <a vln-attr:href="'#/profile/' + id + '/posts/recent'" vln-class="{ active: sort === 'recent' }">Recent</a>
+          <a vln-attr:href="'#/profile/' + id + '/posts/top'"    vln-class="{ active: sort === 'top' }">Top</a>
+        </p>
+        <p class="muted">Sort is a URL segment — <code vln-text="myRoute.path"></code>.</p>
+        <ul vln-if="sort === 'recent'">
+          <li>Post 3 (newest)</li>
+          <li>Post 2</li>
+          <li>Post 1</li>
+        </ul>
+        <ul vln-if="sort === 'top'">
+          <li>Post 2 (most liked)</li>
+          <li>Post 1</li>
+          <li>Post 3</li>
+        </ul>
+      </div>
+
+      <div vln-if="tab === 'settings'">
+        <p>Settings for <strong vln-text="id"></strong>.</p>
+        <p class="muted">This subview mounts/unmounts via the router — the destroy hook fires on tab change.</p>
+      </div>
+    </div>
+  </template>
+
+  <script>
+    Velin.bind(document.getElementById('app'), {
+      myRoute: { path: '/', error: null, loading: false },
+
+      // Positional-only routing. All "state" lives in path segments.
+      // These helpers exist because the expression parser doesn't yet
+      // consume `[…]` or `.…` trailing a call, so `path.split('/')[2]`
+      // inline wouldn't work.
+      routeUserId(path) {
+        const parts = (path || '').split('/');
+        return (parts[1] === 'profile' && parts[2]) || '';
+      },
+      routeSort(path) {
+        const parts = (path || '').split('/');
+        return (parts[3] === 'posts' && parts[4]) || '';
+      },
+      isKnownRoute(path) {
+        if (!path || path === '/') return true;
+        return /^\/profile\/[^/]+(\/(posts\/(recent|top)|settings))?$/.test(path);
+      },
+      bioFor(id) {
+        const bios = {
+          alice: 'Loves TypeScript. Ships on Fridays.',
+          bob:   'Prefers Rust. Reviews everything.'
+        };
+        return bios[id] || 'No bio.';
+      },
+
+      // Expressions can't reach `console` directly — route lifecycle logs
+      // through named methods.
+      onmount(id, tab) { console.log('mounted:', id, tab); },
+      onunmount() { console.log('unmounted'); },
+      logchange(id) { console.log('id changed to:', id); }
+    });
+  </script>
+</body>
+</html>
