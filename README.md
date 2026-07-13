@@ -108,6 +108,10 @@ npm run package:vscode
 # Then in VS Code: Extensions → ... menu → Install from VSIX
 ```
 
+## Sponsor
+
+Velin is developed independently. If it saves you time or you'd like to see it grow, you can [sponsor the project on GitHub](https://github.com/sponsors/TFrascaroli).
+
 ## License
 
 [Apache 2.0](./LICENSE)
