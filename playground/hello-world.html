@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Velin — Hello World</title>
+  <script src="vendor/velin.js"></script>
+  <style>
+    body { font: 14px/1.4 ui-monospace, Menlo, Consolas, monospace; padding: 24px; background: #111; color: #ddd; }
+    button { font: inherit; background: #333; color: #ddd; border: 1px solid #555; border-radius: 3px; padding: 6px 12px; cursor: pointer; }
+    button:hover { background: #444; }
+    .row { margin: 12px 0; }
+    .k { color: #7cf; }
+  </style>
+</head>
+<body>
+  <h1>Hello, <span vln-text="name"></span>!</h1>
+
+  <div class="row">
+    <span class="k">count:</span> <span vln-text="count"></span>
+    <button vln-on:click="count = count + 1">+1</button>
+    <button vln-on:click="count = count - 1">-1</button>
+  </div>
+
+  <div class="row">
+    <span class="k">name:</span>
+    <input vln-input="name" style="background:#222;color:#ddd;border:1px solid #444;border-radius:3px;padding:2px 6px;font:inherit" />
+  </div>
+
+  <p style="color:#888;margin-top:24px">Press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd> to open devtools.</p>
+
+  <script>
+    Velin.bind(document.body, {
+      name: "Velin",
+      count: 0,
+    });
+  </script>
+</body>
+</html>

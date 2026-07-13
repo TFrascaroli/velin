@@ -1,0 +1,63 @@
+# Deploys the /playground/ directory to GitHub Pages.
+#
+# Runs `npm run build` to produce the bundles, then `npm run prepare` to copy
+# them into playground/vendor/, then publishes the playground/ folder.
+#
+# Enable Pages under Settings → Pages → Source: GitHub Actions.
+
+name: Deploy Playground to Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'playground/**'
+      - 'scripts/prepare.js'
+      - 'scripts/build.js'
+      - '.github/workflows/deploy-playground.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Build bundles
+        run: npm run build
+
+      - name: Copy bundles into playground/vendor/
+        run: npm run prepare
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: playground
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

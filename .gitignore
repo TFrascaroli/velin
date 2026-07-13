@@ -1,0 +1,9 @@
+dist/
+publish/
+node_modules/
+.vscode/
+priv/
+.journal
+.plans/
+.claude/
+playground/vendor/

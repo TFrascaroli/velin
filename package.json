@@ -1,0 +1,84 @@
+{
+  "name": "@velinjs/all",
+  "version": "1.0.0-beta.0",
+  "license": "Apache-2.0",
+  "description": "A lightweight reactive library for building interactive UIs with a pure JavaScript model.",
+  "homepage": "https://tfrascaroli.github.io/velin/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TFrascaroli/velin.git"
+  },
+  "bugs": {
+    "url": "https://github.com/TFrascaroli/velin/issues"
+  },
+  "keywords": [
+    "reactive",
+    "reactivity",
+    "ui",
+    "framework",
+    "proxy",
+    "directives",
+    "csp",
+    "no-build",
+    "vln"
+  ],
+  "author": "Timoteo Frascaroli <tfrascaroli@gmail.com>",
+  "main": "dist/build/velin-all.min.js",
+  "types": "dist/types/velin-all.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/build/velin-all.min.js",
+      "types": "./dist/types/velin-all.d.ts"
+    },
+    "./core": {
+      "import": "./src/velin-core.js"
+    },
+    "./std": {
+      "import": "./src/velin-standard.js"
+    },
+    "./common": {
+      "import": "./src/velin-common.js"
+    },
+    "./templates": {
+      "import": "./src/velin-templates-and-fragments.js"
+    },
+    "./events": {
+      "import": "./src/velin-events.js"
+    },
+    "./router": {
+      "import": "./src/velin-router.js"
+    },
+    "./devtools": {
+      "import": "./dist/build/velin-devtools.min.js"
+    }
+  },
+  "files": [
+    "publish/"
+  ],
+  "scripts": {
+    "build:angular": "cd benchmarks/angular && npm run build",
+    "build:react": "cd benchmarks/react && npm run build",
+    "prepare": "node scripts/prepare.js",
+    "prepare:dev": "node scripts/prepare.js --dev",
+    "prepare:benchmarks": "npm run prepare && npm run build:react && npm run build:angular",
+    "serve": "npm run build && npm run prepare && node scripts/serve.js",
+    "serve:dev": "npm run build && npm run prepare:dev && node scripts/serve.js --dev",
+    "serve:benchmarks": "npm run prepare:benchmarks && npm run serve",
+    "build": "node scripts/build.js && tsc -p tsconfig.json",
+    "test": "npx vitest run",
+    "prepare:publish": "node scripts/prepare-publish.js",
+    "release": "npm run build && npm run prepare:publish && npm publish ./publish --access public"
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.4.21",
+    "esbuild": "^0.25.4",
+    "express": "^5.1.0",
+    "http-server": "^14.1.1",
+    "jsdom": "^26.1.0",
+    "postcss": "^8.5.4",
+    "react": "^19.1.0",
+    "tailwindcss": "^4.1.8",
+    "typescript": "^5.8.3",
+    "vitest": "^3.1.3"
+  }
+}

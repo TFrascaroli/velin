@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Velin Language Support — Editor Demo</title>
+    <style>
+        body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 780px; }
+        .card { border: 1px solid #ccc; padding: 1rem; margin: 1rem 0; border-radius: 8px; }
+        .group { background: #f5f5f5; padding: .5rem 1rem; margin: .5rem 0; border-radius: 6px; }
+        .item { padding: .25rem .5rem; }
+        .active { font-weight: bold; }
+        .muted { color: #888; }
+        img.avatar { width: 32px; height: 32px; border-radius: 50%; vertical-align: middle; }
+        input, button, select { padding: .3rem .5rem; margin: .1rem; }
+    </style>
+</head>
+<body>
+    <!--
+      Editor sanity-check demo for the Velin language extension.
+      The schema is inferred from the <script> block at the bottom via
+      `@velin-schema: script` — no sibling .ts file needed.
+
+      What should light up when this file is open in VS Code with the
+      Velin extension installed:
+
+      • Identifiers inside vln-* directives are coloured by the semantic
+        token provider (methods purple-ish, properties light-blue,
+        loop/template vars distinct from state-root variables).
+      • Autocomplete inside any vln-* expression suggests state members.
+        Try typing `user.` inside the .card below.
+      • F12 on `user.name`, `getSelected().name`, `groups[0].items`,
+        `item.title`, or `group.name` jumps to its declaration in the
+        <script> block.
+      • Removing `vln-fragment` from the <span> below should surface a
+        red "vln-var:name requires `vln-fragment` on the same element"
+        diagnostic.
+      • Moving `vln-vars` off the <template> should surface a
+        "vln-vars is only valid on <template>" diagnostic.
+    -->
+    <!-- @velin-schema: script -->
+
+    <div id="app">
+        <h1>Velin editor demo</h1>
+
+        <!-- vln-if / vln-text / vln-input basics ------------------------ -->
+        <section class="card">
+            <p vln-if="isLoading" class="muted">Loading…</p>
+            <p vln-if="error" class="muted" vln-text="error"></p>
+
+            <label>
+                Your name:
+                <input vln-input="user.name" placeholder="Name" />
+            </label>
+            <p>Hello, <span vln-text="user.name"></span>!</p>
+        </section>
+
+        <!-- vln-attr / vln-class / vln-on modifier-subkey directives ---- -->
+        <section class="card">
+            <img class="avatar"
+                 vln-attr:src="user.avatar"
+                 vln-attr:alt="user.name + ' avatar'" />
+            <button vln-class="{ active: user.isActive }"
+                    vln-on:click="toggleActive()">
+                Toggle active
+            </button>
+        </section>
+
+        <!-- Nested vln-loop — F12 through two levels of loop vars ------- -->
+        <section class="card">
+            <h2>Nested groups (<span vln-text="groups.length"></span>)</h2>
+            <div vln-loop:group="groups" class="group">
+                <h3 vln-text="group.name"></h3>
+                <div vln-loop:item="group.items" class="item">
+                    <span vln-text="$index + '. ' + item.title"></span>
+                    <button vln-on:click="select(item.id)">Select</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- vln-fragment + vln-vars + vln-var:* -------------------------- -->
+        <section class="card">
+            <h2>Fragment with scoped vars</h2>
+            <span vln-fragment="user-badge"
+                  vln-var:label="'Current user'"
+                  vln-var:person="user"></span>
+        </section>
+
+        <!-- vln-watch — rare form, fires handler when expression changes - -->
+        <section class="card" vln-watch:onNameChange="user.name">
+            <p class="muted">
+                Watching <code>user.name</code>. Open the console and type in
+                the name field above.
+            </p>
+        </section>
+
+        <!-- Selected item indicator -------------------------------------- -->
+        <section vln-if="getSelected()" class="card">
+            Selected: <span vln-text="getSelected().name"></span>
+        </section>
+    </div>
+
+    <!-- vln-vars must live on <template>. Moving it off triggers a diagnostic. -->
+    <template id="user-badge" vln-vars="label, person">
+        <div>
+            <span class="muted" vln-text="label + ':'"></span>
+            <img class="avatar" vln-attr:src="person.avatar" />
+            <strong vln-text="person.name"></strong>
+        </div>
+    </template>
+
+    <script src="https://unpkg.com/velin/dist/build/velin-all.min.js"></script>
+    <script>
+        const state = {
+            user: {
+                name: 'Alice',
+                avatar: 'https://via.placeholder.com/32',
+                isActive: true,
+            },
+            groups: [
+                {
+                    name: 'Inbox',
+                    items: [
+                        { id: 1, title: 'Welcome to Velin' },
+                        { id: 2, title: 'Read the ADR' },
+                    ],
+                },
+                {
+                    name: 'Archive',
+                    items: [
+                        { id: 3, title: 'Old notes' },
+                    ],
+                },
+            ],
+            selectedId: null,
+            isLoading: false,
+            error: null,
+
+            toggleActive() {
+                this.user.isActive = !this.user.isActive;
+            },
+            select(id) {
+                this.selectedId = id;
+            },
+            getSelected() {
+                for (const g of this.groups) {
+                    const hit = g.items.find(i => i.id === this.selectedId);
+                    if (hit) return hit;
+                }
+                return null;
+            },
+            onNameChange(next, prev) {
+                console.log('name changed:', prev, '→', next);
+            },
+        };
+
+        Velin.bind(document.getElementById('app'), state);
+    </script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+{
+  "name": "velin-language-support",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "lsp-server",
+    "vscode-extension",
+    "shared"
+  ],
+  "scripts": {
+    "build": "npm run build -w shared && npm run build -w lsp-server && npm run build -w vscode-extension",
+    "clean": "npm run clean -w shared && npm run clean -w lsp-server && npm run clean -w vscode-extension",
+    "test": "npm run test -w shared && npm run test -w lsp-server && npm run test -w vscode-extension",
+    "dev:lsp": "npm run dev -w lsp-server",
+    "dev:vscode": "npm run dev -w vscode-extension",
+    "package:vscode": "npm run package -w vscode-extension",
+    "publish:vscode": "npm run publish:vsce -w vscode-extension && npm run publish:ovsx -w vscode-extension",
+    "publish:lsp": "npm run build -w lsp-server && npm publish -w lsp-server"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3",
+    "@types/node": "^18.0.0"
+  }
+}

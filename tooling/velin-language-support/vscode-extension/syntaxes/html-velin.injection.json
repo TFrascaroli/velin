@@ -1,0 +1,142 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Velin HTML injection",
+  "scopeName": "html-velin.injection",
+  "injectionSelector": "L:(text.html.basic | text.html.derivative | text.html) - (comment | string)",
+  "patterns": [
+    { "include": "#velin-schema-comment" },
+    { "include": "#velin-declaring-subkey-double" },
+    { "include": "#velin-declaring-subkey-single" },
+    { "include": "#velin-modifier-subkey-double" },
+    { "include": "#velin-modifier-subkey-single" },
+    { "include": "#velin-plain-double" },
+    { "include": "#velin-plain-single" },
+    { "include": "#velin-boolean" }
+  ],
+  "repository": {
+    "velin-declaring-subkey-double": {
+      "name": "meta.attribute.velin.html",
+      "begin": "(vln-)(loop|var)(:)([\\w-]+)\\s*(=)\\s*(\")",
+      "beginCaptures": {
+        "1": { "name": "entity.other.attribute-name.velin" },
+        "2": { "name": "entity.name.tag.velin.directive" },
+        "3": { "name": "punctuation.separator.velin.subkey" },
+        "4": { "name": "variable.parameter.velin.declaration" },
+        "5": { "name": "punctuation.separator.key-value.html" },
+        "6": { "name": "punctuation.definition.string.begin.html" }
+      },
+      "end": "(\")",
+      "endCaptures": { "1": { "name": "punctuation.definition.string.end.html" } },
+      "contentName": "meta.embedded.expression.velin source.js",
+      "patterns": [{ "include": "source.js" }]
+    },
+    "velin-declaring-subkey-single": {
+      "name": "meta.attribute.velin.html",
+      "begin": "(vln-)(loop|var)(:)([\\w-]+)\\s*(=)\\s*(')",
+      "beginCaptures": {
+        "1": { "name": "entity.other.attribute-name.velin" },
+        "2": { "name": "entity.name.tag.velin.directive" },
+        "3": { "name": "punctuation.separator.velin.subkey" },
+        "4": { "name": "variable.parameter.velin.declaration" },
+        "5": { "name": "punctuation.separator.key-value.html" },
+        "6": { "name": "punctuation.definition.string.begin.html" }
+      },
+      "end": "(')",
+      "endCaptures": { "1": { "name": "punctuation.definition.string.end.html" } },
+      "contentName": "meta.embedded.expression.velin source.js",
+      "patterns": [{ "include": "source.js" }]
+    },
+    "velin-modifier-subkey-double": {
+      "name": "meta.attribute.velin.html",
+      "begin": "(vln-)(on|attr|watch|evt)(:)([\\w-]+)\\s*(=)\\s*(\")",
+      "beginCaptures": {
+        "1": { "name": "entity.other.attribute-name.velin" },
+        "2": { "name": "entity.name.tag.velin.directive" },
+        "3": { "name": "punctuation.separator.velin.subkey" },
+        "4": { "name": "support.type.property-name.velin.modifier" },
+        "5": { "name": "punctuation.separator.key-value.html" },
+        "6": { "name": "punctuation.definition.string.begin.html" }
+      },
+      "end": "(\")",
+      "endCaptures": { "1": { "name": "punctuation.definition.string.end.html" } },
+      "contentName": "meta.embedded.expression.velin source.js",
+      "patterns": [{ "include": "source.js" }]
+    },
+    "velin-modifier-subkey-single": {
+      "name": "meta.attribute.velin.html",
+      "begin": "(vln-)(on|attr|watch|evt)(:)([\\w-]+)\\s*(=)\\s*(')",
+      "beginCaptures": {
+        "1": { "name": "entity.other.attribute-name.velin" },
+        "2": { "name": "entity.name.tag.velin.directive" },
+        "3": { "name": "punctuation.separator.velin.subkey" },
+        "4": { "name": "support.type.property-name.velin.modifier" },
+        "5": { "name": "punctuation.separator.key-value.html" },
+        "6": { "name": "punctuation.definition.string.begin.html" }
+      },
+      "end": "(')",
+      "endCaptures": { "1": { "name": "punctuation.definition.string.end.html" } },
+      "contentName": "meta.embedded.expression.velin source.js",
+      "patterns": [{ "include": "source.js" }]
+    },
+    "velin-plain-double": {
+      "name": "meta.attribute.velin.html",
+      "begin": "(vln-)([a-zA-Z][\\w-]*)\\s*(=)\\s*(\")",
+      "beginCaptures": {
+        "1": { "name": "entity.other.attribute-name.velin" },
+        "2": { "name": "entity.name.tag.velin.directive" },
+        "3": { "name": "punctuation.separator.key-value.html" },
+        "4": { "name": "punctuation.definition.string.begin.html" }
+      },
+      "end": "(\")",
+      "endCaptures": { "1": { "name": "punctuation.definition.string.end.html" } },
+      "contentName": "meta.embedded.expression.velin source.js",
+      "patterns": [{ "include": "source.js" }]
+    },
+    "velin-plain-single": {
+      "name": "meta.attribute.velin.html",
+      "begin": "(vln-)([a-zA-Z][\\w-]*)\\s*(=)\\s*(')",
+      "beginCaptures": {
+        "1": { "name": "entity.other.attribute-name.velin" },
+        "2": { "name": "entity.name.tag.velin.directive" },
+        "3": { "name": "punctuation.separator.key-value.html" },
+        "4": { "name": "punctuation.definition.string.begin.html" }
+      },
+      "end": "(')",
+      "endCaptures": { "1": { "name": "punctuation.definition.string.end.html" } },
+      "contentName": "meta.embedded.expression.velin source.js",
+      "patterns": [{ "include": "source.js" }]
+    },
+    "velin-boolean": {
+      "match": "(vln-)([a-zA-Z][\\w-]*)(?:(:)([\\w-]+))?(?=[\\s\\r\\n\\t/>])",
+      "captures": {
+        "1": { "name": "entity.other.attribute-name.velin" },
+        "2": { "name": "entity.name.tag.velin.directive" },
+        "3": { "name": "punctuation.separator.velin.subkey" },
+        "4": { "name": "support.type.property-name.velin.modifier" }
+      }
+    },
+    "velin-schema-comment": {
+      "name": "comment.block.velin-schema.html",
+      "begin": "(<!--)\\s*(@(?:vln|velin)-(?:type|schema))(?:(:)|\\s+)\\s*",
+      "beginCaptures": {
+        "1": { "name": "punctuation.definition.comment.html" },
+        "2": { "name": "keyword.control.velin-schema" },
+        "3": { "name": "punctuation.separator.velin-schema" }
+      },
+      "end": "(-->)",
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.comment.html" }
+      },
+      "patterns": [
+        {
+          "match": "\\{?\\s*([^}\\s]+?)(?:(#)([\\w.]+))?\\s*\\}?",
+          "captures": {
+            "1": { "name": "string.unquoted.velin-schema.source" },
+            "2": { "name": "punctuation.separator.velin-schema" },
+            "3": { "name": "entity.name.type.velin-schema" }
+          }
+        }
+      ]
+    }
+  }
+}

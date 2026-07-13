@@ -1,0 +1,116 @@
+<!-- ── cell-select ───────────────────────────────────────────────────────── -->
+<template id="cell-select" vln-vars="row, coldef, actions">
+  <input class="ct-check"
+         type="checkbox"
+         vln-attr:checked="row.selected"
+         vln-on:change="actions.toggleRow(row, event.target.checked)" />
+</template>
+
+<!-- ── cell-name ─────────────────────────────────────────────────────────── -->
+<!-- Name is contenteditable + vln-input → two-way bound to row.name. Editing
+     the cell writes back into the reactive row, which re-fires the filter/sort
+     chain and updates the row-count badge without any manual glue. -->
+<template id="cell-name" vln-vars="row, coldef, actions">
+  <div class="ct-profile">
+    <div class="ct-avatar" vln-text="row.initials"></div>
+    <div class="ct-profile-body">
+      <div class="ct-name ct-name-edit"
+           contenteditable="true"
+           spellcheck="false"
+           title="Click to edit — sort/filter reruns automatically"
+           vln-input="row.name"></div>
+      <div class="ct-email" vln-text="row.email"></div>
+    </div>
+  </div>
+</template>
+
+<!-- ── cell-badge (stack pill) ───────────────────────────────────────────── -->
+<template id="cell-badge" vln-vars="row, coldef, actions">
+  <span class="ct-stack-badge" vln-text="row[coldef.id]"></span>
+</template>
+
+<!-- ── cell-text (generic) ──────────────────────────────────────────────── -->
+<template id="cell-text" vln-vars="row, coldef, actions">
+  <span class="ct-text" vln-text="row[coldef.id]"></span>
+</template>
+
+<!-- ── cell-num (numeric, flash-capable) ────────────────────────────────── -->
+<template id="cell-num" vln-vars="row, coldef, actions">
+  <span class="ct-num" vln-text="coldef.format(row[coldef.id])"></span>
+</template>
+
+<!-- ── cell-rating (0–5 stars) ───────────────────────────────────────────── -->
+<template id="cell-rating" vln-vars="row, coldef, actions">
+  <span class="ct-stars"
+        vln-text="'★★★★★'.slice(0, row[coldef.id]) + '☆☆☆☆☆'.slice(0, 5 - row[coldef.id])">
+  </span>
+</template>
+
+<!-- ── cell-pulse ────────────────────────────────────────────────────────── -->
+<!-- Dot scale is bound to row.pulse via CSS var `--s` (ticker writes ~60/s);
+     color is driven by a status class bound to row.load. Both properties
+     change reactively → motion emerges without any @keyframes. Split into
+     class (color) + style (--s) so a stray style write can't erase the color. -->
+<template id="cell-pulse" vln-vars="row, coldef, actions, h">
+  <div class="ct-pulse">
+    <span vln-attr:class="'ct-pulse-dot ' + h.pulseClass(row.load)"
+          vln-attr:style="'--s:' + (row.pulse || 1).toFixed(3)"></span>
+    <span vln-attr:class="'ct-pulse-label ' + h.pulseClass(row.load)"
+          vln-text="h.statusLabel(row.load)"></span>
+  </div>
+</template>
+
+<!-- ── cell-sparkline ────────────────────────────────────────────────────── -->
+<!-- SVG polyline points computed from row.months. When dribble replaces the
+     months array, the points attr recomputes → CSS transition on
+     `points` slides the line to its new shape. -->
+<template id="cell-sparkline" vln-vars="row, coldef, actions, h">
+  <svg class="ct-spark" viewBox="0 0 110 24" preserveAspectRatio="none">
+    <polyline vln-attr:points="h.sparkPoints(row.months)" />
+  </svg>
+</template>
+
+<!-- ── cell-trend ────────────────────────────────────────────────────────── -->
+<template id="cell-trend" vln-vars="row, coldef, actions, h">
+  <div class="ct-trend">
+    <span class="ct-trend-arrow" vln-attr:style="h.trendStyle(row.trendPct)">▲</span>
+    <span class="ct-trend-num" vln-text="h.trendLabel(row.trendPct)"></span>
+  </div>
+</template>
+
+<!-- ── cell-heat ─────────────────────────────────────────────────────────── -->
+<template id="cell-heat" vln-vars="row, coldef, actions, h">
+  <span class="ct-heat" vln-attr:style="'background: ' + h.heatBg(row.load)">
+    <span vln-text="row.load + '%'"></span>
+  </span>
+</template>
+
+<!-- ── cell-progress ─────────────────────────────────────────────────────── -->
+<template id="cell-progress" vln-vars="row, coldef, actions">
+  <div class="ct-prog">
+    <div class="ct-prog-track">
+      <div class="ct-prog-fill" vln-attr:style="'width:' + row.sprintPct + '%'"></div>
+    </div>
+    <span class="ct-prog-num" vln-text="row.sprintPct + '%'"></span>
+  </div>
+</template>
+
+<!-- ── cell-streak ───────────────────────────────────────────────────────── -->
+<template id="cell-streak" vln-vars="row, coldef, actions, h">
+  <span class="ct-streak">
+    <span class="ct-streak-fire" vln-text="h.fires(row.streak)"></span>
+    <span class="ct-streak-num" vln-text="row.streak"></span>
+  </span>
+</template>
+
+<!-- ── cell-actions ──────────────────────────────────────────────────────── -->
+<template id="cell-actions" vln-vars="row, coldef, actions">
+  <div class="ct-actions">
+    <button class="ct-icon-btn"
+            title="Inspect"
+            vln-on:click="actions.inspectRow(row)">⬡</button>
+    <button class="ct-icon-btn ct-icon-danger"
+            title="Delete"
+            vln-on:click="actions.deleteRow(row)">✕</button>
+  </div>
+</template>

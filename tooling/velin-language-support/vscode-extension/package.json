@@ -1,0 +1,114 @@
+{
+  "name": "velin-language-support",
+  "displayName": "Velin Language Support",
+  "description": "Language Server Protocol support for Velin HTML directives with TypeScript IntelliSense",
+  "version": "0.1.0",
+  "publisher": "velin-framework",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TFrascaroli/velin"
+  },
+  "bugs": {
+    "url": "https://github.com/TFrascaroli/velin/issues"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Other"
+  ],
+  "keywords": [
+    "velin",
+    "html",
+    "reactive",
+    "javascript",
+    "typescript"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onLanguage:html"
+  ],
+  "contributes": {
+    "grammars": [
+      {
+        "scopeName": "html-velin.injection",
+        "path": "./syntaxes/html-velin.injection.json",
+        "injectTo": [
+          "text.html.basic",
+          "text.html.derivative"
+        ],
+        "embeddedLanguages": {
+          "meta.embedded.expression.velin": "javascript"
+        }
+      }
+    ],
+    "configurationDefaults": {
+      "editor.language.brackets": [
+        [
+          "{",
+          "}"
+        ],
+        [
+          "[",
+          "]"
+        ],
+        [
+          "(",
+          ")"
+        ]
+      ]
+    },
+    "configuration": {
+      "type": "object",
+      "title": "Velin Language Support",
+      "properties": {
+        "velin.enable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Velin language support"
+        },
+        "velin.trace.server": {
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "description": "Trace level for the language server"
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "velin.restartServer",
+        "title": "Restart Velin Language Server"
+      }
+    ]
+  },
+  "scripts": {
+    "typecheck": "tsc -p ./ --noEmit",
+    "build": "npm run typecheck && node esbuild.mjs",
+    "dev": "node esbuild.mjs --watch",
+    "package": "npm run build && vsce package --no-dependencies",
+    "publish:vsce": "npm run build && vsce publish --no-dependencies",
+    "publish:ovsx": "npm run build && ovsx publish --no-dependencies",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/node": "^18.0.0",
+    "@types/vscode": "^1.90.0",
+    "@velin/lsp-server": "*",
+    "@vscode/vsce": "^3.1.1",
+    "esbuild": "^0.28.1",
+    "ovsx": "^0.10.1",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.6",
+    "vscode-languageclient": "^9.0.1",
+    "vscode-oniguruma": "^2.0.1",
+    "vscode-textmate": "^9.3.2"
+  }
+}
