@@ -1,0 +1,65 @@
+<div class="prose">
+  <h1>Learn Velin</h1>
+  <p class="lede">
+    You'll be reactive in about fifteen minutes. Velin has no compiler, no
+    special file format, and no ceremony to get past.
+  </p>
+
+  <h2>The 60-second install</h2>
+  <p>Drop a script tag, write a plain object, call <code>bind</code>:</p>
+  <pre><code>&lt;script src="https://unpkg.com/@velinjs/all/velin-common.min.js"&gt;&lt;/script&gt;
+
+&lt;div id="app"&gt;
+  &lt;h1 vln-text="'Hello, ' + name + '!'"&gt;&lt;/h1&gt;
+  &lt;input vln-input="name" /&gt;
+&lt;/div&gt;
+
+&lt;script&gt;
+  Velin.bind(document.getElementById('app'), { name: 'World' });
+&lt;/script&gt;</code></pre>
+
+  <h2>The five things to learn</h2>
+  <ol class="learn-steps">
+    <li>
+      <strong>Bind state.</strong> <code>Velin.bind(root, state)</code> attaches
+      a plain JavaScript object to a DOM subtree. Assigning to a property
+      re-renders the parts of the DOM that read it.
+      <a href="/docs/getting-started.md" target="_blank" rel="noopener">Getting Started →</a>
+    </li>
+    <li>
+      <strong>Use directives.</strong> Nine everyday ones cover 95% of UIs:
+      <code>vln-text</code>, <code>vln-if</code>, <code>vln-attr</code>,
+      <code>vln-class</code>, <code>vln-on</code>, <code>vln-input</code>,
+      <code>vln-watch</code>, <code>vln-loop</code>, <code>vln-use</code>.
+      <a vln-attr:href="'#/docs/directives'">Directives reference →</a>
+    </li>
+    <li>
+      <strong>Loop over lists.</strong> <code>vln-loop:item="items"</code> repeats
+      an element per array entry. Nested loops compose naturally.
+      <a vln-attr:href="'#/examples/crud'">CRUD example →</a>
+    </li>
+    <li>
+      <strong>Compose with templates.</strong> Repeated markup lives in
+      a <code>&lt;template&gt;</code>; mount it with <code>vln-fragment</code>
+      and pass variables via <code>vln-var:name</code>.
+      <a vln-attr:href="'#/docs/templates'">Templates guide →</a>
+    </li>
+    <li>
+      <strong>Extend with plugins.</strong> Every directive is a plugin.
+      Write your own with the same API the built-ins use.
+      <a vln-attr:href="'#/docs/plugins'">Plugin authoring →</a>
+    </li>
+  </ol>
+
+  <h2>Then poke around</h2>
+  <p>
+    Head to the <a vln-attr:href="'#/examples'">examples gallery</a> — every
+    entry ships with editable-looking source next to a live result, and every
+    pattern you'd want in a real app has a template you can steal.
+  </p>
+  <p class="muted">
+    A step-by-step, in-page editor walkthrough is on the roadmap. Until then
+    the examples double as tutorials — pick one that matches what you're
+    building and read the source alongside.
+  </p>
+</div>
