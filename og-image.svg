@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" width="1280" height="640">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#1e293b"/>
+    </linearGradient>
+    <style>
+      .wordmark  { font-family: system-ui, -apple-system, "Segoe UI", "DejaVu Sans", sans-serif; font-size: 128px; font-weight: 700; fill: #f8fafc; letter-spacing: -4px; }
+      .tagline   { font-family: system-ui, -apple-system, "Segoe UI", "DejaVu Sans", sans-serif; font-size: 34px;  font-weight: 500; fill: #cbd5e1; }
+      .size      { font-family: system-ui, -apple-system, "Segoe UI", "DejaVu Sans", sans-serif; font-size: 76px;  font-weight: 800; fill: #38bdf8; letter-spacing: -2px; }
+      .size-label{ font-family: system-ui, -apple-system, "Segoe UI", "DejaVu Sans", sans-serif; font-size: 22px;  font-weight: 500; fill: #94a3b8; letter-spacing: 1px; }
+      .filename  { font-family: system-ui, -apple-system, "Segoe UI", "DejaVu Sans", sans-serif; font-size: 14px;  font-weight: 500; fill: #64748b; }
+      .code      { font-family: "SF Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace; font-size: 22px; font-weight: 500; fill: #e2e8f0; }
+      .code-kw   { fill: #f472b6; }
+      .code-str  { fill: #86efac; }
+      .code-attr { fill: #7dd3fc; }
+      .code-tag  { fill: #64748b; }
+      .code-fn   { fill: #fbbf24; }
+    </style>
+  </defs>
+
+  <rect width="1280" height="640" fill="url(#bg)"/>
+
+  <!-- Logo (from repo /logo.svg) + wordmark, aligned on baseline -->
+  <svg x="70" y="82" width="130" height="135" viewBox="0 0 285.75 297">
+    <g transform="matrix(1.0793739,0,0,1.0793739,-5.5416807,-18.964805)">
+      <path fill="#2f9cc4" d="m 5.62359,76.302488 c 0,0 31.50226,-34.582389 39.487843,-38.418247 11.536201,-0.695157 55.988187,-0.537405 63.536957,-0.4213 C 109.29915,40.659488 143.16678,199.31 143.59561,199.31 l 58.0501,-144.942346 67.71764,15.702108 -76.98518,207.937728 c -2.26914,3.23237 -78.34526,0.71558 -78.34526,0.71558 0,0 -56.532923,-182.71762 -57.563321,-182.397966 -1.030397,0.319658 -18.593276,22.695016 -18.593276,22.695016 z"/>
+      <path fill="#206c87" d="M 108.6544,37.480131 154.42476,173.51373 113.44985,279.489 c 0,0 -55.949863,-183.48355 -56.980261,-183.163896 C 55.439192,96.644762 108.6544,37.480131 108.6544,37.480131 Z"/>
+      <path fill="#000000" fill-opacity="0.078" d="m 108.62933,37.531693 c 0,0 2.01764,7.660777 1.5951,8.36879 -2.68078,4.491974 -20.6157,37.991613 -26.267392,42.265478 -5.651692,4.273866 -19.299511,11.210449 -24.539653,13.470619 -0.642257,0.27701 -2.432598,-5.471302 -2.947796,-5.311476 -1.030398,0.319653 52.159741,-58.793411 52.159741,-58.793411 z"/>
+    </g>
+  </svg>
+
+  <text class="wordmark" x="200" y="200">elin</text>
+
+  <text class="tagline" x="80" y="298">Reactive UIs without a build step.</text>
+
+  <!-- Size badge, well below taglines -->
+  <g transform="translate(80, 470)">
+    <text class="size" y="0">9.6 KB</text>
+    <text class="size-label" y="34">GZIPPED · EVERYTHING BUNDLED</text>
+  </g>
+
+  <!-- Code snippet card, right column, x: 700–1220 -->
+  <g transform="translate(700, 160)">
+    <rect x="0" y="0" width="520" height="320" rx="16" fill="#020617" stroke="#334155" stroke-width="1"/>
+    <!-- Traffic-light dots -->
+    <circle cx="26" cy="26" r="6" fill="#ef4444"/>
+    <circle cx="46" cy="26" r="6" fill="#f59e0b"/>
+    <circle cx="66" cy="26" r="6" fill="#22c55e"/>
+    <text class="filename" x="490" y="32" text-anchor="end">index.html</text>
+
+    <g transform="translate(30, 88)">
+      <text class="code" y="0"><tspan class="code-tag">&lt;div </tspan><tspan class="code-attr">id</tspan><tspan class="code-tag">=</tspan><tspan class="code-str">"app"</tspan><tspan class="code-tag">&gt;</tspan></text>
+      <text class="code" y="36">  <tspan class="code-tag">&lt;h1 </tspan><tspan class="code-attr">vln-text</tspan><tspan class="code-tag">=</tspan><tspan class="code-str">"'Hi, '+name"</tspan><tspan class="code-tag">/&gt;</tspan></text>
+      <text class="code" y="72">  <tspan class="code-tag">&lt;input </tspan><tspan class="code-attr">vln-input</tspan><tspan class="code-tag">=</tspan><tspan class="code-str">"name"</tspan><tspan class="code-tag">/&gt;</tspan></text>
+      <text class="code" y="108"><tspan class="code-tag">&lt;/div&gt;</tspan></text>
+
+      <text class="code" y="180"><tspan class="code-kw">Velin</tspan>.<tspan class="code-fn">bind</tspan>(app, { name: <tspan class="code-str">'World'</tspan> })</text>
+    </g>
+  </g>
+</svg>

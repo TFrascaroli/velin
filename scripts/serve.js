@@ -6,11 +6,14 @@ const app = express();
 const port = 3123;
 const isDev = process.argv.includes('--dev');
 
-const playgroundDir = path.join(__dirname, '..', 'playground');
+const repoRoot       = path.join(__dirname, '..');
+const siteDir        = path.join(repoRoot, 'site');
+const playgroundDir  = path.join(repoRoot, 'playground');
+const docsDir        = path.join(repoRoot, 'docs');
 
 if (isDev) {
-  // Copy the devtools companion into playground/vendor/ so /vendor/velin-devtools.js works.
-  const src = path.join(__dirname, '..', 'dist/build/velin-devtools.dev.js');
+  // Copy the devtools companion into playground/vendor/ so /playground/vendor/velin-devtools.js works.
+  const src = path.join(repoRoot, 'dist/build/velin-devtools.dev.js');
   const dest = path.join(playgroundDir, 'vendor', 'velin-devtools.js');
   if (fs.existsSync(src)) {
     fs.mkdirSync(path.dirname(dest), { recursive: true });
@@ -21,8 +24,8 @@ if (isDev) {
   }
 
   // Inject the devtools <script> tag into any HTML the playground serves.
-  const inject = '\n<script src="/vendor/velin-devtools.js"></script>\n';
-  app.use((req, res, next) => {
+  const inject = '\n<script src="/playground/vendor/velin-devtools.js"></script>\n';
+  app.use('/playground', (req, res, next) => {
     if (!req.path.endsWith('.html') && req.path !== '/') return next();
     const rel = req.path === '/' ? 'index.html' : req.path.replace(/^\//, '');
     const file = path.join(playgroundDir, rel);
@@ -36,7 +39,17 @@ if (isDev) {
   });
 }
 
-app.use('/', express.static(playgroundDir));
+// New front door: the site.
+app.use('/', express.static(siteDir));
+
+// Existing playground moves under /playground and keeps working.
+app.use('/playground', express.static(playgroundDir));
+
+// Docs served raw for Phase 2 (vln-md fetches these).
+app.use('/docs', express.static(docsDir));
+
+// Root-level assets the site references (e.g. /logo.svg).
+app.get('/logo.svg', (req, res) => res.sendFile(path.join(repoRoot, 'logo.svg')));
 
 const benchmarks = [{
     name: 'angular',
@@ -50,10 +63,11 @@ const benchmarks = [{
 }];
 
 benchmarks.forEach(framework => {
-  const distPath = path.join(__dirname, '..', framework.dist);
+  const distPath = path.join(repoRoot, framework.dist);
   app.use(`/${framework.name}`, express.static(distPath));
 });
 
 app.listen(port, () => {
-  console.log(`Playground server running at http://localhost:${port}${isDev ? ' (devtools enabled — Ctrl+Shift+V)' : ''}`);
+  console.log(`Site:       http://localhost:${port}/`);
+  console.log(`Playground: http://localhost:${port}/playground/${isDev ? '  (devtools enabled — Ctrl+Shift+V)' : ''}`);
 });

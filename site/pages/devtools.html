@@ -1,0 +1,42 @@
+<div class="prose">
+  <h1>Velin Devtools</h1>
+  <p class="lede">
+    An in-page companion for inspecting Velin state trees, directive bindings,
+    and reactive updates as they fire. Currently in <strong>alpha</strong> —
+    it answers the questions it claims to, but expect rough visuals.
+  </p>
+
+  <h2>Trying it now</h2>
+  <p>
+    Run the site in dev mode and devtools is injected into every
+    <code>/playground/</code> page automatically:
+  </p>
+  <pre><code>npm run serve:dev
+# open http://localhost:3123/playground/hello-world.html
+# press Ctrl+Shift+V to toggle the devtools panel</code></pre>
+  <p>
+    Open any <a vln-attr:href="'#/examples'">example</a>, then open the same
+    example directly at its <code>/playground/</code> URL — devtools attaches
+    to whatever Velin instance is running on that page.
+  </p>
+
+  <h2>What you get</h2>
+  <ul>
+    <li>A live tree of every reactive state object bound in the page.</li>
+    <li>Per-directive breakdown of which expressions read which state paths.</li>
+    <li>An update log — every property write, in order, with the directives it triggered.</li>
+  </ul>
+
+  <h2>Full reference</h2>
+  <p>
+    The <a vln-attr:href="'#/docs/devtools'">devtools doc</a> covers every tab,
+    the question it answers, snapshot cadence, and how to attach the panel
+    to your own page.
+  </p>
+
+  <h2>Status</h2>
+  <p>
+    Devtools is <code>0.1.0-alpha.0</code>. Visual polish and clearer user
+    journeys are the current focus.
+  </p>
+</div>

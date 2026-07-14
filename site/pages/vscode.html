@@ -1,0 +1,35 @@
+<div class="prose">
+  <h1>VS Code Extension</h1>
+  <p class="lede">
+    LSP-backed IntelliSense for <code>vln-*</code> directives — hover docs,
+    completion inside directive expressions, diagnostics for unknown
+    directives and malformed expressions.
+  </p>
+
+  <h2>What it gives you</h2>
+  <ul>
+    <li>Autocomplete for every built-in directive name and subkey.</li>
+    <li>Expression completion inside directive attribute values, driven by the LSP.</li>
+    <li>Hover documentation for each directive.</li>
+    <li>Diagnostics for unknown directives, malformed expressions, and missing state.</li>
+  </ul>
+
+  <h2>Installing (local build for now)</h2>
+  <p>
+    The extension isn't on the Marketplace yet. To try it, build and install from source:
+  </p>
+  <pre><code>cd tooling/velin-language-support
+npm install
+npm run build
+npm run package:vscode
+# then in VS Code: Extensions → ... menu → Install from VSIX</code></pre>
+
+  <h2>Status</h2>
+  <p>
+    Actively developed. Source and follow-up work live at
+    <a href="https://github.com/TFrascaroli/velin/tree/main/tooling/velin-language-support" target="_blank" rel="noopener">
+      tooling/velin-language-support
+    </a>.
+    Marketplace publication is planned.
+  </p>
+</div>
