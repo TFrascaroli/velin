@@ -20,6 +20,9 @@ Velin's documentation is organized into several key sections:
 **Extending Velin:**
 - [Creating Plugins](./plugins.md) - Build custom directives
 
+**Debugging Velin:**
+- [Devtools](./devtools.md) - In-page inspector for state, bindings, and updates
+
 ### Quick Start by Use Case
 
 #### "I want to build a simple reactive UI"
@@ -66,7 +69,8 @@ docs/
 ├── directives.md          # Complete directive reference
 ├── api-reference.md       # JavaScript API
 ├── plugins.md             # Creating custom directives
-└── templates.md           # Advanced templates
+├── templates.md           # Advanced templates
+└── devtools.md            # In-page inspector for state and updates
 
 playground/
 ├── index.html                # Sidebar landing — vln-load fragments

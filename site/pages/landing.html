@@ -1,0 +1,77 @@
+<section class="hero">
+  <div class="eyebrow">Reactive UI · 9.8 KB gzipped</div>
+  <h1>Reactive UIs without a build step, a virtual DOM, or <code>.value</code> ceremony.</h1>
+  <p class="lede">
+    Velin keeps your model in a plain object and binds it to the DOM through
+    native Proxies. One script tag, one <code>bind</code> call, no framework tax.
+  </p>
+  <div class="cta">
+    <a class="btn btn-primary" vln-attr:href="'#/learn'">Start the walkthrough →</a>
+    <a class="btn btn-ghost" vln-attr:href="'#/examples'">See examples</a>
+  </div>
+</section>
+
+<h2>Hello, world</h2>
+<p>The whole install story:</p>
+<pre><code>&lt;script src="https://unpkg.com/@velinjs/all/velin-common.min.js"&gt;&lt;/script&gt;
+
+&lt;div id="app"&gt;
+  &lt;h1 vln-text="'Hello, ' + name + '!'"&gt;&lt;/h1&gt;
+  &lt;input vln-input="name" /&gt;
+&lt;/div&gt;
+
+&lt;script&gt;
+  Velin.bind(document.getElementById('app'), { name: 'World' });
+&lt;/script&gt;</code></pre>
+<p>
+  Try it live in the
+  <a vln-attr:href="'#/examples/hello-world'">Hello world example</a> — source
+  next to result, no install required.
+</p>
+
+<div class="stat-strip">
+  <div class="stat">
+    <span class="num">9.8 KB</span>
+    <span class="label">gzipped for the everything bundle</span>
+  </div>
+  <div class="stat">
+    <span class="num">0</span>
+    <span class="label">build steps required</span>
+  </div>
+  <div class="stat">
+    <span class="num">CSP-safe</span>
+    <span class="label">no <code>eval</code>, no <code>new Function</code></span>
+  </div>
+  <div class="stat">
+    <span class="num">Plain JS</span>
+    <span class="label">your state is a real object</span>
+  </div>
+</div>
+
+<h2>Why Velin?</h2>
+<div class="feature-grid">
+  <div class="feature">
+    <h3>State stays a plain object</h3>
+    <p>No hooks, no signals, no <code>.value</code>. Read it, log it, step through it.</p>
+  </div>
+  <div class="feature">
+    <h3>No magic syntax</h3>
+    <p>Directives take real JavaScript expressions. What you read is what runs.</p>
+  </div>
+  <div class="feature">
+    <h3>Load only what you use</h3>
+    <p>Core is 6.2 KB gzipped. Add router, fragments, or events only if you need them.</p>
+  </div>
+  <div class="feature">
+    <h3>The template is the view</h3>
+    <p>HTML holds structure; JavaScript holds state. That separation is not negotiable.</p>
+  </div>
+</div>
+
+<h2>Where to next</h2>
+<ul class="landing-links">
+  <li><a vln-attr:href="'#/learn'"><strong>Take the walkthrough</strong> — install, bind, and build a reactive UI in five short steps.</a></li>
+  <li><a vln-attr:href="'#/examples'"><strong>Browse the examples gallery</strong> — forms, CRUD, virtual scrolling, routing, live theme switching.</a></li>
+  <li><a vln-attr:href="'#/docs'"><strong>Read the docs</strong> — directive reference, API surface, plugin authoring guide.</a></li>
+  <li><a vln-attr:href="'#/devtools'"><strong>Explore devtools</strong> — an in-page inspector for state and directive updates.</a></li>
+</ul>

@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Velin — Reactive UIs without ceremony</title>
+  <meta name="description" content="Velin is a 9.8KB reactive UI library. No build step, no virtual DOM, no .value ceremony. One script tag and a plain object.">
+
+  <meta property="og:title" content="Velin — Reactive UIs without a build step">
+  <meta property="og:description" content="A 9.6 KB reactive UI library. No build step, no virtual DOM, no .value ceremony.">
+  <meta property="og:image" content="https://tfrascaroli.github.io/velin/og-image.png">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://tfrascaroli.github.io/velin/">
+  <meta name="twitter:card" content="summary_large_image">
+
+  <link rel="icon" href="/logo.svg">
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://unpkg.com/@velinjs/all/velin-all.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+
+  <div id="app">
+    <header class="site-header">
+      <a vln-attr:href="'#/'" class="brand">
+        <img src="/logo.svg" alt="V" width="28" height="28">
+        <span>elin</span>
+      </a>
+      <nav class="site-nav">
+        <a vln-attr:href="'#/'"         vln-class="{ active: route.path === '/' }">Home</a>
+        <a vln-attr:href="'#/learn'"    vln-class="{ active: startsWith(route.path, '/learn') }">Learn</a>
+        <a vln-attr:href="'#/examples'" vln-class="{ active: startsWith(route.path, '/examples') }">Examples</a>
+        <a vln-attr:href="'#/docs'"     vln-class="{ active: startsWith(route.path, '/docs') }">Docs</a>
+        <a vln-attr:href="'#/devtools'" vln-class="{ active: startsWith(route.path, '/devtools') }">Devtools</a>
+        <a href="https://github.com/TFrascaroli/velin" target="_blank" rel="noopener" class="external">GitHub ↗</a>
+      </nav>
+    </header>
+
+    <main class="site-main" vln-router="route">
+      <div vln-route="'/'"                vln-page="pages.landing"></div>
+      <div vln-route="'/learn'"           vln-page="pages.learn"></div>
+      <div vln-route="'/learn/:step'"     vln-page="pages.learn"></div>
+
+      <div vln-route="'/examples'"        vln-fragment="'examples-list'"></div>
+      <div vln-route="'/examples/:id'"    vln-fragment="'example-detail'"
+           vln-var:exampleid="segment(route.path, 1)"></div>
+
+      <div vln-route="'/docs'"            vln-fragment="'docs-list'"></div>
+      <div vln-route="'/docs/:page'"      vln-fragment="'doc-page'"
+           vln-var:docid="segment(route.path, 1)"></div>
+
+      <div vln-route="'/devtools'"        vln-page="pages.devtools"></div>
+      <div vln-route="'/tooling/vscode'"  vln-page="pages.vscode"></div>
+
+      <div vln-if="!isKnownRoute(route.path)" class="not-found">
+        <h1>404</h1>
+        <p><code vln-text="route.path"></code> is not a known route.</p>
+        <p><a vln-attr:href="'#/'">← Back home</a></p>
+      </div>
+    </main>
+
+    <footer class="site-footer">
+      <div class="site-footer-inner">
+        <p>
+          Velin is developed independently by
+          <a href="https://github.com/TFrascaroli" target="_blank" rel="noopener">Timoteo Frascaroli</a>.
+          Apache 2.0.
+        </p>
+        <p>
+          <a href="https://github.com/sponsors/TFrascaroli" target="_blank" rel="noopener">Sponsor</a>
+          &nbsp;·&nbsp;
+          <a href="https://github.com/TFrascaroli/velin/issues" target="_blank" rel="noopener">Issues</a>
+        </p>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Templates for reactive pages (need parent-state access via fragments) -->
+
+  <template id="examples-list">
+    <section>
+      <h1>Examples</h1>
+      <p class="lede">
+        Every pattern is a real, runnable Velin app — hand-picked forms, data
+        grids, navigation, and performance tests. Click any card to see it live
+        with source alongside.
+      </p>
+
+      <div vln-loop:cat="categoriesWithExamples" class="category-block">
+        <h2 vln-text="cat.name"></h2>
+        <p class="muted" vln-text="cat.blurb"></p>
+        <div class="example-grid">
+          <a vln-loop:ex="cat.items"
+             vln-attr:href="'#/examples/' + ex.id"
+             class="example-card">
+            <div class="example-card-title" vln-text="ex.title"></div>
+            <div class="example-card-blurb" vln-text="ex.blurb"></div>
+            <div class="example-card-meta">
+              <span vln-text="ex.type === 'standalone' ? 'Full page' : 'Fragment'"></span>
+              <span> · </span>
+              <span vln-text="ex.files.length + ' file' + (ex.files.length === 1 ? '' : 's')"></span>
+            </div>
+          </a>
+        </div>
+      </div>
+    </section>
+  </template>
+
+  <template id="example-detail" vln-vars="exampleid">
+    <section vln-use:ex="getExample(exampleid)">
+      <div vln-if="ex" class="wide-view">
+        <div class="detail-header">
+          <a vln-attr:href="'#/examples'" class="back-link">← All examples</a>
+          <div class="detail-crumbs">
+            <span vln-text="categoryName(ex.category)"></span>
+          </div>
+          <h1 vln-text="ex.title"></h1>
+          <p class="lede" vln-text="ex.blurb"></p>
+          <div class="detail-actions">
+            <a vln-attr:href="demoUrlFor(ex)" target="_blank" rel="noopener" class="btn btn-ghost">Open in new tab ↗</a>
+          </div>
+        </div>
+
+        <div class="example-detail">
+          <div class="pane pane-result">
+            <div class="pane-label">Result</div>
+            <iframe vln-attr:src="demoUrlFor(ex)"
+                    class="demo-frame"
+                    title="Live example"></iframe>
+          </div>
+          <div class="pane pane-code">
+            <div class="pane-label">Source</div>
+            <div vln-code-viewer="ex.files"></div>
+          </div>
+        </div>
+      </div>
+
+      <div vln-if="!ex" class="not-found">
+        <h1>Example not found</h1>
+        <p><code vln-text="exampleid"></code> isn't in the catalog.</p>
+        <p><a vln-attr:href="'#/examples'">← Back to examples</a></p>
+      </div>
+    </section>
+  </template>
+
+  <template id="docs-list">
+    <section class="prose">
+      <h1>Documentation</h1>
+      <p>
+        Reference for every part of Velin — directives, API surface, plugin
+        authoring, bundle selection. The Markdown sources under
+        <code>docs/</code> are authoritative; this site is a viewer.
+      </p>
+
+      <div class="docs-grid">
+        <a vln-loop:d="docs"
+           vln-attr:href="'#/docs/' + d.id"
+           class="doc-card">
+          <div class="doc-card-title" vln-text="d.title"></div>
+          <div class="doc-card-blurb" vln-text="d.blurb"></div>
+        </a>
+      </div>
+    </section>
+  </template>
+
+  <template id="doc-page" vln-vars="docid">
+    <section vln-use:doc="getDoc(docid)">
+      <div class="prose" vln-if="doc">
+        <a vln-attr:href="'#/docs'" class="back-link">← All docs</a>
+        <div vln-md="doc.file"></div>
+      </div>
+      <div class="not-found" vln-if="!doc">
+        <h1>Doc not found</h1>
+        <p><code vln-text="docid"></code> isn't in the catalog.</p>
+        <p><a vln-attr:href="'#/docs'">← Back to docs</a></p>
+      </div>
+    </section>
+  </template>
+
+  <script src="components/syntax.js"></script>
+  <script src="components/code-viewer.js"></script>
+  <script src="components/md-render.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
