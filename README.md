@@ -1,6 +1,6 @@
 # Velin
 
-**Reactive UIs without a build step, a virtual DOM, or `.value` ceremony.**
+**You assign to a property. The DOM updates.**
 
 **[Try it live →](https://tfrascaroli.github.io/velin/)** &nbsp;·&nbsp; [Docs](./docs/) &nbsp;·&nbsp; [Bundles guide](./docs/bundles.md)
 
@@ -8,7 +8,7 @@
 
 I built Velin because I got tired of state being scattered across a dozen framework abstractions. When you're debugging and your model lives half in a hook, half in a store, half in a component prop, and half in a local ref — something has gone wrong. The **M** in MVC deserves the same respect we've always given the **V** and the **C**: it should be a plain object you can read, log, and step through.
 
-Reactivity shouldn't need `useState` tuples with their return-set functions, or "signals" bolted onto a framework that wasn't designed for them. A property is a property; assigning to it should be enough. Velin uses native Proxies so that's the whole story — no `.value`, no setters, no ceremony:
+Reactivity shouldn't need `useState` tuples with their return-set functions, or "signals" bolted onto a framework that wasn't designed for them. A property is a property; assigning to it should be enough. Velin uses native Proxies so that's the whole story — no `.value`, no setters, no wrapper types:
 
 ```html
 <script src="https://unpkg.com/@velinjs/all/velin-common.min.js"></script>
