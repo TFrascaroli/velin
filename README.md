@@ -2,7 +2,7 @@
 
 **You assign to a property. The DOM updates.**
 
-**[Try it live →](https://tfrascaroli.github.io/velin/)** &nbsp;·&nbsp; [Docs](./docs/) &nbsp;·&nbsp; [Bundles guide](./docs/bundles.md)
+**[Try it live →](https://tfrascaroli.github.io/velin/)** &nbsp;·&nbsp; [Docs](./docs/) &nbsp;·&nbsp; [Bundles](./docs/bundles.md) &nbsp;·&nbsp; [vs. Alpine / petite-vue / htmx](./docs/vs.md) &nbsp;·&nbsp; [FAQ](./docs/faq.md)
 
 ### Why Velin?
 
