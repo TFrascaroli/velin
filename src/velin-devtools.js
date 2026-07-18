@@ -14,7 +14,7 @@
  * fps table firing thousands of events/sec costs the panel exactly one
  * snapshot every REFRESH_MS regardless of volume.
  *
- * All vln-loops use keyed diffs (`{collection, key: 'id'}`) with ids
+ * All vln-loop uses keyed diffs (`{collection, key: 'id'}`) with ids
  * derived from stable data (state identity, event ø__seq, expression
  * text) so substates get reused across polls instead of being torn down
  * and rebuilt every 500ms.
@@ -94,7 +94,7 @@
     const bodyEl = shadow.querySelector(".body");
 
     // ── Non-reactive lookup tables ────────────────────────────────────────
-    // Stable across polls so keyed vln-loops reuse rows / substate effects.
+    // Stable across polls so keyed vln-loop reuses rows / substate effects.
     /** @type {WeakMap<any, number>} state → id */
     const stateIds = new WeakMap();
     let stateIdSeq = 0;
