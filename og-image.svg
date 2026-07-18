@@ -32,7 +32,7 @@
 
   <text class="wordmark" x="200" y="200">elin</text>
 
-  <text class="tagline" x="80" y="298">Reactive UIs without a build step.</text>
+  <text class="tagline" x="80" y="298">You assign to a property. The DOM updates.</text>
 
   <!-- Size badge, well below taglines -->
   <g transform="translate(80, 470)">
