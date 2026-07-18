@@ -51,12 +51,33 @@ ensureDir(publishDir);
 copyFiles(filesToCopy, distBuild, publishDir);
 // Copy types
 copyFiles(typeFiles, distTypes, publishDir);
-// Copy README, LICENSE, NOTICE
-['README.md', 'LICENSE', 'NOTICE'].forEach(f => {
+// Copy LICENSE, NOTICE verbatim
+['LICENSE', 'NOTICE'].forEach(f => {
   const src = path.join(root, f);
   const dest = path.join(publishDir, f);
   if (fs.existsSync(src)) fs.copyFileSync(src, dest);
 });
+
+// README needs relative-link rewriting so it renders on npmjs.com,
+// which has no ./docs/ or ./LICENSE to resolve to.
+{
+  const src = path.join(root, 'README.md');
+  const dest = path.join(publishDir, 'README.md');
+  const repoBlobBase = 'https://github.com/TFrascaroli/velin/blob/main/';
+  // Rewrite relative markdown links: anything that isn't an absolute URL
+  // (has `://`), a mailto:, or a same-doc anchor (#…) gets prefixed with
+  // the GitHub blob URL so it resolves on npmjs.com.
+  const readme = fs.readFileSync(src, 'utf8').replace(
+    /\]\(([^)\s]+?)(#[^)]*)?\)/g,
+    (m, target, hash = '') => {
+      if (/^([a-z]+:|#|\/\/)/i.test(target)) return m;
+      const clean = target.replace(/^\.?\//, '');
+      return `](${repoBlobBase}${clean}${hash})`;
+    }
+  );
+  fs.writeFileSync(dest, readme);
+  console.log('Wrote publish/README.md with rewritten relative links');
+}
 
 // Write a dedicated package.json for the publish/ tarball. The root
 // package.json's paths (dist/build/…) are for local dev; the published
