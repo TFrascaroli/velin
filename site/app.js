@@ -247,7 +247,7 @@ Velin.bind(document.getElementById('app'), {
     const q = new URLSearchParams();
     if (ex.markup) q.set('markup', ex.markup);
     if (ex.state)  q.set('state', ex.state);
-    return '/runner.html?' + q.toString();
+    return 'runner.html?' + q.toString();
   },
   hrefFor(ex) {
     return '#/examples/' + ex.id;
