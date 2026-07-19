@@ -70,8 +70,9 @@
     "prepare:publish": "node scripts/prepare-publish.js",
     "release": "npm run build && npm run prepare:publish && npm publish ./publish --access public",
     "og:image": "node scripts/rasterize-og.js",
-    "build:site": "npm run build && npm run prepare && npm run og:image",
-    "deploy:site": "npm run build:site && gh-pages -d site -b gh-pages -m \"deploy site\""
+    "stage:site": "node scripts/stage-site.js",
+    "build:site": "npm run build && npm run prepare && npm run og:image && npm run stage:site",
+    "deploy:site": "npm run build:site && gh-pages -d dist/site -b gh-pages -m \"deploy site\""
   },
   "devDependencies": {
     "@resvg/resvg-js": "^2.6.2",

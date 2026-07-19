@@ -1,21 +1,30 @@
-# Deploys the /playground/ directory to GitHub Pages.
+# Builds the hand-rolled Velin site and deploys it to GitHub Pages.
 #
-# Runs `npm run build` to produce the bundles, then `npm run prepare` to copy
-# them into playground/vendor/, then publishes the playground/ folder.
+# All build/stage logic lives in npm scripts (see `build:site` in package.json).
+# The workflow only runs the script and hands the staged directory to the
+# GitHub-provided Pages actions.
 #
 # Enable Pages under Settings → Pages → Source: GitHub Actions.
 
-name: Deploy Playground to Pages
+name: Deploy Site to Pages
 
 on:
   push:
     branches: [main]
     paths:
       - 'src/**'
+      - 'site/**'
+      - 'docs/**'
       - 'playground/**'
-      - 'scripts/prepare.js'
+      - 'logo.svg'
+      - 'og-image.svg'
       - 'scripts/build.js'
-      - '.github/workflows/deploy-playground.yml'
+      - 'scripts/prepare.js'
+      - 'scripts/rasterize-og.js'
+      - 'scripts/stage-site.js'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/deploy-site.yml'
   workflow_dispatch:
 
 permissions:
@@ -40,17 +49,13 @@ jobs:
 
       - run: npm ci
 
-      - name: Build bundles
-        run: npm run build
-
-      - name: Copy bundles into playground/vendor/
-        run: npm run prepare
+      - run: npm run build:site
 
       - uses: actions/configure-pages@v5
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: playground
+          path: dist/site
 
   deploy:
     needs: build
