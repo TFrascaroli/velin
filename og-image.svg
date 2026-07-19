@@ -32,7 +32,12 @@
 
   <text class="wordmark" x="200" y="200">elin</text>
 
-  <text class="tagline" x="80" y="298">You assign to a property. The DOM updates.</text>
+  <text class="tagline" x="80" y="298">
+  You assign to a property.
+  </text>
+  <text class="tagline" x="80" y="350">
+  The DOM updates.
+  </text>
 
   <!-- Size badge, well below taglines -->
   <g transform="translate(80, 470)">
@@ -47,11 +52,10 @@
     <circle cx="26" cy="26" r="6" fill="#ef4444"/>
     <circle cx="46" cy="26" r="6" fill="#f59e0b"/>
     <circle cx="66" cy="26" r="6" fill="#22c55e"/>
-    <text class="filename" x="490" y="32" text-anchor="end">index.html</text>
 
     <g transform="translate(30, 88)">
       <text class="code" y="0"><tspan class="code-tag">&lt;div </tspan><tspan class="code-attr">id</tspan><tspan class="code-tag">=</tspan><tspan class="code-str">"app"</tspan><tspan class="code-tag">&gt;</tspan></text>
-      <text class="code" y="36">  <tspan class="code-tag">&lt;h1 </tspan><tspan class="code-attr">vln-text</tspan><tspan class="code-tag">=</tspan><tspan class="code-str">"'Hi, '+name"</tspan><tspan class="code-tag">/&gt;</tspan></text>
+      <text class="code" y="36">  <tspan class="code-tag">&lt;h1 </tspan><tspan class="code-attr">vln-text</tspan><tspan class="code-tag">=</tspan><tspan class="code-str">"'Hi, ' + name"</tspan><tspan class="code-tag">/&gt;</tspan></text>
       <text class="code" y="72">  <tspan class="code-tag">&lt;input </tspan><tspan class="code-attr">vln-input</tspan><tspan class="code-tag">=</tspan><tspan class="code-str">"name"</tspan><tspan class="code-tag">/&gt;</tspan></text>
       <text class="code" y="108"><tspan class="code-tag">&lt;/div&gt;</tspan></text>
 
