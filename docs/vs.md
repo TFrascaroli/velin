@@ -5,14 +5,15 @@ comparison. These are all good tools; they just make different trade-offs.
 
 ## At a glance
 
-| Library    | Gzipped   | Reactivity                  | Build step | Default CSP-safe            | Templates live in | State lives in     |
-|------------|-----------|-----------------------------|------------|------------------------------|-------------------|--------------------|
-| **Velin**  | 9.8 KB    | Native Proxy                | No         | Yes                          | HTML attributes   | Plain JS objects   |
-| Alpine.js  | ~15 KB    | Proxy (via @vue/reactivity) | No         | No (uses `new Function()`)   | HTML attributes   | `x-data` (in HTML) |
-| petite-vue | ~7 KB     | Vue 3 reactivity            | No         | No (uses `new Function()`)   | HTML + `{{ }}`    | `v-scope` / setup  |
-| htmx       | ~16 KB    | None (server-driven)        | No         | Partial                      | HTML attributes   | The server         |
-| Stimulus   | ~10 KB    | None (manual)               | Optional   | Yes                          | HTML `data-*`     | Controller classes |
-| Vue 3 (global CDN) | ~52 KB | Proxy + refs            | No         | No (in-browser template compile) | HTML + `{{ }}` | `reactive()` / refs |
+| Library                | Gzipped   | Reactivity                  | Build step | Default CSP-safe                 | Templates live in | State lives in     |
+|------------------------|-----------|-----------------------------|------------|----------------------------------|-------------------|--------------------|
+| **Velin**              | 9.8 KB    | Native Proxy                | No         | Yes                              | HTML attributes   | Plain JS objects   |
+| Alpine.js (default)    | ~17 KB    | Proxy (via @vue/reactivity) | No         | No (uses `new Function()`)       | HTML attributes   | `x-data` (in HTML) |
+| Alpine.js + `@alpinejs/csp` | ~20 KB | Proxy (via @vue/reactivity) | No       | Yes (restricted expression syntax) | HTML attributes | `Alpine.data()`    |
+| petite-vue             | ~7 KB     | Vue 3 reactivity            | No         | No (uses `new Function()`)       | HTML + `{{ }}`    | `v-scope` / setup  |
+| htmx                   | ~16 KB    | None (server-driven)        | No         | Partial                          | HTML attributes   | The server         |
+| Stimulus               | ~10 KB    | None (manual)               | Optional   | Yes                              | HTML `data-*`     | Controller classes |
+| Vue 3 (global CDN)     | ~52 KB    | Proxy + refs                | No         | No (in-browser template compile) | HTML + `{{ }}`    | `reactive()` / refs |
 
 Sizes are approximate, taken from bundlephobia for the latest published
 version at the time of writing. Verify current numbers before citing.
@@ -33,28 +34,6 @@ version at the time of writing. Verify current numbers before citing.
   controllers over the freedom of directives-with-expressions.
 - **Vue 3 global build** — you want the full Vue ecosystem in a script tag
   and don't mind the size or the `unsafe-eval` requirement.
-
-## CSP, in more detail
-
-Every library in this table except Stimulus and Velin uses `new Function()`
-in its default build, which requires `unsafe-eval` in your CSP.
-
-Escape hatches:
-
-- **Alpine** ships `@alpinejs/csp`, but the CSP build restricts expression
-  syntax: no arrow functions, destructuring, template literals, spread, or
-  property assignments (e.g. `user.name = 'x'` is out). `x-html` is
-  disabled and `x-model` is reported broken. Register components via
-  `Alpine.data()` only.
-- **htmx** has `htmx.config.allowEval = false`, which disables `hx-on`,
-  trigger filter expressions, and `js:`/`javascript:` prefixes in
-  `hx-vals` / `hx-headers`.
-- **Vue 3** is CSP-safe if you use the runtime-only build with
-  precompiled templates — which means a build step.
-
-Velin's default build is CSP-safe with no feature loss — it ships a full
-AST evaluator instead of leaning on `Function()`. That's where the "still
-smaller than the alternatives" claim comes from.
 
 ## Other differences worth knowing
 
