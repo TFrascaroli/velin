@@ -158,6 +158,15 @@ const DOCS = [
   { id: 'devtools',        title: 'Devtools',        blurb: 'The in-page inspector for state and updates.',   file: 'docs/devtools.md' },
 ];
 
+// Exposed for md-render.js to resolve links inside rendered docs:
+//   - `./sibling.md` → internal SPA route when sibling is in the catalog
+//   - anything not deployed (src/, README.md, test/, adr/) → GitHub blob URL
+window.VELIN_SITE = {
+  docIds: DOCS.map(d => d.id),
+  repoBlobBase: 'https://github.com/TFrascaroli/velin/blob/main/',
+  repoTreeBase: 'https://github.com/TFrascaroli/velin/tree/main/',
+};
+
 // -- vln-page plugin: fetch a fragment and bind optional state -------------
 
 Velin.plugins.registerPlugin({

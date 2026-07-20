@@ -2,6 +2,55 @@
 // Fetches a markdown file, renders with marked, syntax-highlights code
 // fences via VelinSyntax, and slugs h2/h3 for anchor links.
 (function () {
+  // Rewrite <a href> inside rendered markdown. The doc renders inside a SPA
+  // served at /velin/, so browser resolution of relative hrefs is wrong for
+  // both sibling docs (would 404 at /velin/sibling.md) and repo-only paths
+  // (../src, ../README.md — not deployed at all). We resolve against the
+  // doc's own repo path and route accordingly.
+  function rewriteLinks(wrap, docUrl) {
+    const site = window.VELIN_SITE || { docIds: [], repoBlobBase: '', repoTreeBase: '' };
+    const docIds = new Set(site.docIds);
+    // Fake origin so URL() gives us a clean pathname to inspect.
+    const base = new URL(docUrl, 'http://x/');
+
+    wrap.querySelectorAll('a[href]').forEach(a => {
+      const href = a.getAttribute('href');
+      if (!href) return;
+      if (href.startsWith('#')) return;
+      if (/^[a-z]+:/i.test(href)) {
+        if (/^https?:/i.test(href)) {
+          a.target = '_blank';
+          a.rel = 'noopener';
+        }
+        return;
+      }
+
+      const u = new URL(href, base);
+      if (u.origin !== 'http://x') return;
+      const repoPath = u.pathname.replace(/^\//, '');
+
+      const docMatch = repoPath.match(/^docs\/([^/]+)\.md$/);
+      if (docMatch && docIds.has(docMatch[1])) {
+        a.setAttribute('href', '#/docs/' + docMatch[1]);
+        a.removeAttribute('target');
+        a.removeAttribute('rel');
+        return;
+      }
+      if (repoPath === 'playground/index.html') {
+        a.setAttribute('href', '#/examples');
+        a.removeAttribute('target');
+        a.removeAttribute('rel');
+        return;
+      }
+
+      const isDir = repoPath.endsWith('/');
+      const ghBase = isDir ? site.repoTreeBase : site.repoBlobBase;
+      a.setAttribute('href', ghBase + repoPath + u.hash);
+      a.target = '_blank';
+      a.rel = 'noopener';
+    });
+  }
+
   Velin.plugins.registerPlugin({
     name: 'md',
     track: Velin.trackers.expressionTracker,
@@ -34,6 +83,8 @@
               codeEl.innerHTML = window.VelinSyntax.highlightHTML(src);
             }
           });
+
+          rewriteLinks(wrap, tracked);
 
           wrap.querySelectorAll('h2, h3').forEach(h => {
             if (h.id) return;
