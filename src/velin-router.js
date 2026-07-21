@@ -145,6 +145,41 @@ function setupVelinRouter(vln) {
       return { halt: true, pluginState };
     }
   });
+
+  /**
+   * vln-router-scroll="routerStateKey"
+   * On every committed route change of the referenced router, scrolls the
+   * element the directive sits on back to the top. Put it on whichever
+   * element owns the scroll (often <html>, sometimes an inner <main>).
+   */
+  vln.plugins.registerPlugin({
+    name: "router-scroll",
+    track: ({ evaluate, expr }) => {
+      const routerState = evaluate(expr);
+      return routerState && routerState.path;
+    },
+    render: ({ node, tracked, pluginState = {} }) => {
+      const prev = pluginState.prev;
+      pluginState.prev = tracked;
+
+      // Skip initial render — only react to actual navigations.
+      if (!pluginState.initialized) {
+        pluginState.initialized = true;
+        return { pluginState };
+      }
+      if (prev === tracked) return { pluginState };
+
+      if (node === document.documentElement || node === document.body) {
+        globalThis.scrollTo(0, 0);
+      } else if (typeof /** @type {any} */(node).scrollTo === "function") {
+        /** @type {any} */(node).scrollTo(0, 0);
+      } else if (node instanceof HTMLElement) {
+        node.scrollTop = 0;
+        node.scrollLeft = 0;
+      }
+      return { pluginState };
+    }
+  });
 }
 
 // Auto-bootstrap
