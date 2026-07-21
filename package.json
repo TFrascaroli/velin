@@ -1,6 +1,6 @@
 {
   "name": "@velinjs/all",
-  "version": "1.0.0-beta.0",
+  "version": "1.0.0-beta.1",
   "license": "Apache-2.0",
   "description": "A lightweight reactive library for building interactive UIs with a pure JavaScript model.",
   "homepage": "https://tfrascaroli.github.io/velin/",
