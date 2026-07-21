@@ -217,7 +217,7 @@ function pathSegments(path) {
 
 // -- Top-level state -------------------------------------------------------
 
-Velin.bind(document.getElementById('app'), {
+Velin.bind(document.body, {
   route: { path: '/', error: null, loading: false },
 
   categories:             EXAMPLE_CATEGORIES,
