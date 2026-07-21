@@ -554,6 +554,40 @@ given pattern. Patterns support `:param` placeholders.
   hidden) and re-cloned on match.
 - Must be a descendant of a `vln-router` element.
 
+### `vln-router-scroll`
+
+Resets scroll position on the element it sits on every time the referenced
+router's `path` changes. Put it on whichever element actually owns the scroll
+for your layout — the `<html>` element for a normal page, or an inner scroll
+container (e.g. `<main>` with `overflow: auto`) for app shells.
+
+**Syntax:** `vln-router-scroll="stateKey"` — where `stateKey` is the same key
+you passed to `vln-router`.
+
+**Example:**
+```html
+<html vln-router-scroll="myRoute">
+  <body>
+    <nav>...</nav>
+    <div vln-router="myRoute">
+      <div vln-route="'/'">...</div>
+      <div vln-route="'/about'">...</div>
+    </div>
+  </body>
+</html>
+```
+
+**Notes:**
+- Fires only when `path` actually changes, so reactive re-renders on the same
+  route don't move the viewport.
+- Does not fire on initial mount.
+- Uses `scrollTo(0, 0)` when available, falls back to setting `scrollTop`/
+  `scrollLeft`. For `<html>` / `<body>` targets it delegates to
+  `window.scrollTo(0, 0)`.
+- Not tied to nesting — the directive doesn't have to be an ancestor or
+  descendant of the router, only in the same reactive scope so the router's
+  state key resolves.
+
 ## Event Orchestration
 
 These plugins are available in the optional `velin-events.js` module.
