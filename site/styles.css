@@ -519,7 +519,8 @@ hr {
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
   gap: 20px;
-  min-height: 640px;
+  height: min(80vh, 720px);
+  min-height: 480px;
 }
 .pane {
   border: 1px solid var(--line);
@@ -539,18 +540,11 @@ hr {
   border-bottom: 1px solid var(--line);
   background: var(--bg);
 }
-.pane-result {
-  min-height: 640px;
-}
 .demo-frame {
   flex: 1;
   border: 0;
   width: 100%;
-  min-height: 600px;
   background: #fff;
-}
-.pane-code {
-  min-height: 640px;
 }
 .pane-code > div:last-child {
   flex: 1;
@@ -719,8 +713,11 @@ hr {
 
 /* Responsive */
 @media (max-width: 900px) {
-  .example-detail { grid-template-columns: 1fr; }
-  .pane-result, .pane-code { min-height: 480px; }
+  .example-detail {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+  .pane-result, .pane-code { height: 480px; }
 }
 @media (max-width: 720px) {
   .site-header { padding: 12px 16px; gap: 16px; }
