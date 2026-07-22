@@ -109,4 +109,12 @@ jobs:
 
       - name: Publish to npm
         working-directory: publish
-        run: npm publish --provenance --access public
+        # npm@12 requires --tag for prereleases. Default to `beta` for
+        # anything that looks like a prerelease, otherwise `latest`.
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [[ "$version" == *-* ]]; then
+            npm publish --provenance --access public --tag beta
+          else
+            npm publish --provenance --access public
+          fi
