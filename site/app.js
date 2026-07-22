@@ -226,7 +226,7 @@ Velin.bind(document.body, {
   docs:                   DOCS,
 
   pages: {
-    landing:  { markup: 'pages/landing.html' },
+    landing:  { markup: 'pages/landing.html', state: () => ({ demo: { name: 'World', count: 0 } }) },
     learn:    { markup: 'pages/learn.html' },
     devtools: { markup: 'pages/devtools.html' },
     vscode:   { markup: 'pages/vscode.html' },
