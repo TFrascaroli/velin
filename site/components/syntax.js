@@ -138,4 +138,26 @@
   }
 
   window.VelinSyntax = { highlightJS, highlightHTML, escape };
+
+  // vln-syntax="'js'" or vln-syntax="'html'"
+  // Applies syntax highlighting to the element's own text content.
+  // Intended for hand-written <pre><code vln-syntax="'html'">…</code></pre>.
+  Velin.plugins.registerPlugin({
+    name: 'syntax',
+    track: Velin.trackers.expressionTracker,
+    render: ({ node, tracked, pluginState = {} }) => {
+      if (!tracked) return { halt: true };
+      const key = tracked + '|' + (node.dataset.raw || node.textContent);
+      if (pluginState.key === key) return { halt: true, pluginState };
+
+      const src = node.dataset.raw || node.textContent;
+      node.dataset.raw = src;
+      const fn = tracked === 'js'
+        ? window.VelinSyntax.highlightJS
+        : window.VelinSyntax.highlightHTML;
+      node.innerHTML = fn(src);
+      pluginState.key = key;
+      return { halt: true, pluginState };
+    },
+  });
 })();

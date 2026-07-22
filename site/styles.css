@@ -222,6 +222,73 @@ hr {
 }
 .btn-ghost:hover { border-color: var(--ink); }
 
+/* Live demo (landing) */
+.live-demo {
+  margin: 0 0 40px;
+}
+.live-demo-label {
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  margin-bottom: 10px;
+}
+.live-demo-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: stretch;
+}
+.live-demo-grid .pane {
+  min-height: 320px;
+}
+.live-demo-grid .pane-code pre {
+  margin: 0;
+  border-radius: 0;
+  height: 100%;
+  font-size: 0.82rem;
+  overflow: auto;
+}
+.live-demo-app {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: flex-start;
+}
+.live-demo-app h1 {
+  margin: 0;
+  font-size: 1.8rem;
+}
+.live-demo-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.85rem;
+  color: var(--ink-muted);
+  width: 100%;
+  max-width: 280px;
+}
+.live-demo-field input {
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--ink);
+}
+.live-demo-field input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.live-demo-caption {
+  margin: 12px 0 0;
+  font-size: 0.9rem;
+}
+@media (max-width: 900px) {
+  .live-demo-grid { grid-template-columns: 1fr; }
+}
+
 .stat-strip {
   display: flex;
   gap: 32px;
