@@ -11,23 +11,49 @@
   </div>
 </section>
 
-<h2>Hello, world</h2>
-<p>The whole install story:</p>
-<pre><code>&lt;script src="https://unpkg.com/@velinjs/all/velin-common.min.js"&gt;&lt;/script&gt;
+<section class="live-demo">
+  <div class="live-demo-label">This page is Velin. So is this demo — bound, running, editable.</div>
+  <div class="live-demo-grid">
+    <div class="pane pane-code">
+      <div class="pane-label">Source</div>
+      <pre><code vln-syntax="'html'">&lt;script src="https://unpkg.com/@velinjs/all/velin-common.min.js"&gt;&lt;/script&gt;
 
 &lt;div id="app"&gt;
   &lt;h1 vln-text="'Hello, ' + name + '!'"&gt;&lt;/h1&gt;
   &lt;input vln-input="name" /&gt;
+  &lt;button vln-on:click="count = count + 1"&gt;
+    Clicked &lt;span vln-text="count"&gt;&lt;/span&gt; times
+  &lt;/button&gt;
 &lt;/div&gt;
 
 &lt;script&gt;
-  Velin.bind(document.getElementById('app'), { name: 'World' });
+  Velin.bind(document.getElementById('app'), {
+    name: 'World',
+    count: 0,
+  });
 &lt;/script&gt;</code></pre>
-<p>
-  Try it live in the
-  <a vln-attr:href="'#/examples/hello-world'">Hello world example</a> — source
-  next to result, no install required.
-</p>
+    </div>
+    <div class="pane pane-result">
+      <div class="pane-label">Result</div>
+      <div class="live-demo-app">
+        <h1 vln-text="'Hello, ' + demo.name + '!'"></h1>
+        <label class="live-demo-field">
+          <span>name</span>
+          <input vln-input="demo.name" />
+        </label>
+        <button class="btn btn-ghost" vln-on:click="demo.count = demo.count + 1">
+          Clicked <span vln-text="demo.count"></span> times
+        </button>
+      </div>
+    </div>
+  </div>
+  <p class="muted live-demo-caption">
+    Edit the name, click the button — the DOM updates because the state changed.
+    That's the whole model. Try the
+    <a vln-attr:href="'#/examples/hello-world'">Hello world example</a>
+    for the same thing in a standalone page.
+  </p>
+</section>
 
 <div class="stat-strip">
   <div class="stat">
