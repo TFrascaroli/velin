@@ -277,10 +277,11 @@ function setupVelinStd(vln) {
         console.warn("[VLN005] Expected event name 'on:event'");
         return;
       }
-      const handler = (event) => {
+      const handler = async (event) => {
         const child = compose({ event: { literal: event } });
         try {
-          child.evaluateAst(compiledExpression);
+          const result = child.evaluateAst(compiledExpression);
+          if (result && typeof result.then === "function") await result;
         } finally {
           child.cleanup();
         }
