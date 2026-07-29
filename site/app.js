@@ -138,15 +138,6 @@ const EXAMPLES = [
   }),
 ];
 
-// Pre-grouped for the gallery: Velin's parser can't chain `[i]` or `.prop`
-// after a function call, so vln-loop can't be driven by
-// `examplesInCategory(cat.id)` inside a template. Precompute here.
-const CATEGORIES_WITH_EXAMPLES = EXAMPLE_CATEGORIES
-  .map(cat => Object.assign({}, cat, {
-    items: EXAMPLES.filter(e => e.category === cat.id),
-  }))
-  .filter(cat => cat.items.length > 0);
-
 // Docs catalog — each entry points at a markdown file under /docs/.
 const DOCS = [
   { id: 'getting-started', title: 'Getting Started', blurb: 'Installation, first app, and core concepts.',    file: 'docs/getting-started.md' },
@@ -220,10 +211,9 @@ function pathSegments(path) {
 Velin.bind(document.body, {
   route: { path: '/', error: null, loading: false },
 
-  categories:             EXAMPLE_CATEGORIES,
-  categoriesWithExamples: CATEGORIES_WITH_EXAMPLES,
-  examples:               EXAMPLES,
-  docs:                   DOCS,
+  categories: EXAMPLE_CATEGORIES,
+  examples:   EXAMPLES,
+  docs:       DOCS,
 
   pages: {
     landing:  { markup: 'pages/landing.html', state: () => ({ demo: { name: 'World', count: 0 } }) },
