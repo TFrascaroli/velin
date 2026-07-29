@@ -26,6 +26,11 @@ if (isDev) {
   // Inject the devtools <script> tag into any HTML the playground serves.
   const inject = '\n<script src="/playground/vendor/velin-devtools.js"></script>\n';
   app.use('/playground', (req, res, next) => {
+    // Without a trailing slash, browsers resolve relative asset URLs
+    // (e.g. `vendor/velin.js`) against `/`, not `/playground/`.
+    if (req.path === '/' && !req.originalUrl.endsWith('/')) {
+      return res.redirect(301, req.originalUrl + '/');
+    }
     if (!req.path.endsWith('.html') && req.path !== '/') return next();
     const rel = req.path === '/' ? 'index.html' : req.path.replace(/^\//, '');
     const file = path.join(playgroundDir, rel);
