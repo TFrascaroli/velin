@@ -120,7 +120,7 @@ const vln = Velin.bind(root, {
 
 ### `vln-if`
 
-Shows or hides an element based on a condition.
+Conditionally mounts an element based on a condition.
 
 **Syntax:** `vln-if="expression"`
 
@@ -132,9 +132,10 @@ Shows or hides an element based on a condition.
 ```
 
 **Mechanism:**
-- If expression is truthy: element is displayed (`style.display = ""`)
-- If expression is falsy: element is hidden (`style.display = "none"`)
-- Element remains in the DOM.
+- If expression is truthy: the element is inserted into the DOM (cloned from a template) and its subtree is processed.
+- If expression is falsy: the element is removed from the DOM and any state scoped to its subtree is cleaned up.
+- A comment placeholder marks the insertion point while the element is absent.
+- Element state (input values, focus, listeners) does **not** survive an unmount — expression flips destroy and rebuild the subtree.
 
 ## Lists
 

@@ -81,13 +81,7 @@ exports[`complex expressions > uses array indexing 1`] = `
 
 exports[`conditionals > hides when condition is false 1`] = `
 <div>
-  <span
-    reflect-vln-if="show"
-    reflect-vln-text="message"
-    style="display: none;"
-  >
-    hidden
-  </span>
+  <!--vln-if-->
 </div>
 `;
 
@@ -99,6 +93,7 @@ exports[`conditionals > renders complex condition 1`] = `
   >
     shown
   </span>
+  <!--vln-if-->
 </div>
 `;
 
@@ -110,6 +105,7 @@ exports[`conditionals > renders when condition is true 1`] = `
   >
     visible
   </span>
+  <!--vln-if-->
 </div>
 `;
 
