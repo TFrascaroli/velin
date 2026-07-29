@@ -875,29 +875,10 @@ function parse(tokens) {
       return { type: "Unary", operator: op, argument };
     }
 
-    return parseCall();
+    return parsePostfix();
   }
 
-  function parseCall() {
-    let node = parseMember();
-
-    while (match("PUNCTUATION", "(")) {
-      next();
-      const args = [];
-
-      while (!match("PUNCTUATION", ")")) {
-        args.push(parseAssignment());
-        if (match("PUNCTUATION", ",")) next();
-      }
-
-      expect("PUNCTUATION", ")");
-      node = { type: "Call", callee: node, arguments: args };
-    }
-
-    return node;
-  }
-
-  function parseMember() {
+  function parsePostfix() {
     let node = parsePrimary();
 
     while (true) {
@@ -915,6 +896,15 @@ function parse(tokens) {
         const property = parseAssignment();
         expect("PUNCTUATION", "]");
         node = { type: "Member", object: node, property, computed: true };
+      } else if (match("PUNCTUATION", "(")) {
+        next();
+        const args = [];
+        while (!match("PUNCTUATION", ")")) {
+          args.push(parseAssignment());
+          if (match("PUNCTUATION", ",")) next();
+        }
+        expect("PUNCTUATION", ")");
+        node = { type: "Call", callee: node, arguments: args };
       } else {
         break;
       }
