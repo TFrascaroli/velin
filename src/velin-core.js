@@ -359,9 +359,8 @@ const trackers = {
    * });
    *
    * @example
-   * // Used in vln-if plugin to show/hide elements
    * Velin.plugins.registerPlugin({
-   *   name: 'if',
+   *   name: 'show',
    *   track: Velin.trackers.expressionTracker,
    *   render: ({ node, tracked }) => {
    *     node.style.display = tracked ? '' : 'none';

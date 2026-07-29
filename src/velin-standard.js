@@ -100,8 +100,10 @@ function setupVelinStd(vln) {
   });
 
   /**
-   * vln-if: Shows/hides element based on condition.
-   * Uses CSS display property (element stays in DOM).
+   * vln-if: Conditionally mounts an element based on a condition.
+   * Element is removed from the DOM when the condition is falsy and
+   * re-created from a template clone when it becomes truthy. Descendant
+   * substates are cleaned up on unmount and re-composed on remount.
    *
    * @example
    * <div vln-if="isLoggedIn">Welcome!</div>
@@ -112,10 +114,52 @@ function setupVelinStd(vln) {
    */
   vln.plugins.registerPlugin({
     name: "if",
+    // Above vln-loop (STOPPER) so `vln-if` + `vln-loop` on the same
+    // element short-circuits the loop when the condition is falsy.
+    priority: vln.plugins.priorities.STOPPER + 5,
     track: vln.trackers.expressionTracker,
-    render: ({ node, tracked }) => {
-      if (node instanceof HTMLElement)
-        node.style.display = tracked ? "" : "none";
+    destroy: ({ pluginState }) => {
+      if (pluginState?.activeNode) {
+        pluginState.childCtx.cleanup(pluginState.activeNode);
+        pluginState.activeNode.remove();
+      }
+      if (pluginState?.placeholder?.parentNode) {
+        pluginState.placeholder.remove();
+      }
+    },
+    render: ({ node, expr, compose, consume, tracked, pluginState = {}, attributeName }) => {
+      const parent = node.parentNode || pluginState.parent;
+      if (!parent) return { halt: true };
+
+      if (!pluginState.initialized) {
+        const placeholder = document.createComment(attributeName);
+        consume(node, attributeName, expr);
+        pluginState.template = node.cloneNode(true);
+        pluginState.placeholder = placeholder;
+        pluginState.parent = parent;
+        pluginState.initialized = true;
+        pluginState.activeNode = null;
+        pluginState.childCtx = null;
+        parent.replaceChild(placeholder, node);
+      }
+
+      if (tracked) {
+        if (!pluginState.activeNode) {
+          const clone = pluginState.template.cloneNode(true);
+          consume(clone, attributeName, expr);
+          pluginState.childCtx = compose({});
+          pluginState.placeholder.parentNode.insertBefore(clone, pluginState.placeholder);
+          pluginState.childCtx.processNode(clone);
+          pluginState.activeNode = clone;
+        }
+      } else if (pluginState.activeNode) {
+        pluginState.childCtx.cleanup(pluginState.activeNode);
+        pluginState.activeNode.remove();
+        pluginState.activeNode = null;
+        pluginState.childCtx = null;
+      }
+
+      return { halt: true, pluginState };
     },
   });
 
