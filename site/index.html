@@ -86,11 +86,11 @@
         with source alongside.
       </p>
 
-      <div vln-loop:cat="categoriesWithExamples" class="category-block">
+      <div vln-loop:cat="categories" class="category-block">
         <h2 vln-text="cat.name"></h2>
         <p class="muted" vln-text="cat.blurb"></p>
         <div class="example-grid">
-          <a vln-loop:ex="cat.items"
+          <a vln-loop:ex="examplesInCategory(cat.id)"
              vln-attr:href="'#/examples/' + ex.id"
              class="example-card">
             <div class="example-card-title" vln-text="ex.title"></div>
