@@ -280,7 +280,7 @@ instead of the console.
 | Per-effect batched invocation (`1395`)               | `{ kind: "effect", durationMs }`          |
 | `processPlugin` after `compile(expr)` (`521`)        | `{ kind: "compile" }`                     |
 | `processPlugin` `track()` call site (`568`)          | `{ kind: "plugin", phase:"track" }` (+ `warn W004` on throw) |
-| Inside the effect closure, wrapping `plugin.render` (`580`) | `{ kind: "plugin", phase:"render" }` |
+| Inside the effect closure, wrapping `plugin.render` (`580`) | `{ kind: "plugin", phase:"render" }` (+ `warn W006` on throw) |
 | `evaluateAst()` body                                 | `{ kind: "evaluate", durationMs, ok }` + accumulate into `stats.expressionEvalTime` |
 | `cleanupState()` (`1670+`)                           | `{ kind: "cleanup" }`                     |
 
@@ -463,6 +463,11 @@ surfaced in the panel:
 - **W005 `orphaned-binding`** — swept lazily when the Bindings tab
   is opened: paths whose effect set is non-empty but *every*
   effect's `ø__debug.node` is detached.
+- **W006 `render-throw`** — plugin `render()` threw. Caught by the
+  error boundary in the effect closure: `console.error`'d and
+  treated as `halt` so the subtree is skipped but siblings keep
+  processing. Fires for both the initial render pass and later
+  reactive re-renders.
 
 Deliberately **not** included: "you set a path with no bindings" —
 too noisy during initial state population, no reliable way to

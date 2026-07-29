@@ -607,17 +607,28 @@ function processPlugin(
       if (!nodeState?.[stateKey]) return; // Is finalized
       const tracked = track();
       if (__DEV__) hook.ø__emit({ kind: "plugin", state: reactiveState, name: plugin.name, node, expr, subkey, phase: "render" });
-      const control = plugin.render({
-        ...reactiveState.ø__helpers,
-        compiledExpression,
-        node,
-        subkey,
-        tracked,
-        pluginState: nodeState[stateKey],
-        attributeName,
-        attributeValue,
-        expr,
-      });
+      let control;
+      try {
+        control = plugin.render({
+          ...reactiveState.ø__helpers,
+          compiledExpression,
+          node,
+          subkey,
+          tracked,
+          pluginState: nodeState[stateKey],
+          attributeName,
+          attributeValue,
+          expr,
+        });
+      } catch (error) {
+        if (__DEV__) hook.ø__emit({ kind: "warn", code: "W006", state: reactiveState, message: `render-throw in ${plugin.name}: ${error && error.message}`, ref: { expr, node } });
+        console.error(
+          `Error occurred while rendering expression '${expr}' in plugin '${plugin.name}':`,
+          error,
+        );
+        // Treat as halt: skip the subtree of this node, keep processing siblings.
+        return { halt: true };
+      }
       if (control && control.pluginState) {
         nodeState[stateKey] = control.pluginState;
         pluginStates.set(node, nodeState);

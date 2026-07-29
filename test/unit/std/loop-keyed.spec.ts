@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import Velin from '../../../src/velin-all';
 
 /**
@@ -183,7 +183,7 @@ describe('vln-loop keyed diff', () => {
     expect(texts).toEqual(['!Bravo', '!Alpha']);
   });
 
-  it('throws when an item lacks the key field', () => {
+  it('logs and halts when an item lacks the key field', () => {
     container.innerHTML = `
       <ul>
         <li vln-loop:row="{collection: rows, key: 'id'}">
@@ -191,14 +191,18 @@ describe('vln-loop keyed diff', () => {
         </li>
       </ul>
     `;
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     expect(() =>
       Velin.bind(container, {
         rows: [{ id: 'a', name: 'A' }, { name: 'B' } as any],
       }),
-    ).toThrow(/VLN020/);
+    ).not.toThrow();
+    const messages = errSpy.mock.calls.map((c) => String(c[1]?.message ?? c[1] ?? ''));
+    expect(messages.some((m) => /VLN020/.test(m))).toBe(true);
+    errSpy.mockRestore();
   });
 
-  it('throws on duplicate keys', () => {
+  it('logs and halts on duplicate keys', () => {
     container.innerHTML = `
       <ul>
         <li vln-loop:row="{collection: rows, key: 'id'}">
@@ -206,10 +210,14 @@ describe('vln-loop keyed diff', () => {
         </li>
       </ul>
     `;
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     expect(() =>
       Velin.bind(container, {
         rows: [{ id: 'a', name: 'A' }, { id: 'a', name: 'B' }],
       }),
-    ).toThrow(/VLN021/);
+    ).not.toThrow();
+    const messages = errSpy.mock.calls.map((c) => String(c[1]?.message ?? c[1] ?? ''));
+    expect(messages.some((m) => /VLN021/.test(m))).toBe(true);
+    errSpy.mockRestore();
   });
 });
