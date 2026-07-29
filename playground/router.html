@@ -24,8 +24,8 @@
   <div id="app">
     <nav class="top">
       <a vln-attr:href="'#/'"                vln-class="{ active: myRoute.path === '/' }">Home</a>
-      <a vln-attr:href="'#/profile/alice'"   vln-class="{ active: routeUserId(myRoute.path) === 'alice' }">Alice</a>
-      <a vln-attr:href="'#/profile/bob'"     vln-class="{ active: routeUserId(myRoute.path) === 'bob' }">Bob</a>
+      <a vln-attr:href="'#/profile/alice'"   vln-class="{ active: myRoute.path.split('/')[2] === 'alice' }">Alice</a>
+      <a vln-attr:href="'#/profile/bob'"     vln-class="{ active: myRoute.path.split('/')[2] === 'bob' }">Bob</a>
       <a vln-attr:href="'#/nowhere'"         vln-class="{ active: !isKnownRoute(myRoute.path) }">Try a bad URL</a>
     </nav>
 
@@ -40,19 +40,19 @@
       <!-- Three sibling routes share one chrome via a fragment. -->
       <div vln-route="'/profile/:id'">
         <div vln-fragment="'profile-chrome'"
-             vln-var:id="routeUserId(myRoute.path)"
+             vln-var:id="myRoute.path.split('/')[2]"
              vln-var:tab="'overview'"
              vln-var:sort="''"></div>
       </div>
       <div vln-route="'/profile/:id/posts/:sort'">
         <div vln-fragment="'profile-chrome'"
-             vln-var:id="routeUserId(myRoute.path)"
+             vln-var:id="myRoute.path.split('/')[2]"
              vln-var:tab="'posts'"
-             vln-var:sort="routeSort(myRoute.path)"></div>
+             vln-var:sort="myRoute.path.split('/')[4]"></div>
       </div>
       <div vln-route="'/profile/:id/settings'">
         <div vln-fragment="'profile-chrome'"
-             vln-var:id="routeUserId(myRoute.path)"
+             vln-var:id="myRoute.path.split('/')[2]"
              vln-var:tab="'settings'"
              vln-var:sort="''"></div>
       </div>
@@ -114,18 +114,6 @@
     Velin.bind(document.getElementById('app'), {
       myRoute: { path: '/', error: null, loading: false },
 
-      // Positional-only routing. All "state" lives in path segments.
-      // These helpers exist because the expression parser doesn't yet
-      // consume `[…]` or `.…` trailing a call, so `path.split('/')[2]`
-      // inline wouldn't work.
-      routeUserId(path) {
-        const parts = (path || '').split('/');
-        return (parts[1] === 'profile' && parts[2]) || '';
-      },
-      routeSort(path) {
-        const parts = (path || '').split('/');
-        return (parts[3] === 'posts' && parts[4]) || '';
-      },
       isKnownRoute(path) {
         if (!path || path === '/') return true;
         return /^\/profile\/[^/]+(\/(posts\/(recent|top)|settings))?$/.test(path);
