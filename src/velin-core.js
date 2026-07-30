@@ -201,7 +201,7 @@ const DefaultPluginPriorities = {
 /**
  * @typedef {ASTNodeBase & {
  *   type: 'ObjectLiteral',
- *   properties: Array<{ key: string, value: ASTNode }>
+ *   properties: Array<{ key: string, value: ASTNode } | { spread: true, argument: ASTNode }>
  * }} ASTObjectLiteralNode
  */
 
@@ -743,6 +743,13 @@ function tokenize(expr) {
       continue;
     }
 
+    // Multi-char punctuation (must come before single-char + operator handling)
+    if (expr.slice(i, i + 3) === "...") {
+      tokens.push({ type: "PUNCTUATION", value: "..." });
+      i += 3;
+      continue;
+    }
+
     // Multi-char operators
     const ops = ["===", "!==", "&&", "||", ">=", "<=", "==", "!="];
     let matched = false;
@@ -974,6 +981,15 @@ function parse(tokens) {
       const properties = [];
 
       while (!match("PUNCTUATION", "}")) {
+        // Spread property: { ...expr }
+        if (match("PUNCTUATION", "...")) {
+          next();
+          const argument = parseAssignment();
+          properties.push({ spread: true, argument });
+          if (match("PUNCTUATION", ",")) next();
+          continue;
+        }
+
         // Parse property key
         let key;
         const keyToken = peek();
@@ -1130,7 +1146,16 @@ function evalTernary(ast, context, reactiveState) {
  */
 function evalObjectLiteral(ast, context, reactiveState) {
   const result = {};
-  for (const prop of ast.properties) {
+  for (const p of ast.properties) {
+    /** @type {any} */
+    const prop = p;
+    if (prop.spread) {
+      const spreadVal = evalAst(prop.argument, context, reactiveState);
+      if (spreadVal != null && typeof spreadVal === "object") {
+        Object.assign(result, spreadVal);
+      }
+      continue;
+    }
     const value = evalAst(prop.value, context, reactiveState);
     result[prop.key] =
       value && typeof value === "object" && value.constructor === Object
