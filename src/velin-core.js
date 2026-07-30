@@ -28,11 +28,6 @@
  */
 
 /**
- * @template K, V
- * @typedef {ReadonlyMap<K, V>} ImmutableMap
- */
-
-/**
  * @typedef {Object} ExpressionInterpolation
  * @property {string} expr The original expression string
  * @property {ASTNode} ast The compiled AST of the expression
@@ -42,6 +37,13 @@
  * @typedef {Object} Interpolation
  * @property {'EXPR'|'LITERAL'} type The type of interpolation
  * @property {ExpressionInterpolation|any} value The AST node or literal value
+ */
+
+/**
+ * Input shape accepted by `composeState` / `ChildContext.compose` /
+ * `PluginHelpers.compose`. Each entry is either `{ expr, transform? }`
+ * (evaluated in the enclosing scope) or `{ literal }` (frozen value).
+ * @typedef {Record<string, { expr: string, transform?: (v: any) => any } | { literal: any }>} ComposeInit
  */
 
 /**
@@ -65,7 +67,7 @@
  * @property {(expr?: string, allowMutations?: boolean) => any} evaluate Pre-bound evaluate
  * @property {(ast?: ASTNode) => any} evaluateAst Pre-bound evaluateAst
  * @property {(expr?: string) => (value: any) => void} getSetter Pre-bound getSetter
- * @property {(init: Object | Map<string, Interpolation>) => ChildContext} compose Pre-bound compose (returns ChildContext)
+ * @property {(init: ComposeInit) => ChildContext} compose Pre-bound compose (returns ChildContext)
  * @property {(node: Node, name?: string, value?: string) => void} consume Pre-bound consumeAttribute
  * @property {(prop: string) => void} triggerEffects Pre-bound triggerEffects
  * @property {(fn: () => void) => void} batch Pre-bound batch on this state's tree control
@@ -77,7 +79,7 @@
  * @property {(expr?: string, allowMutations?: boolean) => any} evaluate
  * @property {(ast?: ASTNode) => any} evaluateAst
  * @property {(expr?: string) => (value: any) => void} getSetter
- * @property {(init: Object | Map<string, Interpolation>) => ChildContext} compose
+ * @property {(init: ComposeInit) => ChildContext} compose
  * @property {(expr: string) => ChildContext} anchor Fluent — appends expr to tricklingRoots and returns this context
  * @property {(key: string, interp: Interpolation) => ChildContext} setInterpolation
  * @property {(node: Node) => void} processNode
@@ -269,7 +271,7 @@ const DefaultPluginPriorities = {
 /** @typedef {(node: Node, reactiveState: ReactiveState) => void} ProcessNode */
 /** @typedef {(node: Element, attr: string, expr: string) => void} ConsumeAttribute */
 
-/** @typedef {(reactiveState: ReactiveState, interpolations: Map<string, Interpolation>) => ReactiveState} ComposeState */
+/** @typedef {(reactiveState: ReactiveState, init: ComposeInit) => ReactiveState} ComposeState */
 /** @typedef {(parentState: ReactiveState, innerState: ReactiveState, node?: Node | null) => void} CleanupState */
 /** @typedef {<T extends object>(root?: Element | DocumentFragment, initialState?: T) => T} Bind */
 
@@ -420,49 +422,14 @@ function registerPlugin(def) {
 }
 
 /**
- * Normalizes a `compose()` input into a Map<string, Interpolation>.
- * Accepts either a Map (existing form) or a `{key: {expr|literal: …}}` object.
- * Throws on any other shape — no type-based magic (see ADR-0002 D5).
- * @param {Map<string, Interpolation> | Record<string, {expr: string} | {literal: any}>} init
- * @returns {Map<string, Interpolation>}
- */
-function normalizeComposeInit(init) {
-  if (init instanceof Map) return init;
-  if (!init || typeof init !== "object") {
-    throw new Error(
-      "[Velin] compose() expects a Map<string, Interpolation> or an object with { expr } / { literal } entries."
-    );
-  }
-  /** @type {Map<string, Interpolation>} */
-  const map = new Map();
-  for (const [key, value] of Object.entries(init)) {
-    if (value && typeof value === "object" && "expr" in value) {
-      /** @type {any} */
-      const entry = { type: "EXPR", value: { expr: /** @type {any} */(value).expr } };
-      const tfm = /** @type {any} */(value).transform;
-      if (typeof tfm === "function") entry.transform = tfm;
-      map.set(key, entry);
-    } else if (value && typeof value === "object" && "literal" in value) {
-      map.set(key, { type: "LITERAL", value: /** @type {any} */(value).literal });
-    } else {
-      throw new Error(
-        `[Velin] compose(): each entry must be { expr: '...' } or { literal: ... }. Got ${JSON.stringify(value)} for key "${key}".`
-      );
-    }
-  }
-  return map;
-}
-
-/**
  * Builds a ChildContext wrapping a freshly-composed substate. Plugins use this
  * instead of touching the raw ReactiveState — see ADR-0002 D2/D6.
  * @param {ReactiveState} parentState
- * @param {Map<string, Interpolation> | Record<string, {expr: string} | {literal: any}>} init
+ * @param {ComposeInit} init
  * @returns {any} ChildContext (shape documented in ADR-0002)
  */
 function buildChildContext(parentState, init) {
-  const interpolations = normalizeComposeInit(init);
-  const childState = composeState(parentState, interpolations);
+  const childState = composeState(parentState, init);
   const ctx = {
     get state() { return childState.state; },
     /** @param {string} expr @param {boolean=} allowMutations */
@@ -471,7 +438,7 @@ function buildChildContext(parentState, init) {
     evaluateAst(ast) { return evaluateAst(ast, childState); },
     /** @param {string} expr */
     getSetter(expr) { return getSetter(childState, expr); },
-    /** @param {Map<string, Interpolation> | Record<string, {expr: string} | {literal: any}>} nestedInit */
+    /** @param {ComposeInit} nestedInit */
     compose(nestedInit) { return buildChildContext(childState, nestedInit); },
     /** @param {string} expr */
     anchor(expr) {
@@ -517,7 +484,7 @@ function buildPluginHelpers(reactiveState) {
     evaluateAst: (ast) => evaluateAst(ast, reactiveState),
     /** @param {string} expr */
     getSetter: (expr) => getSetter(reactiveState, expr),
-    /** @param {Map<string, Interpolation> | Record<string, {expr: string} | {literal: any}>} init */
+    /** @param {ComposeInit} init */
     compose: (init) => buildChildContext(reactiveState, init),
     /** @param {HTMLElement} node @param {string} name @param {string} value */
     consume: (node, name, value) => consumeAttribute(node, name, value),
@@ -1711,29 +1678,42 @@ function setupState(obj) {
 }
 
 /**
- * Creates a child reactive state with scoped variables (interpolations).
+ * Creates a child reactive state with scoped variables. Sole entry point for
+ * building a substate — accepts the object form (`{key: {expr, transform?} |
+ * {literal}}`) directly and compiles each `expr` into an AST inline.
  * @param {ReactiveState} reactiveState
- * @param {ImmutableMap<string, Interpolation>} interpolations
+ * @param {ComposeInit} init
  * @returns {ReactiveState}
  * @type {ComposeState}
  */
-function composeState(reactiveState, interpolations) {
+function composeState(reactiveState, init) {
   if (!reactiveState) {
     throw new Error("[Velin] composeState requires an enclosing reactiveState");
   }
+  if (!init || typeof init !== "object" || init instanceof Map) {
+    throw new Error(
+      "[Velin] composeState() expects a plain object like { key: { expr: '…' } | { literal: … } }. " +
+      "The Map form was removed in v1.0.0-beta.4."
+    );
+  }
   /** @type {Map<string, Interpolation>} */
   const lerps = new Map();
-  for (const [k, v] of interpolations) {
-    if (v.type === "EXPR") {
+  for (const [key, value] of Object.entries(init)) {
+    if (value && typeof value === "object" && "expr" in value) {
       /** @type {any} */
       const entry = {
         type: "EXPR",
-        value: { expr: v.value.expr, ast: compile(v.value.expr) },
+        value: { expr: /** @type {any} */(value).expr, ast: compile(/** @type {any} */(value).expr) },
       };
-      if (/** @type {any} */(v).transform) entry.transform = /** @type {any} */(v).transform;
-      lerps.set(k, entry);
+      const tfm = /** @type {any} */(value).transform;
+      if (typeof tfm === "function") entry.transform = tfm;
+      lerps.set(key, entry);
+    } else if (value && typeof value === "object" && "literal" in value) {
+      lerps.set(key, { type: "LITERAL", value: /** @type {any} */(value).literal });
     } else {
-      lerps.set(k, v);
+      throw new Error(
+        `[Velin] composeState(): each entry must be { expr: '...' } or { literal: ... }. Got ${JSON.stringify(value)} for key "${key}".`
+      );
     }
   }
 
