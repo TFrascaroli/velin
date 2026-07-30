@@ -12,7 +12,7 @@ describe("Velin Async Mutation Safety", () => {
     const rootState = Velin.ø__internal.getWrapper(state)!;
     
     // Create a substate so we can cleanup without rootState being null
-    const substate = Velin.composeState(rootState, new Map());
+    const substate = Velin.composeState(rootState, {});
 
     // Now clean up the substate
     Velin.cleanupState(rootState, substate);
