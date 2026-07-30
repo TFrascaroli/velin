@@ -14,68 +14,77 @@ function setupTemplatesAndFragments(vln) {
    * Creates reusable component-like functionality with data binding.
    *
    * **Basic Usage:**
-   * Define template with required variables using vln-vars attribute:
-   *   <template id="userCard" vln-vars="user, onSave">
+   * Define template with required variables using vln-vars (array form for
+   * existence-only, or object form with transformer functions):
+   *   <template id="userCard" vln-vars="['user', 'onSave']">
    *     <div class="card">
    *       <h3 vln-text="user.name"></h3>
    *       <button vln-on:click="onSave(user)">Save</button>
    *     </div>
    *   </template>
    *
-   * Use template with vln-fragment and provide variables with vln-var:
+   * Use template with vln-fragment and pass values via a single vln-vars
+   * object expression (attribute value is a real JS object literal —
+   * casing is preserved end-to-end):
    *   <div vln-fragment="'userCard'"
-   *        vln-var:user="currentUser"
-   *        vln-var:onSave="handleSave"></div>
+   *        vln-vars="{ user: currentUser, onSave: handleSave }"></div>
+   *
+   * **Transformers (validation / defaults / coercion):**
+   *   <template id="userCard" vln-vars="{
+   *     user: requireUser,
+   *     role: normalizeRole,
+   *     count: toNumber
+   *   }">...</template>
+   * Transformer functions are looked up in the CONSUMER's scope (define
+   * them on the object passed to Velin.bind). Throw to reject, return the
+   * value to pass through, return something else to coerce.
    *
    * **Dynamic Template Selection:**
-   *   <div vln-fragment="user.role + 'Card'" ...></div>
+   *   <div vln-fragment="user.role + 'Card'" vln-vars="{...}"></div>
+   *
+   * **Spread / pass-through:**
+   *   <div vln-fragment="'card'" vln-vars="{ ...defaults, extra: 'x' }"></div>
+   *   <div vln-fragment="'card'" vln-vars="propsBag"></div>
    *
    * **In Loops:**
    *   <div vln-loop:user="users"
    *        vln-fragment="'userCard'"
-   *        vln-var:user="user"
-   *        vln-var:actions="createActions(user)"></div>
-   *
-   * **Validation:**
-   * Will error if required variables (from vln-vars) are not provided.
+   *        vln-vars="{ user, actions: createActions(user) }"></div>
    *
    * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/templates.md|Templates & Fragments Guide}
-   * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/directives.md|Directives Guide}
-   * @see {@link https://github.com/TFrascaroli/velin/blob/main/playground/index.html|Interactive Examples}
    */
   vln.plugins.registerPlugin({
     name: "fragment",
     priority: vln.plugins.priorities.LATE,
 
     track: ({ compiledExpression, evaluate, evaluateAst, node }) => {
-      // Track the template ID
       const templateId = evaluateAst(compiledExpression);
 
-      // Also track all vln-var:* expressions and their current values
-      const varValues = {};
+      // Read the single vln-vars attribute on the consumer (attribute value —
+      // NOT lowercased by HTML). Evaluating it here captures deps so the
+      // fragment re-renders when the provider expression changes.
+      let varsExpr = null;
+      let providedVars = null;
       if (node instanceof HTMLElement) {
-        const varAttrs = Array.from(node.attributes)
-          .filter(a => a.name.startsWith("vln-var:"));
-
-        for (const attr of varAttrs) {
-          const varName = attr.name.slice(8); // Remove "vln-var:" prefix
-          varValues[varName] = evaluate(attr.value);
+        varsExpr = node.getAttribute("vln-vars");
+        if (varsExpr) {
+          providedVars = evaluate(varsExpr);
         }
       }
 
-      // Return both template ID and var values so changes trigger re-render
-      return { templateId, varValues };
+      return { templateId, varsExpr, providedVars };
     },
 
     destroy: ({ node, pluginState }) => {
-      // Cleanup inner state
       if (pluginState?.innerChild) {
         pluginState.innerChild.cleanup(node);
       }
     },
 
-    render: ({ node, tracked, compose, pluginState = {} }) => {
-      const templateId = tracked?.templateId || tracked;
+    render: ({ node, tracked, compose, evaluate, pluginState = {} }) => {
+      const templateId = tracked?.templateId;
+      const varsExpr = tracked?.varsExpr;
+      const providedVars = tracked?.providedVars;
 
       if (!templateId) {
         console.error(
@@ -85,12 +94,9 @@ function setupTemplatesAndFragments(vln) {
         return { halt: true };
       }
 
-      // Check if template changed - if not, just update the inner state's interpolations
       const templateChanged = !pluginState?.templateId || pluginState.templateId !== templateId;
 
-      // Fetch template from DOM
       const template = document.getElementById(templateId);
-
       if (!template) {
         console.error(
           `[Velin Templates] Template #${templateId} not found. ` +
@@ -98,7 +104,6 @@ function setupTemplatesAndFragments(vln) {
         );
         return { halt: true };
       }
-
       if (!(template instanceof HTMLTemplateElement)) {
         console.error(
           `[Velin Templates] Element #${templateId} is not a <template>. ` +
@@ -107,51 +112,129 @@ function setupTemplatesAndFragments(vln) {
         return { halt: true };
       }
 
-      // If template didn't change, inner nodes' effects will handle updates - nothing to do
+      // Same template — child scope's own effects handle updates.
       if (!templateChanged && pluginState?.innerChild) {
-        return {
-          halt: true,
-          pluginState,
-        };
+        return { halt: true, pluginState };
       }
 
-      // Template changed - cleanup and rebuild
+      // Template changed — cleanup and rebuild.
       if (pluginState?.innerChild) {
         pluginState.innerChild.cleanup(node);
       }
       node.innerHTML = "";
 
-      // Extract required vars from template (supports vln-vars="x, y" format)
-      const varsAttr = template.getAttribute("vln-vars");
-      const templateVars = varsAttr
-        ? varsAttr.split(',').map(v => v.trim()).filter(v => v)
-        : [];
+      // --- Parse the template's vln-vars declaration -------------------
+      // Accepted forms:
+      //   vln-vars="['user', 'onSave']"                        (array of names)
+      //   vln-vars="{ user: fn, onSave: fn }"                  (object of transformers)
+      //   (missing)                                            (auto-discover from provided)
+      //
+      // Anything else (including legacy comma-split "user, onSave") is a hard error.
+      const declRaw = template.getAttribute("vln-vars");
+      /** @type {string[]} */
+      let declaredNames = [];
+      /** @type {Record<string, Function|null>} */
+      const transformers = {};
 
-      // Extract provided vars from fragment node and build a compose() input
-      /** @type {Record<string, {expr: string}>} */
-      const composeInit = {};
-      for (const attr of Array.from(node.attributes)) {
-        if (attr.name.startsWith("vln-var:")) {
-          composeInit[attr.name.slice(8)] = { expr: attr.value };
+      if (declRaw != null && declRaw.trim() !== "") {
+        const trimmed = declRaw.trim();
+        if (!trimmed.startsWith("[") && !trimmed.startsWith("{")) {
+          console.error(
+            `[Velin Templates] Template #${templateId}: vln-vars must be an array literal ` +
+            `(['name1', 'name2']) or object literal ({name1: fn, name2: fn}). ` +
+            `Got: ${JSON.stringify(declRaw)}. ` +
+            `The legacy comma-split form ("name1, name2") is no longer supported.`
+          );
+          return { halt: true };
+        }
+        /** @type {any} */
+        let decl;
+        try {
+          decl = evaluate(declRaw);
+        } catch (err) {
+          console.error(
+            `[Velin Templates] Template #${templateId}: failed to evaluate vln-vars declaration: ` +
+            (err && /** @type {any} */(err).message ? /** @type {any} */(err).message : String(err))
+          );
+          return { halt: true };
+        }
+        if (Array.isArray(decl)) {
+          for (const name of decl) {
+            if (typeof name !== "string") {
+              console.error(
+                `[Velin Templates] Template #${templateId}: vln-vars array entries must be strings. Got ${JSON.stringify(name)}.`
+              );
+              return { halt: true };
+            }
+            declaredNames.push(name);
+            transformers[name] = null;
+          }
+        } else if (decl && typeof decl === "object") {
+          for (const [name, fn] of Object.entries(decl)) {
+            declaredNames.push(name);
+            transformers[name] = typeof fn === "function" ? /** @type {Function} */(fn) : null;
+          }
+        } else {
+          console.error(
+            `[Velin Templates] Template #${templateId}: vln-vars must evaluate to an array or object. Got ${typeof decl}.`
+          );
+          return { halt: true };
         }
       }
 
-      // Validate required vars are provided
-      const missingVars = templateVars.filter(v => !(v in composeInit));
+      // --- Validate provided values shape ------------------------------
+      if (varsExpr && providedVars != null && (typeof providedVars !== "object" || Array.isArray(providedVars))) {
+        console.error(
+          `[Velin Templates] Fragment for #${templateId}: vln-vars must evaluate to an object. Got ${Array.isArray(providedVars) ? "array" : typeof providedVars}.`
+        );
+        return { halt: true };
+      }
+      const provided = (providedVars && typeof providedVars === "object") ? providedVars : {};
 
-      if (missingVars.length) {
+      // --- Missing-var check (declared but not provided) ---------------
+      const missing = declaredNames.filter(n => !(n in provided));
+      if (missing.length) {
         console.error(
           `[Velin Templates] Template #${templateId} requires missing variables: ` +
-          `[${missingVars.join(", ")}]. ` +
-          `Add them as: vln-var:${missingVars[0]}="yourValue"`
+          `[${missing.join(", ")}]. Add them to vln-vars, e.g. ` +
+          `vln-vars="{ ${missing[0]}: yourValue, ... }"`
         );
         return { halt: true };
       }
 
-      // Clone template content
-      const clone = template.content.cloneNode(true);
+      // --- Build compose init ------------------------------------------
+      //
+      // Each declared/provided key becomes an EXPR interpolation in the child
+      // scope. The expression indexes into the consumer's vln-vars object;
+      // its evaluation is routed to the CONSUMER's scope by the core's
+      // ø__enclosing chain (see composeState), so a provider like
+      // `vln-vars="{ user: user }"` under a same-named parent identifier
+      // resolves via JS-closure semantics, not shadow recursion.
+      //
+      // Transformers ride on the interpolation via the optional `transform`
+      // field — lerp applies them after evaluation. No sibling identifiers,
+      // no mangled helper names.
+      /** @type {Record<string, {expr: string, transform?: Function} | {literal: any}>} */
+      const composeInit = {};
 
-      // Create scoped child and process child nodes inside it
+      // Union of declared names and provided keys (undeclared extras pass through).
+      const allNames = new Set(declaredNames);
+      for (const k of Object.keys(provided)) allNames.add(k);
+
+      for (const name of allNames) {
+        const tfm = transformers[name];
+        if (!varsExpr) {
+          composeInit[name] = { literal: undefined };
+          continue;
+        }
+        // Bracket notation with a JSON-quoted key so non-identifier names
+        // (e.g. "weird-name") still work.
+        const expr = `(${varsExpr})[${JSON.stringify(name)}]`;
+        composeInit[name] = tfm ? { expr, transform: tfm } : { expr };
+      }
+
+      // Clone template content and process in the new child scope.
+      const clone = template.content.cloneNode(true);
       const innerChild = compose(composeInit);
       Array.from(clone.childNodes).forEach(child => {
         node.appendChild(child);

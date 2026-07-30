@@ -11,12 +11,12 @@ describe("Template interpolation with nested property updates", () => {
     // Create template in document
     const template = document.createElement("template");
     template.id = "testTpl";
-    template.setAttribute("vln-vars", "item");
+    template.setAttribute("vln-vars", "['item']");
     template.innerHTML = '<span vln-text="item.html"></span>';
     document.body.appendChild(template);
 
     const div = document.createElement("div");
-    div.innerHTML = '<div vln-fragment="\'testTpl\'" vln-var:item="items[0]"></div>';
+    div.innerHTML = '<div vln-fragment="\'testTpl\'" vln-vars="{ item: items[0] }"></div>';
 
     const state = Velin.bind(div, {
       items: [{ html: "initial" }],
@@ -40,12 +40,12 @@ describe("Template interpolation with nested property updates", () => {
     // Create template in document
     const template = document.createElement("template");
     template.id = "itemTpl";
-    template.setAttribute("vln-vars", "item");
+    template.setAttribute("vln-vars", "['item']");
     template.innerHTML = '<div class="item" vln-text="item.value"></div>';
     document.body.appendChild(template);
 
     const div = document.createElement("div");
-    div.innerHTML = '<div vln-loop:it="items" vln-fragment="\'itemTpl\'" vln-var:item="it"></div>';
+    div.innerHTML = '<div vln-loop:it="items" vln-fragment="\'itemTpl\'" vln-vars="{ item: it }"></div>';
 
     const state = Velin.bind(div, {
       items: [{ value: "a" }, { value: "b" }],

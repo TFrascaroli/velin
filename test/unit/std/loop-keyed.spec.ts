@@ -156,7 +156,7 @@ describe('vln-loop keyed diff', () => {
     // used to fail because refreshing only fired the loop iteration's own
     // effects, not the fragment's inner substate.
     document.body.innerHTML = `
-      <template id="tpl-shout" vln-vars="c">
+      <template id="tpl-shout" vln-vars="['c']">
         <span vln-text="'!' + c.name"></span>
       </template>
     `;
@@ -164,7 +164,7 @@ describe('vln-loop keyed diff', () => {
       <div>
         <div vln-loop:col="{collection: cols, key: 'id'}"
              vln-fragment="'tpl-shout'"
-             vln-var:c="col"></div>
+             vln-vars="{ c: col }"></div>
       </div>
     `;
     const state = Velin.bind(container, {
