@@ -82,7 +82,6 @@ describe('DirectiveParser.findDirectivesInLine', () => {
       'vln-use',
       'vln-fragment',
       'vln-watch:handler',
-      'vln-var:foo',
       'vln-vars',
       'vln-table',
       'vln-evt:custom',

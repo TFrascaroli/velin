@@ -17,8 +17,7 @@ export interface DirectiveMeta {
   validOnTags?: string[];
   /**
    * If set, this directive requires the presence of another attribute on the
-   * same element. Used for e.g. vln-var:* which only makes sense alongside
-   * vln-fragment.
+   * same element.
    */
   requiresSiblingAttribute?: string;
 }
@@ -75,7 +74,7 @@ export const VELIN_DIRECTIVE_META: DirectiveMeta[] = [
   {
     name: 'vln-fragment',
     hasSubkey: false,
-    documentation: 'Renders a <template> by id, providing scoped variables via sibling `vln-var:*` attributes.',
+    documentation: 'Renders a <template> by id. Pass scoped variables via a sibling `vln-vars="{...}"` object expression.',
     usage: 'vln-fragment="templateId"',
   },
   {
@@ -85,20 +84,13 @@ export const VELIN_DIRECTIVE_META: DirectiveMeta[] = [
     usage: 'vln-watch:handlerName="expression"',
   },
   {
-    name: 'vln-var',
-    hasSubkey: true,
-    documentation:
-      'Passes a scoped variable into a `vln-fragment` template. Must appear on the same element as `vln-fragment`.',
-    usage: 'vln-var:name="expression"',
-    requiresSiblingAttribute: 'vln-fragment',
-  },
-  {
     name: 'vln-vars',
     hasSubkey: false,
     documentation:
-      'Declares the required variables of a `<template vln-vars="a, b">`. Only valid on <template> elements.',
-    usage: 'vln-vars="var1, var2"',
-    validOnTags: ['template'],
+      'On <template>: declares required variables as an array (`["a", "b"]`) or an object of transformer functions (`{a: fn, b: fn}`). ' +
+      'On a fragment consumer element: provides variables as a JavaScript object expression (`{ a: expr, b: expr }`). ' +
+      'Attribute values preserve casing, so camelCase names work end-to-end.',
+    usage: 'vln-vars="[\'a\', \'b\']" (declaration) or vln-vars="{ a: expr, b: expr }" (provider)',
   },
   {
     name: 'vln-table',

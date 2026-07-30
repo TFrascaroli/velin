@@ -16,8 +16,7 @@ step.
 - **Go to Definition (F12)** — jumps from an identifier in an expression
   to its declaration, through property access, call expressions, and
   index access (e.g. `getCurrentUser().name`, `users[0].email`).
-- **Placement diagnostics** — `vln-vars` outside `<template>` and
-  `vln-var:*` without a sibling `vln-fragment` are flagged.
+- **Placement diagnostics** — misplaced or unknown Velin directives are flagged.
 
 ## Telling the extension where your state lives
 

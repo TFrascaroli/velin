@@ -76,12 +76,8 @@ describe('html-velin injection grammar', () => {
     expect(findScope(line, 'entity.name.tag.velin.directive', 'loop')).toBe('loop');
   });
 
-  it('scopes var subkey as a variable declaration', () => {
-    const line = ' vln-var:user="currentUser"';
-    expect(findScope(line, 'variable.parameter.velin.declaration', 'user')).toBe(
-      'user',
-    );
-  });
+  // vln-var:* was removed in favor of a single vln-vars="{...}" object
+  // literal. The subkey-based scoping test no longer applies.
 
   it('scopes event subkey (vln-on:click) as a modifier, not a declaration', () => {
     const line = ' vln-on:click="handler()"';

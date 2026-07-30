@@ -12,10 +12,10 @@ Templates allow you to define reusable HTML chunks and instantiate them with dif
 
 ### Define a Template
 
-Use the standard HTML `<template>` tag with an `id` and declare required variables:
+Use the standard HTML `<template>` tag with an `id`. Declare the variables the template expects with `vln-vars` — either an array of names for existence-only checking, or an object mapping names to transformer functions (see [Transformers](#transformers)):
 
 ```html
-<template id="userCard" vln-vars="user">
+<template id="userCard" vln-vars="['user']">
   <div class="card">
     <h3 vln-text="user.name"></h3>
     <p vln-text="user.email"></p>
@@ -25,22 +25,24 @@ Use the standard HTML `<template>` tag with an `id` and declare required variabl
 
 ### Use the Template
 
-Use `vln-fragment` to instantiate the template:
+Use `vln-fragment` to instantiate the template. Provide values with a single `vln-vars` attribute — a JavaScript object expression. Attribute *values* preserve casing (unlike attribute names, which HTML lowercases), so `nodeId` stays `nodeId` end-to-end.
 
 ```html
-<div vln-fragment="'userCard'" vln-var:user="currentUser"></div>
+<div vln-fragment="'userCard'" vln-vars="{ user: currentUser }"></div>
 ```
 
-**Important:** Template names in `vln-fragment` are JavaScript expressions, so literal strings need quotes: `'userCard'`
+**Important:** Template names in `vln-fragment` are JavaScript expressions, so literal strings need quotes: `'userCard'`.
 
 ## Template Variables
 
 ### Declaring Variables
 
-Use `vln-vars="var1, var2"` on the `<template>` tag to declare required variables (comma-separated):
+Two accepted forms on the `<template>` `vln-vars` attribute:
+
+**Array of names** — existence-only:
 
 ```html
-<template id="productCard" vln-vars="product, onAddToCart">
+<template id="productCard" vln-vars="['product', 'onAddToCart']">
   <div class="product">
     <h3 vln-text="product.name"></h3>
     <p vln-text="'$' + product.price"></p>
@@ -49,64 +51,114 @@ Use `vln-vars="var1, var2"` on the `<template>` tag to declare required variable
 </template>
 ```
 
+**Object with transformers** — see [Transformers](#transformers) below.
+
+Omitting `vln-vars` on the template is also allowed: keys are auto-discovered from the consumer's provided object at render time (no missing-var check runs).
+
 ### Providing Variables
 
-Pass variables using `vln-var:variableName="expression"`:
+Pass all values via a single `vln-vars` attribute holding a JS object expression:
 
 ```html
-<div
-  vln-fragment="'productCard'"
-  vln-var:product="selectedProduct"
-  vln-var:onAddToCart="handleAddToCart">
-</div>
+<div vln-fragment="'productCard'"
+     vln-vars="{ product: selectedProduct, onAddToCart: handleAddToCart }"></div>
 ```
 
-### Validation
-
-Velin validates that all required variables are provided:
+Spread works because it's just a JS object literal:
 
 ```html
-<!-- ERROR: Missing 'onAddToCart' variable -->
-<div vln-fragment="'productCard'" vln-var:product="selectedProduct"></div>
+<div vln-fragment="'card'" vln-vars="{ ...defaults, product: selectedProduct }"></div>
+<div vln-fragment="'card'" vln-vars="propsBag"></div>
+```
+
+### Missing-variable validation
+
+If the template declares required variables and the consumer doesn't provide one:
+
+```html
+<!-- ERROR: missing 'onAddToCart' -->
+<div vln-fragment="'productCard'" vln-vars="{ product: selectedProduct }"></div>
 ```
 
 Console error:
+
 ```
-[VLN009] Template 'productCard' requires missing variables: [onAddToCart].
-Add them as: vln-var:onAddToCart="yourValue"
+[Velin Templates] Template #productCard requires missing variables: [onAddToCart].
+Add them to vln-vars, e.g. vln-vars="{ onAddToCart: yourValue, ... }"
+```
+
+## Transformers
+
+Instead of a name array, `vln-vars` on the template can be an **object mapping names to transformer functions**. A transformer is a single function that unifies validation, defaults, and coercion:
+
+```html
+<template id="userCard" vln-vars="{
+  user: requireUser,
+  role: normalizeRole,
+  count: toNumber
+}">
+  <!-- template body -->
+</template>
+```
+
+A transformer takes the raw provided value and returns what the template should see. It unifies four concerns:
+
+| Concern | How the transformer handles it |
+|---|---|
+| Existence | throw if undefined |
+| Validation | throw with a message |
+| Default | return a fallback when input is nullish |
+| Coercion | return the transformed value |
+
+Transformer names resolve in the **consumer's scope** (the fragment element's scope, not the template's). Define them alongside other state on the object you pass to `Velin.bind()`:
+
+```javascript
+Velin.bind(root, {
+  currentUser: /* ... */,
+
+  requireUser(v) {
+    if (v == null) throw new Error("user is required");
+    return v;
+  },
+  normalizeRole(v) {
+    return ["admin", "user"].includes(v) ? v : "user";
+  },
+  toNumber(v) {
+    return v == null ? 0 : Number(v);
+  },
+});
 ```
 
 ## Dynamic Template Selection
 
-Since `vln-fragment` values are JavaScript expressions, you can dynamically select templates:
+`vln-fragment` values are JavaScript expressions, so you can dynamically select templates:
 
 ```html
-<template id="adminCard" vln-vars="user">
+<template id="adminCard" vln-vars="['user']">
   <div class="admin-card">
     <strong vln-text="user.name"></strong>
     <button>Delete User</button>
   </div>
 </template>
 
-<template id="guestCard" vln-vars="user">
+<template id="guestCard" vln-vars="['user']">
   <div class="guest-card">
     <span vln-text="user.name"></span>
   </div>
 </template>
 
-<!-- Dynamically pick template based on role -->
 <div vln-loop:user="users"
      vln-fragment="user.role + 'Card'"
-     vln-var:user="user">
+     vln-vars="{ user: user }">
 </div>
 ```
 
 ## Templates in Loops
 
-Common pattern: using templates to render list items:
+Common pattern — render list items via a template:
 
 ```html
-<template id="todoItem" vln-vars="todo, actions">
+<template id="todoItem" vln-vars="['todo', 'actions']">
   <li class="todo">
     <input type="checkbox" vln-input="todo.done" />
     <span vln-text="todo.text"></span>
@@ -117,8 +169,7 @@ Common pattern: using templates to render list items:
 <ul>
   <li vln-loop:todo="todos"
       vln-fragment="'todoItem'"
-      vln-var:todo="todo"
-      vln-var:actions="createActions(todo)">
+      vln-vars="{ todo: todo, actions: createActions(todo) }">
   </li>
 </ul>
 
@@ -168,11 +219,11 @@ Fired when a node's reactive state is being cleaned up (e.g., when a fragment is
 
 ## Component Pattern
 
-In Velin, **Templates ARE Components**. You don't need a separate registry. By combining templates, `vln-var`, and lifecycle events, you get full component functionality.
+In Velin, **Templates ARE Components**. You don't need a separate registry. By combining templates, transformers, and lifecycle events, you get full component functionality.
 
 1. **The View**: Defined in a `<template>` tag.
 2. **The Logic**: Defined in your central JavaScript state.
-3. **The Interface**: Documented via `vln-vars` and `@vln-type`.
+3. **The Interface**: Declared in `vln-vars` (array or transformer object) and optionally typed via `@vln-type`.
 4. **The Lifecycle**: Managed via `vln-on:init` and `vln-on:destroy`.
 
 ## IDE IntelliSense & Type Safety
@@ -203,11 +254,9 @@ Add a comment at the top of your `<template>` to link it to a JavaScript type (d
 </template>
 ```
 
-The IDE will now provide autocomplete for `name` and `role` inside the template expressions and when using `vln-var:name` on a fragment.
+The IDE will now provide autocomplete for `name` and `role` inside the template expressions and when using the fragment.
 
 ## Complete Example
-
-Here's a complete example of a user management interface using the "Component Pattern":
 
 ```html
 <!DOCTYPE html>
@@ -226,8 +275,7 @@ Here's a complete example of a user management interface using the "Component Pa
   </style>
 </head>
 <body>
-  <!-- Template Definition -->
-  <template id="userCard" vln-vars="user, actions">
+  <template id="userCard" vln-vars="['user', 'actions']">
     <!-- @vln-type {UserCardProps} -->
     <div class="user-card" vln-on:init="console.log('User card ready:', user.name)">
       <h3 vln-text="user.name"></h3>
@@ -237,14 +285,12 @@ Here's a complete example of a user management interface using the "Component Pa
     </div>
   </template>
 
-  <!-- App -->
   <div id="app">
     <h1>Users</h1>
 
     <div vln-loop:user="users"
          vln-fragment="'userCard'"
-         vln-var:user="user"
-         vln-var:actions="createUserActions(user)">
+         vln-vars="{ user: user, actions: createUserActions(user) }">
     </div>
   </div>
 
@@ -290,7 +336,7 @@ Reach for templates when the same non-trivial chunk of markup shows up in more t
 **Repeated complex structures** — e.g. a product card with twenty lines of markup used in a grid:
 
 ```html
-<template id="productCard" vln-vars="product">
+<template id="productCard" vln-vars="['product']">
   <!-- 20 lines of HTML -->
 </template>
 ```
@@ -298,15 +344,15 @@ Reach for templates when the same non-trivial chunk of markup shows up in more t
 **Dynamic component selection** — pick a layout at runtime based on the data:
 
 ```html
-<div vln-fragment="item.type + 'Layout'" ...></div>
+<div vln-fragment="item.type + 'Layout'" vln-vars="{ item }"></div>
 ```
 
 **Reusable UI patterns** — the same card rendered in a dashboard and a search result:
 
 ```html
-<template id="userCard">...</template>
+<template id="userCard" vln-vars="['user']">...</template>
 
-<div vln-fragment="'userCard'" ...></div>
+<div vln-fragment="'userCard'" vln-vars="{ user }"></div>
 ```
 
 ## When NOT to Use Templates
@@ -327,14 +373,14 @@ For one-off markup that only appears once, just write it inline.
 
 **Good:**
 ```html
-<template id="userAvatar" vln-vars="user">
+<template id="userAvatar" vln-vars="['user']">
   <img vln-attr:src="user.avatar" vln-attr:alt="user.name" />
 </template>
 ```
 
 **Avoid:**
 ```html
-<template id="entirePage" vln-vars="pageData">
+<template id="entirePage" vln-vars="['pageData']">
   <!-- 200 lines of HTML -->
 </template>
 ```
@@ -343,23 +389,23 @@ For one-off markup that only appears once, just write it inline.
 
 **Good:**
 ```html
-<template id="productCard" vln-vars="product, onAddToCart">
+<template id="productCard" vln-vars="['product', 'onAddToCart']">
 ```
 
 **Avoid:**
 ```html
-<template id="productCard" vln-vars="p, fn">
+<template id="productCard" vln-vars="['p', 'fn']">
 ```
 
 ### 3. Pass functions for actions
 
 **Good:**
 ```html
-<template id="card" vln-vars="item, actions">
+<template id="card" vln-vars="['item', 'actions']">
   <button vln-on:click="actions.delete()">Delete</button>
 </template>
 
-vln-var:actions="createActions(item)"
+<div vln-fragment="'card'" vln-vars="{ item, actions: createActions(item) }"></div>
 ```
 
 ### 4. Use factory functions for component state
@@ -385,7 +431,7 @@ const vln = Velin.bind(root, {
 |---------|----------------|-------|-----|----------------|
 | Build step | No | Yes | Optional | No |
 | CSS encapsulation | No | No | Yes (scoped) | Yes (Shadow DOM) |
-| Props validation | Basic | PropTypes/TS | Yes | No |
+| Props validation | Transformers | PropTypes/TS | Yes | No |
 | Dynamic selection | Yes | Yes | Yes | No |
 | Learning curve | Flat | Steep | Moderate | Moderate |
 | Native Lifecycle | Yes | Hooks | Hooks | Yes |
@@ -407,7 +453,7 @@ If templates aren't working:
    ```
 
 3. **Verify all variables are provided:**
-   Look for `[VLN009]` errors in console
+   Look for `[Velin Templates]` errors in the console.
 
 4. **Check quotes in expressions:**
    ```html
@@ -419,8 +465,7 @@ If templates aren't working:
    ```
 
 5. **Use browser DevTools:**
-   Inspect the element to see if content was rendered
-
+   Inspect the element to see if content was rendered.
 
 ---
 
@@ -431,4 +476,3 @@ If templates aren't working:
 - **[Directives Guide](./directives.md)** - Other directives to use with templates
 - **[Getting Started](./getting-started.md)** - Basic concepts before using templates
 - **[Documentation Hub](./README.md)** - Navigate all Velin documentation
-

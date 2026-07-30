@@ -630,13 +630,10 @@ function analyzeScope(
           sourceExpr: attr.value,
         };
         hasLoop = true;
-      } else if (prefix === 'vln-var') {
-        scope[key] = {
-          type: 'template variable',
-          detail: `${key} (from ${attr.value})`,
-          documentation: `Template variable from vln-var:${key}="${attr.value}"`,
-        };
       }
+      // TODO: template variables now come from `vln-vars="{...}"` object
+      // literal on the fragment consumer. Discovering names from that
+      // requires parsing the object expression; not yet implemented.
     }
   }
   if (hasLoop && !scope['$index']) {

@@ -42,30 +42,16 @@ describe('VELIN_DIRECTIVE_META', () => {
       ).toBeNull();
     });
 
-    it('rejects vln-vars on a <div>', () => {
-      const err = validateDirectivePlacement('vln-vars', {
-        tagName: 'div',
-        siblingAttributes: [],
-      });
-      expect(err?.code).toBe('wrong-tag');
-      expect(err?.message).toMatch(/only valid on <template>/);
-    });
-
-    it('accepts vln-var:x on an element with vln-fragment', () => {
+    it('accepts vln-vars on a fragment consumer element', () => {
+      // vln-vars now serves double duty: declaration on <template>, and
+      // provider on any element with vln-fragment. No tag/sibling constraint
+      // is enforced statically — the runtime handles both cases.
       expect(
-        validateDirectivePlacement('vln-var', {
+        validateDirectivePlacement('vln-vars', {
           tagName: 'div',
           siblingAttributes: ['vln-fragment'],
         }),
       ).toBeNull();
-    });
-
-    it('rejects vln-var:x on an element without vln-fragment', () => {
-      const err = validateDirectivePlacement('vln-var', {
-        tagName: 'div',
-        siblingAttributes: ['id'],
-      });
-      expect(err?.code).toBe('missing-sibling');
     });
 
     it('accepts unconstrained directives anywhere', () => {
@@ -81,15 +67,6 @@ describe('VELIN_DIRECTIVE_META', () => {
   });
 
   describe('directivesValidAt', () => {
-    it('excludes vln-vars on non-template elements', () => {
-      const names = directivesValidAt({
-        tagName: 'div',
-        siblingAttributes: [],
-      }).map((m) => m.name);
-      expect(names).not.toContain('vln-vars');
-      expect(names).toContain('vln-text');
-    });
-
     it('includes vln-vars on <template>', () => {
       const names = directivesValidAt({
         tagName: 'template',
@@ -98,20 +75,12 @@ describe('VELIN_DIRECTIVE_META', () => {
       expect(names).toContain('vln-vars');
     });
 
-    it('excludes vln-var without vln-fragment sibling', () => {
-      const names = directivesValidAt({
-        tagName: 'div',
-        siblingAttributes: [],
-      }).map((m) => m.name);
-      expect(names).not.toContain('vln-var');
-    });
-
-    it('includes vln-var when vln-fragment is present', () => {
+    it('includes vln-vars on any element (provider on fragment consumers)', () => {
       const names = directivesValidAt({
         tagName: 'div',
         siblingAttributes: ['vln-fragment'],
       }).map((m) => m.name);
-      expect(names).toContain('vln-var');
+      expect(names).toContain('vln-vars');
     });
   });
 
