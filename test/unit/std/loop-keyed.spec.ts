@@ -183,6 +183,65 @@ describe('vln-loop keyed diff', () => {
     expect(texts).toEqual(['!Bravo', '!Alpha']);
   });
 
+  it('preserves focus and text selection when the focused row moves', () => {
+    container.innerHTML = `
+      <ul>
+        <li vln-loop:row="{collection: rows, key: 'id'}">
+          <input vln-attr:data-id="row.id" />
+        </li>
+      </ul>
+    `;
+    const state = Velin.bind(container, {
+      rows: [
+        { id: 'a', name: 'A' },
+        { id: 'b', name: 'B' },
+        { id: 'c', name: 'C' },
+      ],
+    }) as { rows: Array<{ id: string; name: string }> };
+
+    const inputA = container.querySelector<HTMLInputElement>('input[data-id="a"]')!;
+    inputA.value = 'hello world';
+    inputA.focus();
+    inputA.setSelectionRange(2, 5);
+    expect(document.activeElement).toBe(inputA);
+
+    // Reverse — row 'a' moves from index 0 to index 2.
+    state.rows = [state.rows[2], state.rows[1], state.rows[0]];
+
+    // Same input element (keyed reuse) and focus + selection intact.
+    const stillA = container.querySelector<HTMLInputElement>('input[data-id="a"]')!;
+    expect(stillA).toBe(inputA);
+    expect(document.activeElement).toBe(inputA);
+    expect(inputA.selectionStart).toBe(2);
+    expect(inputA.selectionEnd).toBe(5);
+  });
+
+  it('does not steal focus when the focused element is outside the loop', () => {
+    const outside = document.createElement('input');
+    document.body.appendChild(outside);
+    container.innerHTML = `
+      <ul>
+        <li vln-loop:row="{collection: rows, key: 'id'}">
+          <span vln-text="row.name"></span>
+        </li>
+      </ul>
+    `;
+    const state = Velin.bind(container, {
+      rows: [
+        { id: 'a', name: 'A' },
+        { id: 'b', name: 'B' },
+      ],
+    }) as { rows: Array<{ id: string; name: string }> };
+
+    outside.focus();
+    expect(document.activeElement).toBe(outside);
+
+    state.rows = [state.rows[1], state.rows[0]];
+    expect(document.activeElement).toBe(outside);
+
+    outside.remove();
+  });
+
   it('logs and halts when an item lacks the key field', () => {
     container.innerHTML = `
       <ul>

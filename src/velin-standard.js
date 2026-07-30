@@ -576,6 +576,24 @@ function setupVelinStd(vln) {
       const oldKeys = pluginState.keys || [];
       const oldByKey = keyField ? new Map(oldKeys.map((k, j) => [k, j])) : null;
 
+      // A11y: if the focused element sits inside a row that survives the
+      // diff, moving its container with insertBefore can drop focus (jsdom
+      // always, real browsers in some subtree-move cases). Snapshot it and
+      // any text selection so we can restore after DOM settles.
+      const active = /** @type {HTMLInputElement | null} */ (document.activeElement);
+      let focusSnapshot = null;
+      if (active && active !== document.body) {
+        for (let j = 0; j < oldChildren.length; j++) {
+          if (oldChildren[j].contains(active)) {
+            let selStart = null;
+            let selEnd = null;
+            try { selStart = active.selectionStart; selEnd = active.selectionEnd; } catch {}
+            focusSnapshot = { el: active, selStart, selEnd };
+            break;
+          }
+        }
+      }
+
       const items = Array.from(collection);
       const newChildren = new Array(items.length);
       const newSubstates = new Array(items.length);
@@ -684,6 +702,18 @@ function setupVelinStd(vln) {
       pluginState.children = newChildren;
       pluginState.substates = newSubstates;
       pluginState.keys = newKeys;
+
+      if (focusSnapshot && focusSnapshot.el.isConnected &&
+          document.activeElement !== focusSnapshot.el) {
+        try {
+          focusSnapshot.el.focus({ preventScroll: true });
+          if (focusSnapshot.selStart !== null &&
+              typeof focusSnapshot.el.setSelectionRange === 'function') {
+            focusSnapshot.el.setSelectionRange(focusSnapshot.selStart, focusSnapshot.selEnd);
+          }
+        } catch {}
+      }
+
       return { halt: true, pluginState };
     },
   });
