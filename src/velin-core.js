@@ -1262,9 +1262,36 @@ function compile(expr) {
 
 function evaluateAst(ast, reactiveState) {
   // Interpolation lookup + chain-walk is handled by the per-scope Proxy
-  // installed on reactiveState.state in composeState. This wrapper only
-  // enforces mutation guards (async-safety + write-during-eval ban).
+  // installed on reactiveState.state in composeState. This wrapper adds:
+  //   - mutation guards (async-safety + evaluation-time write ban)
+  //   - dev-mode case-mismatch warning
   const contextualizedProxy = new Proxy(reactiveState.state, {
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver);
+      if (
+        __DEV__ &&
+        value === undefined &&
+        typeof prop === "string" &&
+        /[A-Z]/.test(prop)
+      ) {
+        // Case-mismatch warning: HTML lowercases attribute names, so an
+        // identifier like `nodeId` may exist as `nodeid` if it came from a
+        // vln-loop:nodeId or similar. Ask the chain about the lowercased
+        // version; if it resolves, warn.
+        const lower = prop.toLowerCase();
+        if (lower !== prop) {
+          const lowerVal = Reflect.get(target, lower, receiver);
+          if (lowerVal !== undefined || Reflect.has(target, lower)) {
+            console.warn(
+              `[Velin] Identifier '${prop}' not found in scope. Did you mean '${lower}'? ` +
+              `HTML lowercases attribute names, so vln-loop:${prop}="..." (or similar) ` +
+              `binds as '${lower}'. Use lowercase or kebab-case in HTML attribute names.`
+            );
+          }
+        }
+      }
+      return value;
+    },
     set(target, prop, value, receiver) {
       if (!reactiveState.ø__control) {
         throw new Error(
