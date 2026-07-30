@@ -37,6 +37,7 @@
  * @typedef {Object} Interpolation
  * @property {'EXPR'|'LITERAL'} type The type of interpolation
  * @property {ExpressionInterpolation|any} value The AST node or literal value
+ * @property {(v: any) => any} [transform] Optional transform applied to the evaluated value (EXPR only)
  */
 
 /**
@@ -1698,21 +1699,18 @@ function composeState(reactiveState, init) {
   }
   /** @type {Map<string, Interpolation>} */
   const lerps = new Map();
-  for (const [key, value] of Object.entries(init)) {
-    if (value && typeof value === "object" && "expr" in value) {
-      /** @type {any} */
-      const entry = {
-        type: "EXPR",
-        value: { expr: /** @type {any} */(value).expr, ast: compile(/** @type {any} */(value).expr) },
-      };
-      const tfm = /** @type {any} */(value).transform;
-      if (typeof tfm === "function") entry.transform = tfm;
-      lerps.set(key, entry);
-    } else if (value && typeof value === "object" && "literal" in value) {
-      lerps.set(key, { type: "LITERAL", value: /** @type {any} */(value).literal });
+  for (const [key, entry] of Object.entries(/** @type {any} */(init))) {
+    if (entry && typeof entry === "object" && "expr" in entry) {
+      const { expr, transform } = entry;
+      /** @type {Interpolation} */
+      const interp = { type: "EXPR", value: { expr, ast: compile(expr) } };
+      if (typeof transform === "function") interp.transform = transform;
+      lerps.set(key, interp);
+    } else if (entry && typeof entry === "object" && "literal" in entry) {
+      lerps.set(key, /** @type {Interpolation} */({ type: "LITERAL", value: entry.literal }));
     } else {
       throw new Error(
-        `[Velin] composeState(): each entry must be { expr: '...' } or { literal: ... }. Got ${JSON.stringify(value)} for key "${key}".`
+        `[Velin] composeState(): each entry must be { expr: '...' } or { literal: ... }. Got ${JSON.stringify(entry)} for key "${key}".`
       );
     }
   }
@@ -1734,11 +1732,8 @@ function composeState(reactiveState, init) {
       if (lerps.has(propStr)) {
         const interp = lerps.get(propStr);
         if (interp.type === "EXPR") {
-          let value = evaluateAst(interp.value.ast, enclosing);
-          if (/** @type {any} */(interp).transform) {
-            value = /** @type {any} */(interp).transform(value);
-          }
-          return value;
+          const value = evaluateAst(interp.value.ast, enclosing);
+          return interp.transform ? interp.transform(value) : value;
         }
         return interp.value;
       }
