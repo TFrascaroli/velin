@@ -56,6 +56,7 @@
  * @property {Array<() => void>} ø__finalizers Optional array of plugin finalizers attached to this state (for cleanup)
  * @property {string[]=} tricklingRoots Stack of root paths for dependency filtering. Dependencies at or above any of these levels are filtered out (used by vln-loop, nested loops stack their roots so the outer one isn't lost).
  * @property {PluginHelpers=} ø__helpers Pre-bound helper bundle built once per substate (see buildPluginHelpers)
+ * @property {ReactiveState|null} ø__enclosing The enclosing (parent) reactive state — null at root. Set by composeState. Interpolation expressions on this scope evaluate against ø__enclosing, giving them JS-closure semantics.
  */
 
 /**
@@ -436,7 +437,11 @@ function normalizeComposeInit(init) {
   const map = new Map();
   for (const [key, value] of Object.entries(init)) {
     if (value && typeof value === "object" && "expr" in value) {
-      map.set(key, { type: "EXPR", value: { expr: /** @type {any} */(value).expr } });
+      /** @type {any} */
+      const entry = { type: "EXPR", value: { expr: /** @type {any} */(value).expr } };
+      const tfm = /** @type {any} */(value).transform;
+      if (typeof tfm === "function") entry.transform = tfm;
+      map.set(key, entry);
     } else if (value && typeof value === "object" && "literal" in value) {
       map.set(key, { type: "LITERAL", value: /** @type {any} */(value).literal });
     } else {
@@ -1209,25 +1214,6 @@ function evalAst(ast, context, reactiveState = null) {
 }
 
 /**
- *
- * @param {string} intKey
- * @param {ReactiveState} reactiveState
- * @returns
- */
-function lerp(intKey, reactiveState) {
-  const inter = reactiveState.interpolations;
-  if (inter?.has(intKey)) {
-    const interp = inter.get(intKey);
-    if (interp.type === "EXPR") {
-      return evaluateAst(interp.value.ast, reactiveState);
-    } else {
-      return interp.value;
-    }
-  }
-  return undefined;
-}
-
-/**
  * Compiles a JavaScript expression into an AST.
  * CSP-safe implementation using tokenizer + parser (no eval/Function).
  * @type {Compile}
@@ -1250,15 +1236,10 @@ function compile(expr) {
  */
 
 function evaluateAst(ast, reactiveState) {
-  const inter = reactiveState.interpolations;
+  // Interpolation lookup + chain-walk is handled by the per-scope Proxy
+  // installed on reactiveState.state in composeState. This wrapper only
+  // enforces mutation guards (async-safety + write-during-eval ban).
   const contextualizedProxy = new Proxy(reactiveState.state, {
-    get(target, prop, receiver) {
-      const propStr = String(prop);
-      if (inter?.has(propStr)) {
-        return lerp(propStr, reactiveState);
-      }
-      return Reflect.get(target, prop, receiver);
-    },
     set(target, prop, value, receiver) {
       if (!reactiveState.ø__control) {
         throw new Error(
@@ -1269,8 +1250,7 @@ function evaluateAst(ast, reactiveState) {
         throw new Error(
           "[VLN010] Setting values during evaluation is forbidden. Use Velin.getSetter",
         );
-      // Targeting target directly to avoid triggering traps recursively
-      return Reflect.set(target, prop, value);
+      return Reflect.set(target, prop, value, receiver);
     },
   });
   if (__DEV__) {
@@ -1496,6 +1476,7 @@ function setupState(obj) {
     ø__innerStates: new Set(),
     ø__innerBindings: new Map(),
     ø__finalizers: [],
+    ø__enclosing: null,
   };
   let init = true;
 
@@ -1685,29 +1666,70 @@ function setupState(obj) {
  * @type {ComposeState}
  */
 function composeState(reactiveState, interpolations) {
-  /** @type {[string, Interpolation][]} */
-  const lerps = [];
-  for (const [k, v] of interpolations) {
-    if (v.type === "EXPR")
-      lerps.push([
-        k,
-        {
-          type: "EXPR",
-          value: { expr: v.value.expr, ast: compile(v.value.expr) },
-        },
-      ]);
-    else lerps.push([k, v]);
+  if (!reactiveState) {
+    throw new Error("[Velin] composeState requires an enclosing reactiveState");
   }
+  /** @type {Map<string, Interpolation>} */
+  const lerps = new Map();
+  for (const [k, v] of interpolations) {
+    if (v.type === "EXPR") {
+      /** @type {any} */
+      const entry = {
+        type: "EXPR",
+        value: { expr: v.value.expr, ast: compile(v.value.expr) },
+      };
+      if (/** @type {any} */(v).transform) entry.transform = /** @type {any} */(v).transform;
+      lerps.set(k, entry);
+    } else {
+      lerps.set(k, v);
+    }
+  }
+
+  // Per-scope state proxy. The get trap checks THIS scope's interpolations
+  // first; on miss, Reflect.get delegates to the parent's proxy (target),
+  // yielding a prototypal-chain lookup up to root's wrapObj proxy.
+  //
+  // Interpolation expressions evaluate against the ENCLOSING scope
+  // (`reactiveState` — captured in closure), giving them JS-closure
+  // semantics: an expression's identifiers resolve in the scope where the
+  // expression was authored, NOT where the interpolation now lives. This
+  // is what breaks same-name shadow recursion (e.g. `vln-var:user="user"`
+  // under `vln-loop:user="users"`).
+  const enclosing = reactiveState;
+  const innerStateProxy = new Proxy(reactiveState.state, {
+    get(target, prop, receiver) {
+      const propStr = String(prop);
+      if (lerps.has(propStr)) {
+        const interp = lerps.get(propStr);
+        if (interp.type === "EXPR") {
+          let value = evaluateAst(interp.value.ast, enclosing);
+          if (/** @type {any} */(interp).transform) {
+            value = /** @type {any} */(interp).transform(value);
+          }
+          return value;
+        }
+        return interp.value;
+      }
+      return Reflect.get(target, prop, receiver);
+    },
+    set(target, prop, value, receiver) {
+      return Reflect.set(target, prop, value, receiver);
+    },
+    has(target, prop) {
+      if (lerps.has(String(prop))) return true;
+      return Reflect.has(target, prop);
+    },
+  });
+
   /** @type {ReactiveState} */
   const inner = {
     ...reactiveState,
-    interpolations: new Map([
-      ...(reactiveState.interpolations?.entries() ?? []),
-      ...lerps,
-    ]),
+    state: innerStateProxy,
+    interpolations: lerps,
     ø__innerBindings: new Map(),
     ø__innerStates: new Set(),
     ø__finalizers: [],
+    ø__enclosing: enclosing,
   };
   inner.ø__helpers = buildPluginHelpers(inner);
   reactiveState.ø__innerStates.add(inner);
