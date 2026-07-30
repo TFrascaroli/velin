@@ -41,7 +41,7 @@
   </nav>
 
   <!-- 4-Quadrant Grid Template -->
-  <template id="exampleQuadrant" vln-vars="example, idx">
+  <template id="exampleQuadrant" vln-vars="['example', 'idx']">
     <div vln-if="currentTab === idx" class="absolute inset-0 grid grid-cols-2 grid-rows-2 gap-4">
       <!-- Top-Left: Original HTML -->
       <section class="bg-gray-800 rounded-lg border border-gray-700 flex flex-col overflow-hidden">
@@ -101,7 +101,7 @@
 
   <!-- Main Content Area -->
   <main class="flex-1 p-6 overflow-hidden relative">
-    <div vln-loop:ex="examples" vln-fragment="'exampleQuadrant'" vln-var:example="ex" vln-var:idx="$index"></div>
+    <div vln-loop:ex="examples" vln-fragment="'exampleQuadrant'" vln-vars="{ example: ex, idx: $index }"></div>
   </main>
 
   <!-- Hidden: Example definitions -->
@@ -178,7 +178,7 @@
     </div>
 
     <div vln-diff="Templates">
-      <template id="friendCard" vln-vars="friend">
+      <template id="friendCard" vln-vars="['friend']">
         <div class="p-4 mb-4 rounded-lg bg-gray-700 border border-gray-600">
           <div class="text-lg font-semibold mb-2 text-indigo-400">
             <span vln-text="friend.name"></span>
@@ -200,7 +200,7 @@
         </div>
       </template>
       <div>
-        <div vln-loop:friend_obj="friends" vln-fragment="'friendCard'" vln-var:friend="friend_obj"></div>
+        <div vln-loop:friend_obj="friends" vln-fragment="'friendCard'" vln-vars="{ friend: friend_obj }"></div>
       </div>
     </div>
   </div>

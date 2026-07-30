@@ -40,21 +40,15 @@
       <!-- Three sibling routes share one chrome via a fragment. -->
       <div vln-route="'/profile/:id'">
         <div vln-fragment="'profile-chrome'"
-             vln-var:id="myRoute.path.split('/')[2]"
-             vln-var:tab="'overview'"
-             vln-var:sort="''"></div>
+             vln-vars="{ id: myRoute.path.split('/')[2], tab: 'overview', sort: '' }"></div>
       </div>
       <div vln-route="'/profile/:id/posts/:sort'">
         <div vln-fragment="'profile-chrome'"
-             vln-var:id="myRoute.path.split('/')[2]"
-             vln-var:tab="'posts'"
-             vln-var:sort="myRoute.path.split('/')[4]"></div>
+             vln-vars="{ id: myRoute.path.split('/')[2], tab: 'posts', sort: myRoute.path.split('/')[4] }"></div>
       </div>
       <div vln-route="'/profile/:id/settings'">
         <div vln-fragment="'profile-chrome'"
-             vln-var:id="myRoute.path.split('/')[2]"
-             vln-var:tab="'settings'"
-             vln-var:sort="''"></div>
+             vln-vars="{ id: myRoute.path.split('/')[2], tab: 'settings', sort: '' }"></div>
       </div>
 
       <!-- Catch-all: no `*` pattern in the plugin yet, so key off a helper. -->
@@ -67,7 +61,7 @@
     </div>
   </div>
 
-  <template id="profile-chrome" vln-vars="id,tab,sort">
+  <template id="profile-chrome" vln-vars="['id', 'tab', 'sort']">
     <div class="card"
          vln-on:init="onmount(id, tab)"
          vln-on:destroy="onunmount()">

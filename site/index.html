@@ -43,11 +43,11 @@
 
       <div vln-route="'/examples'"        vln-fragment="'examples-list'"></div>
       <div vln-route="'/examples/:id'"    vln-fragment="'example-detail'"
-           vln-var:exampleid="segment(route.path, 1)"></div>
+           vln-vars="{ exampleid: segment(route.path, 1) }"></div>
 
       <div vln-route="'/docs'"            vln-fragment="'docs-list'"></div>
       <div vln-route="'/docs/:page'"      vln-fragment="'doc-page'"
-           vln-var:docid="segment(route.path, 1)"></div>
+           vln-vars="{ docid: segment(route.path, 1) }"></div>
 
       <div vln-route="'/devtools'"        vln-page="pages.devtools"></div>
       <div vln-route="'/tooling/vscode'"  vln-page="pages.vscode"></div>
@@ -106,7 +106,7 @@
     </section>
   </template>
 
-  <template id="example-detail" vln-vars="exampleid">
+  <template id="example-detail" vln-vars="['exampleid']">
     <section vln-use:ex="getExample(exampleid)">
       <div vln-if="ex" class="wide-view">
         <div class="detail-header">
@@ -163,7 +163,7 @@
     </section>
   </template>
 
-  <template id="doc-page" vln-vars="docid">
+  <template id="doc-page" vln-vars="['docid']">
     <section vln-use:doc="getDoc(docid)">
       <div class="prose" vln-if="doc">
         <a vln-attr:href="'#/docs'" class="back-link">← All docs</a>
