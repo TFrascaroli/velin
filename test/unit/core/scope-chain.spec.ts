@@ -32,10 +32,9 @@ describe("Scope chain: low-level composeState", () => {
     // Under the prototypal-chain model the expression evaluates in the
     // enclosing (root) scope, so `user` resolves to the root's value.
     const root = makeRoot({ user: "Alice" });
-    const child = Velin.composeState(
-      root,
-      new Map([["user", { type: "EXPR", value: { expr: "user" } }]] as any),
-    );
+    const child = Velin.composeState(root, {
+      user: { expr: "user" },
+    });
 
     expect(child.state.user).toBe("Alice");
     (root.state as any).user = "Bob";
@@ -46,19 +45,9 @@ describe("Scope chain: low-level composeState", () => {
     // Attach a `transform` fn to an EXPR interpolation. Reading through
     // the scope proxy should return transform(evaluatedValue).
     const root = makeRoot({ n: 3 });
-    const child = Velin.composeState(
-      root,
-      new Map([
-        [
-          "doubled",
-          {
-            type: "EXPR",
-            value: { expr: "n" },
-            transform: (v: number) => v * 2,
-          },
-        ],
-      ] as any),
-    );
+    const child = Velin.composeState(root, {
+      doubled: { expr: "n", transform: (v: number) => v * 2 },
+    });
 
     expect(child.state.doubled).toBe(6);
     (root.state as any).n = 5;
