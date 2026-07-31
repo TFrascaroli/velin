@@ -21,6 +21,110 @@
 <body vln-router-scroll="route">
 
   <div id="app">
+    <!-- Templates for reactive pages (need parent-state access via fragments).
+         Registered early — vln-template must appear before any vln-fragment
+         consumer in the DOM. -->
+
+    <template vln-template="examples-list">
+      <section>
+        <h1>Examples</h1>
+        <p class="lede">
+          Every pattern is a real, runnable Velin app — hand-picked forms, data
+          grids, navigation, and performance tests. Click any card to see it live
+          with source alongside.
+        </p>
+
+        <div vln-loop:cat="categories" class="category-block">
+          <h2 vln-text="cat.name"></h2>
+          <p class="muted" vln-text="cat.blurb"></p>
+          <div class="example-grid">
+            <a vln-loop:ex="examplesInCategory(cat.id)"
+               vln-attr:href="'#/examples/' + ex.id"
+               class="example-card">
+              <div class="example-card-title" vln-text="ex.title"></div>
+              <div class="example-card-blurb" vln-text="ex.blurb"></div>
+              <div class="example-card-meta">
+                <span vln-text="ex.type === 'standalone' ? 'Full page' : 'Fragment'"></span>
+                <span> · </span>
+                <span vln-text="ex.files.length + ' file' + (ex.files.length === 1 ? '' : 's')"></span>
+              </div>
+            </a>
+          </div>
+        </div>
+      </section>
+    </template>
+
+    <template vln-template="example-detail" vln-vars="['exampleid']">
+      <section vln-use:ex="getExample(exampleid)">
+        <div vln-if="ex" class="wide-view">
+          <div class="detail-header">
+            <a vln-attr:href="'#/examples'" class="back-link">← All examples</a>
+            <div class="detail-crumbs">
+              <span vln-text="categoryName(ex.category)"></span>
+            </div>
+            <h1 vln-text="ex.title"></h1>
+            <p class="lede" vln-text="ex.blurb"></p>
+            <div class="detail-actions">
+              <a vln-attr:href="demoUrlFor(ex)" target="_blank" rel="noopener" class="btn btn-ghost">Open in new tab ↗</a>
+            </div>
+          </div>
+
+          <div class="example-detail">
+            <div class="pane pane-result">
+              <div class="pane-label">Result</div>
+              <iframe vln-attr:src="demoUrlFor(ex)"
+                      class="demo-frame"
+                      title="Live example"></iframe>
+            </div>
+            <div class="pane pane-code">
+              <div class="pane-label">Source</div>
+              <div vln-code-viewer="ex.files"></div>
+            </div>
+          </div>
+        </div>
+
+        <div vln-if="!ex" class="not-found">
+          <h1>Example not found</h1>
+          <p><code vln-text="exampleid"></code> isn't in the catalog.</p>
+          <p><a vln-attr:href="'#/examples'">← Back to examples</a></p>
+        </div>
+      </section>
+    </template>
+
+    <template vln-template="docs-list">
+      <section class="prose">
+        <h1>Documentation</h1>
+        <p>
+          Reference for every part of Velin — directives, API surface, plugin
+          authoring, bundle selection. The Markdown sources under
+          <code>docs/</code> are authoritative; this site is a viewer.
+        </p>
+
+        <div class="docs-grid">
+          <a vln-loop:d="docs"
+             vln-attr:href="'#/docs/' + d.id"
+             class="doc-card">
+            <div class="doc-card-title" vln-text="d.title"></div>
+            <div class="doc-card-blurb" vln-text="d.blurb"></div>
+          </a>
+        </div>
+      </section>
+    </template>
+
+    <template vln-template="doc-page" vln-vars="['docid']">
+      <section vln-use:doc="getDoc(docid)">
+        <div class="prose" vln-if="doc">
+          <a vln-attr:href="'#/docs'" class="back-link">← All docs</a>
+          <div vln-md="doc.file"></div>
+        </div>
+        <div class="not-found" vln-if="!doc">
+          <h1>Doc not found</h1>
+          <p><code vln-text="docid"></code> isn't in the catalog.</p>
+          <p><a vln-attr:href="'#/docs'">← Back to docs</a></p>
+        </div>
+      </section>
+    </template>
+
     <header class="site-header">
       <a vln-attr:href="'#/'" class="brand">
         <img src="logo.svg" alt="V" width="28" height="28">
@@ -43,11 +147,11 @@
 
       <div vln-route="'/examples'"        vln-fragment="'examples-list'"></div>
       <div vln-route="'/examples/:id'"    vln-fragment="'example-detail'"
-           vln-var:exampleid="segment(route.path, 1)"></div>
+           vln-vars="{ exampleid: segment(route.path, 1) }"></div>
 
       <div vln-route="'/docs'"            vln-fragment="'docs-list'"></div>
       <div vln-route="'/docs/:page'"      vln-fragment="'doc-page'"
-           vln-var:docid="segment(route.path, 1)"></div>
+           vln-vars="{ docid: segment(route.path, 1) }"></div>
 
       <div vln-route="'/devtools'"        vln-page="pages.devtools"></div>
       <div vln-route="'/tooling/vscode'"  vln-page="pages.vscode"></div>
@@ -74,108 +178,6 @@
       </div>
     </footer>
   </div>
-
-  <!-- Templates for reactive pages (need parent-state access via fragments) -->
-
-  <template id="examples-list">
-    <section>
-      <h1>Examples</h1>
-      <p class="lede">
-        Every pattern is a real, runnable Velin app — hand-picked forms, data
-        grids, navigation, and performance tests. Click any card to see it live
-        with source alongside.
-      </p>
-
-      <div vln-loop:cat="categories" class="category-block">
-        <h2 vln-text="cat.name"></h2>
-        <p class="muted" vln-text="cat.blurb"></p>
-        <div class="example-grid">
-          <a vln-loop:ex="examplesInCategory(cat.id)"
-             vln-attr:href="'#/examples/' + ex.id"
-             class="example-card">
-            <div class="example-card-title" vln-text="ex.title"></div>
-            <div class="example-card-blurb" vln-text="ex.blurb"></div>
-            <div class="example-card-meta">
-              <span vln-text="ex.type === 'standalone' ? 'Full page' : 'Fragment'"></span>
-              <span> · </span>
-              <span vln-text="ex.files.length + ' file' + (ex.files.length === 1 ? '' : 's')"></span>
-            </div>
-          </a>
-        </div>
-      </div>
-    </section>
-  </template>
-
-  <template id="example-detail" vln-vars="exampleid">
-    <section vln-use:ex="getExample(exampleid)">
-      <div vln-if="ex" class="wide-view">
-        <div class="detail-header">
-          <a vln-attr:href="'#/examples'" class="back-link">← All examples</a>
-          <div class="detail-crumbs">
-            <span vln-text="categoryName(ex.category)"></span>
-          </div>
-          <h1 vln-text="ex.title"></h1>
-          <p class="lede" vln-text="ex.blurb"></p>
-          <div class="detail-actions">
-            <a vln-attr:href="demoUrlFor(ex)" target="_blank" rel="noopener" class="btn btn-ghost">Open in new tab ↗</a>
-          </div>
-        </div>
-
-        <div class="example-detail">
-          <div class="pane pane-result">
-            <div class="pane-label">Result</div>
-            <iframe vln-attr:src="demoUrlFor(ex)"
-                    class="demo-frame"
-                    title="Live example"></iframe>
-          </div>
-          <div class="pane pane-code">
-            <div class="pane-label">Source</div>
-            <div vln-code-viewer="ex.files"></div>
-          </div>
-        </div>
-      </div>
-
-      <div vln-if="!ex" class="not-found">
-        <h1>Example not found</h1>
-        <p><code vln-text="exampleid"></code> isn't in the catalog.</p>
-        <p><a vln-attr:href="'#/examples'">← Back to examples</a></p>
-      </div>
-    </section>
-  </template>
-
-  <template id="docs-list">
-    <section class="prose">
-      <h1>Documentation</h1>
-      <p>
-        Reference for every part of Velin — directives, API surface, plugin
-        authoring, bundle selection. The Markdown sources under
-        <code>docs/</code> are authoritative; this site is a viewer.
-      </p>
-
-      <div class="docs-grid">
-        <a vln-loop:d="docs"
-           vln-attr:href="'#/docs/' + d.id"
-           class="doc-card">
-          <div class="doc-card-title" vln-text="d.title"></div>
-          <div class="doc-card-blurb" vln-text="d.blurb"></div>
-        </a>
-      </div>
-    </section>
-  </template>
-
-  <template id="doc-page" vln-vars="docid">
-    <section vln-use:doc="getDoc(docid)">
-      <div class="prose" vln-if="doc">
-        <a vln-attr:href="'#/docs'" class="back-link">← All docs</a>
-        <div vln-md="doc.file"></div>
-      </div>
-      <div class="not-found" vln-if="!doc">
-        <h1>Doc not found</h1>
-        <p><code vln-text="docid"></code> isn't in the catalog.</p>
-        <p><a vln-attr:href="'#/docs'">← Back to docs</a></p>
-      </div>
-    </section>
-  </template>
 
   <script src="components/syntax.js"></script>
   <script src="components/code-viewer.js"></script>

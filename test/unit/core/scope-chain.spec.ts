@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import Velin from "../../../src/velin-all";
 
 /**
@@ -10,12 +10,9 @@ import Velin from "../../../src/velin-all";
  * expression that shares an identifier name with the interpolation itself
  * resolves via JS-closure semantics instead of self-shadow recursion.
  *
- * Two angles here: (1) low-level primitive (compose + interpolation.transform)
- * proves the machinery itself is correct; (2) end-user pattern via the OLD
- * `vln-loop:x` + `vln-var:x` fragment API reproduces the historical shadow
- * bug and confirms it's gone.
+ * Higher-level shadow-safety coverage via the vln-vars fragment API is in
+ * test/unit/templates/fragments-reactivity.spec.ts.
  */
-
 describe("Scope chain: low-level composeState", () => {
   // Small helper — Velin doesn't expose `setupState` publicly; `bind` on a
   // detached element produces a fully-initialised root reactive state.
@@ -52,46 +49,5 @@ describe("Scope chain: low-level composeState", () => {
     expect(child.state.doubled).toBe(6);
     (root.state as any).n = 5;
     expect(child.state.doubled).toBe(10);
-  });
-});
-
-describe("Scope chain: vln-loop + vln-var: same-name shadow (historical bug)", () => {
-  let container: HTMLElement;
-
-  beforeEach(() => {
-    container = document.createElement("div");
-    document.body.appendChild(container);
-  });
-
-  afterEach(() => {
-    if (container.parentNode) document.body.removeChild(container);
-  });
-
-  it("vln-var:user='user' under vln-loop:user='users' renders correctly (no recursion)", () => {
-    // Historical bug: fragment plugin creates a child scope with `user` as
-    // an EXPR interpolation whose expression is the string 'user'. Under
-    // the loop scope (which also defines `user`), the child's `user`
-    // interp evaluates its expression, hits the child's own `user` interp,
-    // recurses. The pre-refactor test in fragments.spec.ts was `.skip`ped
-    // for exactly this reason.
-    container.innerHTML = `
-      <template id="userCard" vln-vars="user">
-        <div class="card" vln-text="user.name"></div>
-      </template>
-      <div vln-loop:user="users">
-        <div vln-fragment="'userCard'" vln-var:user="user"></div>
-      </div>
-    `;
-    Velin.bind(container, {
-      users: [{ name: "Alice" }, { name: "Bob" }, { name: "Charlie" }],
-    });
-
-    const cards = container.querySelectorAll(".card");
-    expect(cards).toHaveLength(3);
-    expect(Array.from(cards).map((c) => c.textContent)).toEqual([
-      "Alice",
-      "Bob",
-      "Charlie",
-    ]);
   });
 });

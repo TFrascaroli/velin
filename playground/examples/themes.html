@@ -1,51 +1,14 @@
 <div id="theme-switcher-demo">
-  <div class="mb-6 p-4 bg-gray-50 rounded-lg">
-    <h3 class="text-lg font-semibold mb-3">Theme Selector</h3>
+  <!-- Templates registered first — vln-template must appear before any
+       vln-fragment consumer in the DOM. -->
 
-    <!-- Radio buttons with vln-attr:checked and vln-on:change -->
-    <div class="space-y-2">
-      <label class="flex items-center space-x-3 cursor-pointer">
-        <input type="radio" name="theme" value="modern"
-               vln-attr:checked="currentTheme === 'modern'"
-               vln-on:change="currentTheme = 'modern'"
-               class="w-4 h-4">
-        <span class="text-sm font-medium">Modern Cards - Clean card-based design with shadows</span>
-      </label>
-      <label class="flex items-center space-x-3 cursor-pointer">
-        <input type="radio" name="theme" value="classic"
-               vln-attr:checked="currentTheme === 'classic'"
-               vln-on:change="currentTheme = 'classic'"
-               class="w-4 h-4">
-        <span class="text-sm font-medium">Classic Newspaper - Traditional column layout</span>
-      </label>
-      <label class="flex items-center space-x-3 cursor-pointer">
-        <input type="radio" name="theme" value="minimal"
-               vln-attr:checked="currentTheme === 'minimal'"
-               vln-on:change="currentTheme = 'minimal'"
-               class="w-4 h-4">
-        <span class="text-sm font-medium">Minimal List - Simple, typography-focused</span>
-      </label>
-      <label class="flex items-center space-x-3 cursor-pointer">
-        <input type="radio" name="theme" value="magazine"
-               vln-attr:checked="currentTheme === 'magazine'"
-               vln-on:change="currentTheme = 'magazine'"
-               class="w-4 h-4">
-        <span class="text-sm font-medium">Magazine Grid - Bold, image-heavy layout</span>
-      </label>
-    </div>
-  </div>
-
-  <div vln-fragment="currentTheme"></div>
-
-  <!-- Templates below - each has id matching a theme name -->
-  <template id="modern">
+  <template vln-template="modern">
     <div class="space-y-6">
       <nav class="bg-white rounded-lg shadow-md px-6 py-4 flex items-center justify-between">
         <div class="flex items-center gap-8">
           <span class="text-xl font-bold text-blue-600" vln-text="blog.title"></span>
           <div class="hidden md:flex gap-6">
             <a href="#" class="text-gray-600 hover:text-blue-600 font-medium">Home</a>
-            <!-- vln-loop generates links from computed categories -->
             <a href="#" class="text-gray-600 hover:text-blue-600 font-medium" vln-loop:cat="blog.categories" vln-text="cat"></a>
             <a href="#" class="text-gray-600 hover:text-blue-600 font-medium">About</a>
           </div>
@@ -66,7 +29,6 @@
         <p class="text-blue-100 text-lg" vln-text="blog.tagline"></p>
       </header>
 
-      <!-- Loop over posts array, each post becomes an article -->
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <article
           vln-loop:post="blog.posts"
@@ -90,10 +52,8 @@
     </div>
   </template>
 
-  <!-- Template: Classic Newspaper Theme -->
-  <template id="classic">
+  <template vln-template="classic">
     <div class="bg-white">
-      <!-- Newspaper Masthead -->
       <header class="border-b-4 border-black pb-4 mb-6">
         <div class="flex justify-between items-start text-xs text-gray-500 mb-3">
           <div>
@@ -109,7 +69,6 @@
         <h1 class="text-7xl font-serif font-bold text-center mb-3 tracking-tight" vln-text="blog.title"></h1>
         <p class="text-center text-gray-600 italic text-lg mb-4" vln-text="blog.tagline"></p>
 
-        <!-- Navigation Bar -->
         <nav class="border-t-2 border-b-2 border-black py-2 mt-4">
           <div class="flex justify-center gap-8 text-sm font-bold uppercase tracking-wide">
             <a href="#" class="hover:underline">Home</a>
@@ -137,10 +96,8 @@
     </div>
   </template>
 
-  <!-- Template: Minimal List Theme -->
-  <template id="minimal">
+  <template vln-template="minimal">
     <div class="flex gap-12">
-      <!-- Left Sidebar Navigation -->
       <nav class="w-48 flex-shrink-0">
         <div class="sticky top-8">
           <div class="mb-8">
@@ -161,7 +118,6 @@
         </div>
       </nav>
 
-      <!-- Main Content -->
       <div class="flex-1 max-w-2xl">
         <header class="mb-12">
           <p class="text-gray-500 text-lg" vln-text="blog.tagline"></p>
@@ -187,10 +143,8 @@
     </div>
   </template>
 
-  <!-- Template: Magazine Grid Theme -->
-  <template id="magazine">
+  <template vln-template="magazine">
     <div class="bg-black text-white">
-      <!-- Bold Top Header -->
       <header class="bg-gradient-to-r from-purple-900 to-pink-900">
         <nav class="flex items-center justify-between px-8 py-4 border-b border-purple-700">
           <div class="flex items-center gap-8">
@@ -237,4 +191,42 @@
       </div>
     </div>
   </template>
+
+  <div class="mb-6 p-4 bg-gray-50 rounded-lg">
+    <h3 class="text-lg font-semibold mb-3">Theme Selector</h3>
+
+    <!-- Radio buttons with vln-attr:checked and vln-on:change -->
+    <div class="space-y-2">
+      <label class="flex items-center space-x-3 cursor-pointer">
+        <input type="radio" name="theme" value="modern"
+               vln-attr:checked="currentTheme === 'modern'"
+               vln-on:change="currentTheme = 'modern'"
+               class="w-4 h-4">
+        <span class="text-sm font-medium">Modern Cards - Clean card-based design with shadows</span>
+      </label>
+      <label class="flex items-center space-x-3 cursor-pointer">
+        <input type="radio" name="theme" value="classic"
+               vln-attr:checked="currentTheme === 'classic'"
+               vln-on:change="currentTheme = 'classic'"
+               class="w-4 h-4">
+        <span class="text-sm font-medium">Classic Newspaper - Traditional column layout</span>
+      </label>
+      <label class="flex items-center space-x-3 cursor-pointer">
+        <input type="radio" name="theme" value="minimal"
+               vln-attr:checked="currentTheme === 'minimal'"
+               vln-on:change="currentTheme = 'minimal'"
+               class="w-4 h-4">
+        <span class="text-sm font-medium">Minimal List - Simple, typography-focused</span>
+      </label>
+      <label class="flex items-center space-x-3 cursor-pointer">
+        <input type="radio" name="theme" value="magazine"
+               vln-attr:checked="currentTheme === 'magazine'"
+               vln-on:change="currentTheme = 'magazine'"
+               class="w-4 h-4">
+        <span class="text-sm font-medium">Magazine Grid - Bold, image-heavy layout</span>
+      </label>
+    </div>
+  </div>
+
+  <div vln-fragment="currentTheme"></div>
 </div>

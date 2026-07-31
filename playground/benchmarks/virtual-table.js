@@ -309,7 +309,9 @@ async function injectTemplate(url) {
   const html = await fetch(url).then(r => r.text());
   const tpl  = document.createElement('template');
   tpl.innerHTML = html;
-  document.body.appendChild(tpl.content);
+  // Prepend so vln-template registrations run before any vln-fragment
+  // consumer in the app markup below.
+  document.body.insertBefore(tpl.content, document.body.firstChild);
 }
 
 (async () => {
@@ -386,7 +388,7 @@ async function injectTemplate(url) {
     modal: { visible: false, progress: 0, label: '' },
     inspect: { open: false, data: '' },
 
-    // Hover popover: reflects the actual <template id="…"> HTML of whichever
+    // Hover popover: reflects the actual <template vln-template="…"> HTML of whichever
     // cell the mouse is over. Nothing to fetch — read straight from the DOM.
     preview: { visible: false, title: '', source: '', x: 0, y: 0 },
 
@@ -633,7 +635,7 @@ async function injectTemplate(url) {
     },
 
     peekCell(templateId, event) {
-      const tpl = document.getElementById(templateId);
+      const tpl = document.querySelector(`template[vln-template="${templateId}"]`);
       if (!tpl) return;
       state.preview.title = templateId;
       state.preview.source = tpl.innerHTML.trim();
