@@ -22,6 +22,49 @@
 <body>
 
   <div id="app">
+    <template vln-template="profile-chrome" vln-vars="['id', 'tab', 'sort']">
+      <div class="card"
+           vln-on:init="onmount(id, tab)"
+           vln-on:destroy="onunmount()">
+        <h1>Profile: <span vln-text="id"></span></h1>
+
+        <nav class="tabs">
+          <a vln-attr:href="'#/profile/' + id"                    vln-class="{ active: tab === 'overview' }">Overview</a>
+          <a vln-attr:href="'#/profile/' + id + '/posts/recent'"  vln-class="{ active: tab === 'posts' }">Posts</a>
+          <a vln-attr:href="'#/profile/' + id + '/settings'"      vln-class="{ active: tab === 'settings' }">Settings</a>
+        </nav>
+
+        <div vln-if="tab === 'overview'">
+          <p vln-text="bioFor(id)"></p>
+          <p class="muted" vln-watch:logchange="id">Watching id — console fires on Alice ↔ Bob.</p>
+        </div>
+
+        <div vln-if="tab === 'posts'">
+          <p class="sort-row">
+            Sort:
+            <a vln-attr:href="'#/profile/' + id + '/posts/recent'" vln-class="{ active: sort === 'recent' }">Recent</a>
+            <a vln-attr:href="'#/profile/' + id + '/posts/top'"    vln-class="{ active: sort === 'top' }">Top</a>
+          </p>
+          <p class="muted">Sort is a URL segment — <code vln-text="myRoute.path"></code>.</p>
+          <ul vln-if="sort === 'recent'">
+            <li>Post 3 (newest)</li>
+            <li>Post 2</li>
+            <li>Post 1</li>
+          </ul>
+          <ul vln-if="sort === 'top'">
+            <li>Post 2 (most liked)</li>
+            <li>Post 1</li>
+            <li>Post 3</li>
+          </ul>
+        </div>
+
+        <div vln-if="tab === 'settings'">
+          <p>Settings for <strong vln-text="id"></strong>.</p>
+          <p class="muted">This subview mounts/unmounts via the router — the destroy hook fires on tab change.</p>
+        </div>
+      </div>
+    </template>
+
     <nav class="top">
       <a vln-attr:href="'#/'"                vln-class="{ active: myRoute.path === '/' }">Home</a>
       <a vln-attr:href="'#/profile/alice'"   vln-class="{ active: myRoute.path.split('/')[2] === 'alice' }">Alice</a>
@@ -40,21 +83,15 @@
       <!-- Three sibling routes share one chrome via a fragment. -->
       <div vln-route="'/profile/:id'">
         <div vln-fragment="'profile-chrome'"
-             vln-var:id="myRoute.path.split('/')[2]"
-             vln-var:tab="'overview'"
-             vln-var:sort="''"></div>
+             vln-vars="{ id: myRoute.path.split('/')[2], tab: 'overview', sort: '' }"></div>
       </div>
       <div vln-route="'/profile/:id/posts/:sort'">
         <div vln-fragment="'profile-chrome'"
-             vln-var:id="myRoute.path.split('/')[2]"
-             vln-var:tab="'posts'"
-             vln-var:sort="myRoute.path.split('/')[4]"></div>
+             vln-vars="{ id: myRoute.path.split('/')[2], tab: 'posts', sort: myRoute.path.split('/')[4] }"></div>
       </div>
       <div vln-route="'/profile/:id/settings'">
         <div vln-fragment="'profile-chrome'"
-             vln-var:id="myRoute.path.split('/')[2]"
-             vln-var:tab="'settings'"
-             vln-var:sort="''"></div>
+             vln-vars="{ id: myRoute.path.split('/')[2], tab: 'settings', sort: '' }"></div>
       </div>
 
       <!-- Catch-all: no `*` pattern in the plugin yet, so key off a helper. -->
@@ -66,49 +103,6 @@
 
     </div>
   </div>
-
-  <template id="profile-chrome" vln-vars="id,tab,sort">
-    <div class="card"
-         vln-on:init="onmount(id, tab)"
-         vln-on:destroy="onunmount()">
-      <h1>Profile: <span vln-text="id"></span></h1>
-
-      <nav class="tabs">
-        <a vln-attr:href="'#/profile/' + id"                    vln-class="{ active: tab === 'overview' }">Overview</a>
-        <a vln-attr:href="'#/profile/' + id + '/posts/recent'"  vln-class="{ active: tab === 'posts' }">Posts</a>
-        <a vln-attr:href="'#/profile/' + id + '/settings'"      vln-class="{ active: tab === 'settings' }">Settings</a>
-      </nav>
-
-      <div vln-if="tab === 'overview'">
-        <p vln-text="bioFor(id)"></p>
-        <p class="muted" vln-watch:logchange="id">Watching id — console fires on Alice ↔ Bob.</p>
-      </div>
-
-      <div vln-if="tab === 'posts'">
-        <p class="sort-row">
-          Sort:
-          <a vln-attr:href="'#/profile/' + id + '/posts/recent'" vln-class="{ active: sort === 'recent' }">Recent</a>
-          <a vln-attr:href="'#/profile/' + id + '/posts/top'"    vln-class="{ active: sort === 'top' }">Top</a>
-        </p>
-        <p class="muted">Sort is a URL segment — <code vln-text="myRoute.path"></code>.</p>
-        <ul vln-if="sort === 'recent'">
-          <li>Post 3 (newest)</li>
-          <li>Post 2</li>
-          <li>Post 1</li>
-        </ul>
-        <ul vln-if="sort === 'top'">
-          <li>Post 2 (most liked)</li>
-          <li>Post 1</li>
-          <li>Post 3</li>
-        </ul>
-      </div>
-
-      <div vln-if="tab === 'settings'">
-        <p>Settings for <strong vln-text="id"></strong>.</p>
-        <p class="muted">This subview mounts/unmounts via the router — the destroy hook fires on tab change.</p>
-      </div>
-    </div>
-  </template>
 
   <script>
     Velin.bind(document.getElementById('app'), {

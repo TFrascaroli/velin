@@ -205,10 +205,7 @@
                  vln-fragment="myTable.columnDefs[col.colId].template || 'cell-text'"
                  vln-on:mouseenter="peekCell(myTable.columnDefs[col.colId].template || 'cell-text', event)"
                  vln-on:mouseleave="unpeekCell()"
-                 vln-var:row="item.row"
-                 vln-var:coldef="myTable.columnDefs[col.colId]"
-                 vln-var:actions="myTable.actions"
-                 vln-var:h="helpers">
+                 vln-vars="{ row: item.row, coldef: myTable.columnDefs[col.colId], actions: myTable.actions, h: helpers }">
             </div>
 
           </div>
