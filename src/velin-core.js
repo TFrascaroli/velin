@@ -69,6 +69,7 @@
  * @property {(ast?: ASTNode) => any} evaluateAst Pre-bound evaluateAst
  * @property {(expr?: string) => (value: any) => void} getSetter Pre-bound getSetter
  * @property {(init: ComposeInit) => ChildContext} compose Pre-bound compose (returns ChildContext)
+ * @property {(node: Node) => void} processNode Pre-bound processNode — runs plugins on `node` in THIS scope (no child scope is created). Use for dynamically-inserted subtrees that should share the current scope.
  * @property {(node: Node, name?: string, value?: string) => void} consume Pre-bound consumeAttribute
  * @property {(prop: string) => void} triggerEffects Pre-bound triggerEffects
  * @property {(fn: () => void) => void} batch Pre-bound batch on this state's tree control
@@ -487,6 +488,8 @@ function buildPluginHelpers(reactiveState) {
     getSetter: (expr) => getSetter(reactiveState, expr),
     /** @param {ComposeInit} init */
     compose: (init) => buildChildContext(reactiveState, init),
+    /** @param {Node} node */
+    processNode: (node) => processNode(node, reactiveState),
     /** @param {HTMLElement} node @param {string} name @param {string} value */
     consume: (node, name, value) => consumeAttribute(node, name, value),
     /** @param {string} prop */
@@ -1723,7 +1726,7 @@ function composeState(reactiveState, init) {
   // (`reactiveState` — captured in closure), giving them JS-closure
   // semantics: an expression's identifiers resolve in the scope where the
   // expression was authored, NOT where the interpolation now lives. This
-  // is what breaks same-name shadow recursion (e.g. `vln-var:user="user"`
+  // is what breaks same-name shadow recursion (e.g. `vln-vars="{ user: user }"`
   // under `vln-loop:user="users"`).
   const enclosing = reactiveState;
   const innerStateProxy = new Proxy(reactiveState.state, {
@@ -1908,7 +1911,10 @@ function processNode(node, reactiveState) {
   // otherwise vln-attr / vln-class on a <polyline> etc. is unreachable
   // because traversal bails at the SVG root.
   if (!(node instanceof Element)) return;
-  if (node instanceof HTMLTemplateElement) return;
+  // Note: <template> elements are processed for their own attributes (the
+  // vln-template plugin registers them into the template store) but their
+  // children live in `.content` — a DocumentFragment — so `node.children` is
+  // empty and the tree walk below descends into nothing. Safe by design.
   if (__DEV__) console.log("Processing node", node);
 
   // Track duplicate application per plugin/subcommand (only for real plugins;
