@@ -41,7 +41,7 @@
   </nav>
 
   <!-- 4-Quadrant Grid Template -->
-  <template id="exampleQuadrant" vln-vars="example, idx">
+  <template vln-template="exampleQuadrant" vln-vars="['example', 'idx']">
     <div vln-if="currentTab === idx" class="absolute inset-0 grid grid-cols-2 grid-rows-2 gap-4">
       <!-- Top-Left: Original HTML -->
       <section class="bg-gray-800 rounded-lg border border-gray-700 flex flex-col overflow-hidden">
@@ -101,7 +101,7 @@
 
   <!-- Main Content Area -->
   <main class="flex-1 p-6 overflow-hidden relative">
-    <div vln-loop:ex="examples" vln-fragment="'exampleQuadrant'" vln-var:example="ex" vln-var:idx="$index"></div>
+    <div vln-loop:ex="examples" vln-fragment="'exampleQuadrant'" vln-vars="{ example: ex, idx: $index }"></div>
   </main>
 
   <!-- Hidden: Example definitions -->
@@ -178,7 +178,7 @@
     </div>
 
     <div vln-diff="Templates">
-      <template id="friendCard" vln-vars="friend">
+      <template vln-template="friendCard" vln-vars="['friend']">
         <div class="p-4 mb-4 rounded-lg bg-gray-700 border border-gray-600">
           <div class="text-lg font-semibold mb-2 text-indigo-400">
             <span vln-text="friend.name"></span>
@@ -200,7 +200,7 @@
         </div>
       </template>
       <div>
-        <div vln-loop:friend_obj="friends" vln-fragment="'friendCard'" vln-var:friend="friend_obj"></div>
+        <div vln-loop:friend_obj="friends" vln-fragment="'friendCard'" vln-vars="{ friend: friend_obj }"></div>
       </div>
     </div>
   </div>
@@ -264,13 +264,16 @@
   Velin.plugins.registerPlugin({
     name: 'diff',
     priority: Velin.plugins.priorities.STOPPER,
-    render: ({ state, node, expr, pluginState = {} }) => {
+    render: ({ state, node, expr, processNode, pluginState = {} }) => {
       const id = slugify(expr);
       const templateId = slugToCamel(id) + 'Tpl';
 
-      // Create template dynamically
+      // Create template dynamically and register it via vln-template so
+      // the fragment plugin can look it up. Appended to body then processed
+      // in the current scope — vln-template's own render evaluates any
+      // vln-vars declaration in that scope, same as static templates.
       const template = document.createElement('template');
-      template.id = templateId;
+      template.setAttribute('vln-template', templateId);
       template.innerHTML = node.innerHTML;
 
       const varsAttr = node.getAttribute('vln-vars');
@@ -278,8 +281,11 @@
         template.setAttribute('vln-vars', varsAttr);
       }
 
-      if (!document.getElementById(templateId)) {
+      if (!document.querySelector(`template[vln-template="${templateId}"]`)) {
         document.body.appendChild(template);
+        // Process in THIS plugin's scope so vln-template registers under the
+        // right identifier-resolution context.
+        processNode(template);
       }
 
       // Store example metadata
