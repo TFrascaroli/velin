@@ -23,7 +23,7 @@ describe("Fragments: reactivity & shadowing", () => {
 
   it("transformer receives updated value on provider mutation", () => {
     container.innerHTML = `
-      <template vln-template="t" vln-vars="{ n: doubleIt }">
+      <template vln-template="'t'" vln-vars="{ n: doubleIt }">
         <span class="v" vln-text="n"></span>
       </template>
       <div vln-fragment="'t'" vln-vars="{ n: raw }"></div>
@@ -41,7 +41,7 @@ describe("Fragments: reactivity & shadowing", () => {
   it("transformer runs each time value updates (spy verification)", () => {
     const doubleIt = vi.fn((v: number) => v * 2);
     container.innerHTML = `
-      <template vln-template="t" vln-vars="{ n: doubleIt }">
+      <template vln-template="'t'" vln-vars="{ n: doubleIt }">
         <span class="v" vln-text="n"></span>
       </template>
       <div vln-fragment="'t'" vln-vars="{ n: raw }"></div>
@@ -60,7 +60,7 @@ describe("Fragments: reactivity & shadowing", () => {
 
   it("transformer default (nullish fallback) applied and refreshed", () => {
     container.innerHTML = `
-      <template vln-template="t" vln-vars="{ name: defaultAnon }">
+      <template vln-template="'t'" vln-vars="{ name: defaultAnon }">
         <span class="v" vln-text="name"></span>
       </template>
       <div vln-fragment="'t'" vln-vars="{ name: current }"></div>
@@ -80,7 +80,7 @@ describe("Fragments: reactivity & shadowing", () => {
   it("transformer validation throws on bad input", () => {
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     container.innerHTML = `
-      <template vln-template="t" vln-vars="{ age: requirePositive }">
+      <template vln-template="'t'" vln-vars="{ age: requirePositive }">
         <span class="v" vln-text="age"></span>
       </template>
       <div vln-fragment="'t'" vln-vars="{ age: n }"></div>
@@ -107,7 +107,7 @@ describe("Fragments: reactivity & shadowing", () => {
   // The test asserts the pattern renders WITHOUT recursion.
   it("provider key can share a name with a parent-scope identifier (loop var)", () => {
     container.innerHTML = `
-      <template vln-template="tCard" vln-vars="['user']">
+      <template vln-template="'tCard'" vln-vars="['user']">
         <div class="card" vln-text="user.name"></div>
       </template>
       <div vln-loop:user="users">
@@ -127,7 +127,7 @@ describe("Fragments: reactivity & shadowing", () => {
 
   it("same-name shadowing also works when loop + fragment are on the SAME element", () => {
     container.innerHTML = `
-      <template vln-template="tCard" vln-vars="['user']">
+      <template vln-template="'tCard'" vln-vars="['user']">
         <div class="card" vln-text="user.name"></div>
       </template>
       <div vln-loop:user="users"
@@ -146,7 +146,7 @@ describe("Fragments: reactivity & shadowing", () => {
 
   it("same-name shadowing reactively updates when the loop mutates", () => {
     container.innerHTML = `
-      <template vln-template="tCard" vln-vars="['user']">
+      <template vln-template="'tCard'" vln-vars="['user']">
         <div class="card" vln-text="user.name"></div>
       </template>
       <div vln-loop:user="users">
@@ -168,13 +168,13 @@ describe("Fragments: reactivity & shadowing", () => {
 
   it("nested fragments with overlapping var names each see their own layer", () => {
     container.innerHTML = `
-      <template vln-template="outer" vln-vars="['user']">
+      <template vln-template="'outer'" vln-vars="['user']">
         <div class="outer">
           <span class="ov" vln-text="user.name"></span>
           <div vln-fragment="'inner'" vln-vars="{ user: user }"></div>
         </div>
       </template>
-      <template vln-template="inner" vln-vars="['user']">
+      <template vln-template="'inner'" vln-vars="['user']">
         <span class="iv" vln-text="'inner:' + user.name"></span>
       </template>
       <div vln-fragment="'outer'" vln-vars="{ user: current }"></div>
@@ -192,7 +192,7 @@ describe("Fragments: reactivity & shadowing", () => {
 
   it("multiple consumers of same template with distinct providers", () => {
     container.innerHTML = `
-      <template vln-template="t" vln-vars="['label']">
+      <template vln-template="'t'" vln-vars="['label']">
         <span class="v" vln-text="label"></span>
       </template>
       <div id="a" vln-fragment="'t'" vln-vars="{ label: a }"></div>
@@ -209,7 +209,7 @@ describe("Fragments: reactivity & shadowing", () => {
 
   it("transformer + shadowing: provider passes loop var, transformer applied", () => {
     container.innerHTML = `
-      <template vln-template="t" vln-vars="{ user: upperName }">
+      <template vln-template="'t'" vln-vars="{ user: upperName }">
         <span class="v" vln-text="user"></span>
       </template>
       <div vln-loop:user="users">
@@ -229,7 +229,7 @@ describe("Fragments: reactivity & shadowing", () => {
 
   it("provider that computes on the fly (function call) stays reactive", () => {
     container.innerHTML = `
-      <template vln-template="t" vln-vars="['greeting']">
+      <template vln-template="'t'" vln-vars="['greeting']">
         <span class="v" vln-text="greeting"></span>
       </template>
       <div vln-fragment="'t'" vln-vars="{ greeting: hello(who) }"></div>

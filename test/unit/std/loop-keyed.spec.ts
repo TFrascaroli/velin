@@ -156,7 +156,7 @@ describe('vln-loop keyed diff', () => {
     // used to fail because refreshing only fired the loop iteration's own
     // effects, not the fragment's inner substate.
     container.innerHTML = `
-      <template vln-template="tpl-shout" vln-vars="['c']">
+      <template vln-template="'tpl-shout'" vln-vars="['c']">
         <span vln-text="'!' + c.name"></span>
       </template>
       <div>
