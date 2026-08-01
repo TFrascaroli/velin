@@ -12,13 +12,19 @@
  */
 
 /**
+ * Void elements per HTML spec — cannot have children. Fragment on any of
+ * these is a user error we surface clearly rather than let appendChild fail.
+ */
+const VOID_ELEMENTS = new Set([
+  "area", "base", "br", "col", "embed", "hr", "img", "input",
+  "link", "meta", "source", "track", "wbr",
+]);
+
+/**
  * Template registry. Values hold a `WeakRef` to the `<template>` element so a
  * template removed from the DOM AND unreachable elsewhere is naturally GC'd
  * and its registration falls out silently. Lookups that find a dead ref
  * purge the entry and behave as "not registered".
- *
- * The `vln-template` plugin's destroy hook is the primary cleanup path; the
- * WeakRef is a safety net for nodes torn down without `cleanupState`.
  *
  * @type {Map<string, TemplateEntry>}
  */
@@ -40,46 +46,72 @@ function lookupTemplate(id) {
 }
 
 /**
+ * Shared "undefined id" hint. Emitted when a template/fragment id expression
+ * evaluates to undefined/null — almost always because the user forgot to
+ * quote a string literal.
+ * @param {"vln-template" | "vln-fragment"} directive
+ * @param {any} value
+ */
+function undefinedIdError(directive, value) {
+  return (
+    `[Velin Templates] ${directive} id evaluated to ${value === undefined ? "undefined" : "null"}. ` +
+    `Did you forget quotes? Use ${directive}="'myId'" for a string literal, or a state expression that resolves to a string.`
+  );
+}
+
+/**
  * @param {VelinCore} vln
  */
 function setupTemplatesAndFragments(vln) {
   /**
-   * vln-template: Registers a <template> in the module-local registry under
-   * its attribute value as the id. Evaluates the sibling `vln-vars`
-   * declaration in the scope where the template lives, so transformer
-   * identifiers resolve against that scope (not the consumer's) — a
-   * declaration can safely name state-level helpers even when a consumer
-   * sits inside a substate that would shadow them.
+   * vln-template: Registers a <template> under an id, evaluating the sibling
+   * `vln-vars` declaration in the scope where the template lives.
    *
-   * Templates MUST appear before their consumers in the DOM: Velin processes
-   * nodes in document order, so a `<template vln-template="foo">` further
-   * down the tree than `<div vln-fragment="'foo'">` will not yet be
-   * registered when the fragment renders. The fragment plugin errors loudly
-   * in that case.
+   * The attribute value is evaluated as JS like every other directive:
+   *   vln-template="'userCard'"   → id "userCard" (string literal)
+   *   vln-template="cardIds.user" → id from state
    *
-   *   <template vln-template="userCard" vln-vars="['user', 'onSave']">
+   * Templates MUST appear before their consumers in the DOM AND inside the
+   * same `Velin.bind()` root — Velin processes nodes in document order, and
+   * the plugin only fires on nodes it visits.
+   *
+   *   <template vln-template="'userCard'" vln-vars="['user', 'onSave']">
    *     <div class="card"><h3 vln-text="user.name"></h3></div>
    *   </template>
    *
    * With transformers:
-   *   <template vln-template="userCard" vln-vars="{ user: requireUser }">…</template>
+   *   <template vln-template="'userCard'" vln-vars="{ user: requireUser }">…</template>
    *
    * With a state-level constant declaration:
    *   // state.modalVars === { user: requireUser }
-   *   <template vln-template="userCard" vln-vars="modalVars">…</template>
+   *   <template vln-template="'userCard'" vln-vars="modalVars">…</template>
    *
-   * With no declaration (auto-discovery — provided keys pass through):
-   *   <template vln-template="loose">…</template>
+   * Duplicate policy: last one wins with a `replacing` warning, so
+   * hot-reload / edit-in-place workflows just work.
    */
   vln.plugins.registerPlugin({
     name: "template",
     priority: vln.plugins.priorities.LATE,
 
-    render: ({ node, evaluate }) => {
-      const templateId = node.getAttribute("vln-template");
-      if (!templateId) {
+    render: ({ node, compiledExpression, evaluate, evaluateAst }) => {
+      /** @type {any} */
+      let templateId;
+      try {
+        templateId = evaluateAst(compiledExpression);
+      } catch (err) {
+        const msg = err && /** @type {any} */(err).message
+          ? /** @type {any} */(err).message
+          : String(err);
+        console.error(`[Velin Templates] vln-template: failed to evaluate id: ${msg}`);
+        return { halt: true };
+      }
+      if (templateId === undefined || templateId === null) {
+        console.error(undefinedIdError("vln-template", templateId));
+        return { halt: true };
+      }
+      if (typeof templateId !== "string") {
         console.error(
-          `[Velin Templates] vln-template requires an id value. Usage: <template vln-template="myId" …>.`
+          `[Velin Templates] vln-template id must be a string. Got ${typeof templateId}.`
         );
         return { halt: true };
       }
@@ -90,17 +122,15 @@ function setupTemplatesAndFragments(vln) {
         return { halt: true };
       }
 
-      // Real duplicate: another live-and-connected template already owns
-      // this id. Same-node re-registration is a legitimate re-evaluation
-      // (fall through). Stale entries (WeakRef dead or node disconnected)
-      // get replaced silently — this is what makes test-to-test re-binds
-      // clean without explicit teardown.
+      // Last-wins on duplicates. A still-connected prior owner is worth
+      // warning about — it means two live definitions of the same id, which
+      // is almost certainly a copy-paste bug. Stale entries (WeakRef dead or
+      // disconnected) get replaced silently.
       const existing = lookupTemplate(templateId);
       if (existing && existing.node !== node && existing.node.isConnected) {
         console.warn(
-          `[Velin Templates] Duplicate vln-template="${templateId}" — another live <template> already owns this id. The earlier registration wins.`
+          `[Velin Templates] Template "${templateId}" already registered — replacing.`
         );
-        return { halt: true, pluginState: { templateId } };
       }
 
       /** @type {Record<string, Function|null>} */
@@ -154,8 +184,8 @@ function setupTemplatesAndFragments(vln) {
       const id = pluginState?.templateId;
       if (!id) return;
       const entry = templates.get(id);
-      // Guard by node identity — a duplicate's late destroy must not wipe
-      // the winning entry.
+      // Guard by node identity — a superseded template's late destroy must
+      // not wipe the current winner's entry.
       if (entry && entry.nodeRef.deref() === node) {
         templates.delete(id);
       }
@@ -202,9 +232,22 @@ function setupTemplatesAndFragments(vln) {
       const varsExpr = tracked?.varsExpr;
       const providedVars = tracked?.providedVars;
 
-      if (!templateId) {
+      if (templateId === undefined || templateId === null) {
+        console.error(undefinedIdError("vln-fragment", templateId));
+        return { halt: true };
+      }
+      if (typeof templateId !== "string") {
         console.error(
-          `[Velin Templates] vln-fragment requires a template id. Usage: vln-fragment="'templateId'" or vln-fragment="dynamicId"`
+          `[Velin Templates] vln-fragment id must be a string. Got ${typeof templateId}.`
+        );
+        return { halt: true };
+      }
+
+      // Void elements can't hold children. Catch it here rather than let
+      // appendChild silently no-op or throw an opaque DOM error later.
+      if (node instanceof HTMLElement && VOID_ELEMENTS.has(node.tagName.toLowerCase())) {
+        console.error(
+          `[Velin Templates] vln-fragment cannot be used on <${node.tagName.toLowerCase()}> — void elements cannot hold children. Use a container like <div> or <span>.`
         );
         return { halt: true };
       }
@@ -213,9 +256,10 @@ function setupTemplatesAndFragments(vln) {
       if (!entry) {
         console.error(
           `[Velin Templates] Template "${templateId}" is not registered. Make sure a ` +
-          `<template vln-template="${templateId}">…</template> appears BEFORE this ` +
-          `<${node.tagName.toLowerCase()} vln-fragment=…> in the DOM (Velin processes nodes ` +
-          `in document order — earlier siblings register first).`
+          `<template vln-template="'${templateId}'">…</template> appears BEFORE this ` +
+          `<${node.tagName.toLowerCase()} vln-fragment=…> in the DOM AND inside the same ` +
+          `Velin.bind() root (Velin processes nodes in document order — earlier siblings ` +
+          `register first). Call Velin.debug.templates() to list what IS registered.`
         );
         return { halt: true };
       }
@@ -232,17 +276,19 @@ function setupTemplatesAndFragments(vln) {
       node.innerHTML = "";
 
       // Coerce to a plain object; anything else (null, primitives, arrays)
-      // renders as "no keys provided", which either satisfies auto-discovery
-      // with nothing or trips the missing-var check for declared keys.
-      const provided = (providedVars && typeof providedVars === "object" && !Array.isArray(providedVars))
-        ? providedVars
-        : {};
+      // renders as "no keys provided", which trips the missing-var check
+      // below with a helpful type hint.
+      const providerIsObject = providedVars && typeof providedVars === "object" && !Array.isArray(providedVars);
+      const provided = providerIsObject ? providedVars : {};
 
       const declared = Object.keys(transformers);
       const missing = declared.filter(n => !(n in provided));
       if (missing.length) {
+        const typeHint = varsExpr && !providerIsObject
+          ? ` (provider \`${varsExpr}\` evaluated to ${providedVars === null ? "null" : Array.isArray(providedVars) ? "an array" : typeof providedVars} — expected an object; did you mean \`{...${varsExpr}}\`?)`
+          : "";
         console.error(
-          `[Velin Templates] Template "${templateId}" requires missing variables: [${missing.join(", ")}]. ` +
+          `[Velin Templates] Template "${templateId}" requires missing variables: [${missing.join(", ")}]${typeHint}. ` +
           `Add them to vln-vars, e.g. vln-vars="{ ${missing[0]}: yourValue, … }"`
         );
         return { halt: true };
@@ -255,9 +301,6 @@ function setupTemplatesAndFragments(vln) {
       // under a same-named parent identifier resolves via JS-closure
       // semantics, not shadow recursion. Transformers ride via the
       // interpolation's optional `transform` field.
-      // If we reach here `varsExpr` is either null-and-nothing-declared
-      // (loop is empty) or non-null (all branches use it); the missing-var
-      // check above ruled out "declared without a provider".
       /** @type {Record<string, {expr: string, transform?: Function} | {literal: any}>} */
       const composeInit = {};
       const names = new Set([...declared, ...Object.keys(provided)]);
@@ -281,6 +324,44 @@ function setupTemplatesAndFragments(vln) {
       };
     },
   });
+
+  /**
+   * vln-var:*: Deprecated. Kept as an error-only plugin during beta so users
+   * migrating from the old sibling-attribute API get a loud message instead
+   * of silent no-op. Remove before 1.0.
+   */
+  vln.plugins.registerPlugin({
+    name: "var",
+    // STOPPER so the error fires BEFORE any sibling vln-fragment on the same
+    // element gets to run and drown out the deprecation message with its own
+    // "missing variables" error.
+    priority: vln.plugins.priorities.STOPPER,
+    render: ({ node, subkey }) => {
+      console.error(
+        `[Velin Templates] vln-var:${subkey ?? ""} was removed. Provide values via a single ` +
+        `vln-vars="{...}" attribute on the vln-fragment element, e.g. ` +
+        `<${node.tagName.toLowerCase()} vln-fragment="'myTpl'" vln-vars="{ ${subkey ?? "name"}: value }">.`
+      );
+      return { halt: true };
+    },
+  });
+
+  // Debug affordance — snapshot of live registrations. Not part of the
+  // public API surface people should build against; a convenience for
+  // console-driven debugging of "not registered" errors.
+  /** @type {any} */
+  const vlnAny = vln;
+  vlnAny.debug = vlnAny.debug || {};
+  vlnAny.debug.templates = () => {
+    /** @type {Array<{id: string, connected: boolean}>} */
+    const out = [];
+    for (const [id, entry] of templates) {
+      const node = entry.nodeRef.deref();
+      if (!node) continue;
+      out.push({ id, connected: node.isConnected });
+    }
+    return out;
+  };
 }
 
 // Auto-bootstrap in browser

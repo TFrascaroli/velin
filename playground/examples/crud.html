@@ -4,7 +4,7 @@
      vln-fragment consumer in the DOM. -->
 
 <!-- Template: Normal view mode -->
-<template vln-template="task-view">
+<template vln-template="'task-view'">
   <div class="flex items-center gap-3">
     <!-- vln-input on nested object properties -->
     <input type="checkbox" vln-input="task.done" class="w-4 h-4" />
@@ -19,7 +19,7 @@
 </template>
 
 <!-- Template: Edit mode -->
-<template vln-template="task-edit">
+<template vln-template="'task-edit'">
   <div class="flex items-center gap-2">
     <input vln-input="editText" class="flex-1 px-3 py-2 border border-gray-300 rounded-md" />
     <button vln-on:click="saveEdit(task)" class="px-3 py-1 text-sm bg-green-500 text-white rounded hover:bg-green-600">

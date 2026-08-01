@@ -25,7 +25,7 @@
          Registered early — vln-template must appear before any vln-fragment
          consumer in the DOM. -->
 
-    <template vln-template="examples-list">
+    <template vln-template="'examples-list'">
       <section>
         <h1>Examples</h1>
         <p class="lede">
@@ -54,7 +54,7 @@
       </section>
     </template>
 
-    <template vln-template="example-detail" vln-vars="['exampleid']">
+    <template vln-template="'example-detail'" vln-vars="['exampleid']">
       <section vln-use:ex="getExample(exampleid)">
         <div vln-if="ex" class="wide-view">
           <div class="detail-header">
@@ -91,7 +91,7 @@
       </section>
     </template>
 
-    <template vln-template="docs-list">
+    <template vln-template="'docs-list'">
       <section class="prose">
         <h1>Documentation</h1>
         <p>
@@ -111,7 +111,7 @@
       </section>
     </template>
 
-    <template vln-template="doc-page" vln-vars="['docid']">
+    <template vln-template="'doc-page'" vln-vars="['docid']">
       <section vln-use:doc="getDoc(docid)">
         <div class="prose" vln-if="doc">
           <a vln-attr:href="'#/docs'" class="back-link">← All docs</a>

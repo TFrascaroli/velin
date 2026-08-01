@@ -635,7 +635,8 @@ async function injectTemplate(url) {
     },
 
     peekCell(templateId, event) {
-      const tpl = document.querySelector(`template[vln-template="${templateId}"]`);
+      // Attribute stores the id as a JS string literal (quoted).
+      const tpl = document.querySelector(`template[vln-template="'${templateId}'"]`);
       if (!tpl) return;
       state.preview.title = templateId;
       state.preview.source = tpl.innerHTML.trim();

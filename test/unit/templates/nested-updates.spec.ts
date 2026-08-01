@@ -22,7 +22,7 @@ describe("Template interpolation with nested property updates", () => {
 
   it("should update nested property through template variable", () => {
     div.innerHTML = `
-      <template vln-template="testTpl" vln-vars="['item']"><span vln-text="item.html"></span></template>
+      <template vln-template="'testTpl'" vln-vars="['item']"><span vln-text="item.html"></span></template>
       <div vln-fragment="'testTpl'" vln-vars="{ item: items[0] }"></div>
     `;
 
@@ -43,7 +43,7 @@ describe("Template interpolation with nested property updates", () => {
 
   it("should update nested property in loop with template", () => {
     div.innerHTML = `
-      <template vln-template="itemTpl" vln-vars="['item']"><div class="item" vln-text="item.value"></div></template>
+      <template vln-template="'itemTpl'" vln-vars="['item']"><div class="item" vln-text="item.value"></div></template>
       <div vln-loop:it="items" vln-fragment="'itemTpl'" vln-vars="{ item: it }"></div>
     `;
 
