@@ -29,7 +29,7 @@ describe("Templates: registration-scope semantics", () => {
     // vln-template's own render — which is at root — so `fmt` resolves to
     // the actual transformer function, not a per-iteration string.
     container.innerHTML = `
-      <template vln-template="tOwn" vln-vars="{ x: fmt }">
+      <template vln-template="'tOwn'" vln-vars="{ x: fmt }">
         <span class="v" vln-text="x"></span>
       </template>
       <div vln-loop:fmt="labels">
@@ -48,7 +48,7 @@ describe("Templates: registration-scope semantics", () => {
 
   it("declaration can be a state-level constant (array form)", () => {
     container.innerHTML = `
-      <template vln-template="tConstArr" vln-vars="requiredVars">
+      <template vln-template="'tConstArr'" vln-vars="requiredVars">
         <span class="v" vln-text="user"></span>
       </template>
       <div vln-fragment="'tConstArr'" vln-vars="{ user: name }"></div>
@@ -63,7 +63,7 @@ describe("Templates: registration-scope semantics", () => {
 
   it("declaration can be a state-level constant (object of transformers)", () => {
     container.innerHTML = `
-      <template vln-template="tConstObj" vln-vars="modalVars">
+      <template vln-template="'tConstObj'" vln-vars="modalVars">
         <span class="v" vln-text="user"></span>
       </template>
       <div vln-fragment="'tConstObj'" vln-vars="{ user: rawUser }"></div>
@@ -78,7 +78,7 @@ describe("Templates: registration-scope semantics", () => {
 
   it("missing-var validation still runs when declaration is a state-level constant", () => {
     container.innerHTML = `
-      <template vln-template="tConstReq" vln-vars="requiredVars">
+      <template vln-template="'tConstReq'" vln-vars="requiredVars">
         <div class="card"><span vln-text="user"></span></div>
       </template>
       <div vln-fragment="'tConstReq'" vln-vars="{ notUser: 'x' }"></div>
@@ -98,7 +98,7 @@ describe("Templates: registration-scope semantics", () => {
     // "not registered" hint pointing at the fix.
     container.innerHTML = `
       <div vln-fragment="'tOrder'" vln-vars="{ x: 1 }"></div>
-      <template vln-template="tOrder" vln-vars="['x']">
+      <template vln-template="'tOrder'" vln-vars="['x']">
         <span class="v" vln-text="x"></span>
       </template>
     `;
@@ -112,12 +112,12 @@ describe("Templates: registration-scope semantics", () => {
     errSpy.mockRestore();
   });
 
-  it("duplicate registration on a still-connected node warns; first wins", () => {
+  it("duplicate registration on a still-connected node warns; last wins", () => {
     container.innerHTML = `
-      <template vln-template="tDup" vln-vars="['x']">
+      <template vln-template="'tDup'" vln-vars="['x']">
         <span class="v" vln-text="'first:' + x"></span>
       </template>
-      <template vln-template="tDup" vln-vars="['x']">
+      <template vln-template="'tDup'" vln-vars="['x']">
         <span class="v" vln-text="'second:' + x"></span>
       </template>
       <div vln-fragment="'tDup'" vln-vars="{ x: 'hello' }"></div>
@@ -125,9 +125,9 @@ describe("Templates: registration-scope semantics", () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     Velin.bind(container, {});
 
-    expect(container.querySelector(".v")?.textContent).toBe("first:hello");
+    expect(container.querySelector(".v")?.textContent).toBe("second:hello");
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Duplicate vln-template="tDup"')
+      expect.stringContaining('Template "tDup" already registered — replacing.')
     );
     warnSpy.mockRestore();
   });

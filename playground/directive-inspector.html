@@ -41,7 +41,7 @@
   </nav>
 
   <!-- 4-Quadrant Grid Template -->
-  <template vln-template="exampleQuadrant" vln-vars="['example', 'idx']">
+  <template vln-template="'exampleQuadrant'" vln-vars="['example', 'idx']">
     <div vln-if="currentTab === idx" class="absolute inset-0 grid grid-cols-2 grid-rows-2 gap-4">
       <!-- Top-Left: Original HTML -->
       <section class="bg-gray-800 rounded-lg border border-gray-700 flex flex-col overflow-hidden">
@@ -178,7 +178,7 @@
     </div>
 
     <div vln-diff="Templates">
-      <template vln-template="friendCard" vln-vars="['friend']">
+      <template vln-template="'friendCard'" vln-vars="['friend']">
         <div class="p-4 mb-4 rounded-lg bg-gray-700 border border-gray-600">
           <div class="text-lg font-semibold mb-2 text-indigo-400">
             <span vln-text="friend.name"></span>
@@ -273,7 +273,9 @@
       // in the current scope — vln-template's own render evaluates any
       // vln-vars declaration in that scope, same as static templates.
       const template = document.createElement('template');
-      template.setAttribute('vln-template', templateId);
+      // Attribute is a JS expression — a bare identifier would evaluate to
+      // undefined in the target scope, so we quote it as a string literal.
+      template.setAttribute('vln-template', `'${templateId}'`);
       template.innerHTML = node.innerHTML;
 
       const varsAttr = node.getAttribute('vln-vars');
@@ -281,7 +283,7 @@
         template.setAttribute('vln-vars', varsAttr);
       }
 
-      if (!document.querySelector(`template[vln-template="${templateId}"]`)) {
+      if (!document.querySelector(`template[vln-template="'${templateId}'"]`)) {
         document.body.appendChild(template);
         // Process in THIS plugin's scope so vln-template registers under the
         // right identifier-resolution context.
