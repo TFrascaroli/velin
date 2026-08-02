@@ -1,13 +1,10 @@
 # Templates & Fragments
 
-The templates module is an optional add-on for reusing HTML chunks. It ships
-with `velin-all.js` and can be excluded if you only need core + standard
-directives.
+Optional add-on for reusing HTML chunks. Ships with `velin-all.js`.
 
 Two directives:
 
-- **`vln-template`** — registers a `<template>` under an id so consumers can
-  render it.
+- **`vln-template`** — registers a `<template>` under an id.
 - **`vln-fragment`** — renders a registered template into the current scope,
   optionally providing values via `vln-vars`.
 
@@ -39,16 +36,11 @@ quote your literal). `vln-vars="{ user: currentUser }"` is the **provider**:
 an object whose keys satisfy the template's declaration, evaluated in the
 consumer's scope.
 
-## The two rules
+## Registration rule
 
-The rewrite trades some flexibility for two clear rules that fix a whole
-class of bugs.
-
-### Rule 1 — templates register in DOM order
-
-`vln-template` fires when Velin walks the element during `bind()`. A
-consumer that appears **before** its template in the DOM will render
-before the template registers and error with:
+A `<template vln-template="…">` registers when Velin walks it during
+`bind()` — that means it must sit **inside the bound root** and **before**
+any consumer in DOM order. Otherwise the fragment errors:
 
 ```
 [Velin Templates] Template "foo" is not registered. Make sure a
@@ -56,17 +48,10 @@ before the template registers and error with:
 <div vln-fragment=…> in the DOM AND inside the same Velin.bind() root.
 ```
 
-In practice: put your templates at the top of the bound root.
+In practice: put templates at the top of the bound root.
 
-If you get confused about what IS registered, call
-`Velin.debug.templates()` in the console — returns
-`[{id, connected}, …]` for every live registration.
-
-### Rule 2 — templates must live inside the bound root
-
-`bind()` only walks the subtree you give it. A `<template>` in `<head>` or
-outside `#app` never gets processed, so `vln-template` never registers it.
-Same error as above.
+`Velin.debug.templates()` returns `[{id, connected}, …]` for every live
+registration — handy in the console when you hit the error.
 
 ## `vln-vars`: two roles, one attribute
 
@@ -74,16 +59,11 @@ Same attribute name on both sides; the meaning depends on where it sits.
 
 ### On `<template vln-template="…">`: declaration
 
-Tells Velin which variables the template body reads. Two forms:
-
 **Array of names — pass-through:**
 
 ```html
 <template vln-template="'userCard'" vln-vars="['user', 'onSave']">…</template>
 ```
-
-Any value the consumer provides for `user` or `onSave` flows through
-unchanged.
 
 **Object of transformers — per-key hook:**
 
@@ -96,9 +76,8 @@ unchanged.
 ```
 
 The value passed for `user` flows through `requireUser(v)` on every read.
-`count` flows through `toNumber(v)`. Transformers are **named function
-references** resolved in the template's own scope (top-level state helpers,
-usually) — the CSP-safe evaluator does not support inline arrow functions.
+Transformers are **named function references** resolved in the template's
+own scope — the CSP-safe evaluator does not support inline arrow functions.
 
 **State-level constant — reusable declaration:**
 
@@ -106,8 +85,6 @@ usually) — the CSP-safe evaluator does not support inline arrow functions.
 <!-- state.modalVars === { user: requireUser } -->
 <template vln-template="'userCard'" vln-vars="modalVars">…</template>
 ```
-
-Handy when several templates share the same shape.
 
 **No declaration — auto-discovery:**
 
@@ -130,7 +107,7 @@ consumer's scope:
      vln-vars="{ user: currentUser, onSave: handleSave }"></div>
 ```
 
-Spread works if you have a values bag ready:
+Spread works:
 
 ```html
 <div vln-fragment="'userCard'" vln-vars="{ ...defaults, user: currentUser }"></div>
@@ -143,8 +120,8 @@ Missing keys error clearly:
 Add them to vln-vars, e.g. vln-vars="{ onSave: yourValue, … }"
 ```
 
-If the provider expression evaluates to a non-object (`null`, a string,
-an array), the error appends a spread hint:
+If the provider evaluates to a non-object (`null`, string, array), the
+error appends a spread hint:
 
 ```
 … (provider `user` evaluated to string — expected an object;
@@ -152,8 +129,6 @@ did you mean `{...user}`?)
 ```
 
 ## Dynamic template selection
-
-`vln-fragment` is a JS expression, so it can pick at runtime:
 
 ```html
 <template vln-template="'adminCard'" vln-vars="['user']">…</template>
@@ -169,8 +144,6 @@ loop variable `user` resolves via JS closure semantics, not shadow
 recursion.
 
 ## Templates in loops
-
-Classic pattern:
 
 ```html
 <template vln-template="'todoItem'" vln-vars="['todo', 'actions']">
@@ -190,7 +163,7 @@ Classic pattern:
 
 ## Lifecycle events
 
-Templates get the standard init/destroy events on any inner element:
+Standard init/destroy events on any inner element:
 
 ```html
 <template vln-template="'chart'">
@@ -202,41 +175,26 @@ Templates get the standard init/destroy events on any inner element:
 ## Void elements are rejected
 
 You cannot host a fragment on `<img>`, `<input>`, `<br>`, etc. — they can't
-hold children. Use a container (`<div>`, `<span>`):
-
-```html
-<!-- ERROR -->
-<img vln-fragment="'card'" vln-vars="{ x: 1 }" />
-
-<!-- OK -->
-<span vln-fragment="'card'" vln-vars="{ x: 1 }"></span>
-```
+hold children. Use a container (`<div>`, `<span>`).
 
 ## Duplicate registrations
 
-If two `<template>`s register under the same id, the **later one wins** and
+If two templates register under the same id, the **later one wins** and
 Velin warns:
 
 ```
 [Velin Templates] Template "foo" already registered — replacing.
 ```
 
-Makes hot-reload and edit-in-place workflows just work. If you didn't
-intend the duplication, the warning is your cue to find the copy-paste.
+Fine for hot-reload. If unintentional, the warning is your cue.
 
 ## Migration from the pre-rewrite API
 
 The old sibling-attribute API (`<template id="…" vln-vars="a, b">` on the
 template, `vln-var:a="…"` on the consumer) was removed. The deprecation
-plugin errors loudly if you still have it:
+plugin errors loudly if you still use it.
 
-```
-[Velin Templates] vln-var:foo was removed. Provide values via a single
-vln-vars="{...}" attribute on the vln-fragment element, e.g.
-<div vln-fragment="'myTpl'" vln-vars="{ foo: value }">.
-```
-
-Migration steps:
+Steps:
 
 1. Rename `<template id="foo" vln-vars="a, b">` → `<template vln-template="'foo'" vln-vars="['a', 'b']">`. Comma-separated string is gone; use a real JS array.
 2. Move the template inside the bound root, before its consumers.
@@ -244,7 +202,7 @@ Migration steps:
 
 ## When to use templates
 
-- Repeated non-trivial markup (a card with 20 lines used in a grid).
+- Repeated non-trivial markup.
 - Dynamic component selection based on runtime data.
 - Reusable UI patterns rendered in more than one context.
 
@@ -252,15 +210,11 @@ Migration steps:
 
 - A simple repeated item — use `vln-loop` directly.
 - Server-rendered pages — prefer your server's partial system.
-- One-off markup — just write it inline.
 
-## Debugging checklist
+## Debugging
 
-1. **List what's registered:** `Velin.debug.templates()`
-2. **Check the id is quoted:** `vln-fragment="'foo'"`, not `vln-fragment="foo"` (unquoted looks up state.foo).
-3. **Check the template is inside the bound root and before consumers.**
-4. **Check the provider is an object literal:** `vln-vars="{ x: 1 }"`, not `vln-vars="x"`.
-5. **Look for the specific error line — the plugin's error messages name what's missing and where.**
+- `Velin.debug.templates()` — what's registered right now.
+- Reminder: `vln-fragment="foo"` looks up `state.foo`; use `'foo'` for a literal id.
 
 ## See also
 

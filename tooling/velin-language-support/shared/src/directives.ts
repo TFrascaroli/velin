@@ -16,12 +16,6 @@ export interface DirectiveMeta {
    */
   validOnTags?: string[];
   /**
-   * If set, this directive requires the presence of another attribute on the
-   * same element. Reserved for future directives; currently unused now that
-   * the old `vln-var:*` sibling requirement is gone.
-   */
-  requiresSiblingAttribute?: string;
-  /**
    * If true, the directive is documented as removed/deprecated. Kept in the
    * registry so the LSP can surface a migration hint instead of "unknown
    * directive", but hidden from suggestion / completion providers.
@@ -158,12 +152,10 @@ export function isValidDirectiveName(name: string): boolean {
 export interface DirectivePlacementContext {
   /** Lowercase tag name of the element carrying the directive. */
   tagName: string;
-  /** Lowercase attribute names present on the same element. */
-  siblingAttributes: string[];
 }
 
 export interface DirectivePlacementError {
-  code: 'wrong-tag' | 'missing-sibling';
+  code: 'wrong-tag';
   message: string;
 }
 
@@ -184,16 +176,6 @@ export function validateDirectivePlacement(
       return {
         code: 'wrong-tag',
         message: `${directiveName} is only valid on ${tags}, not <${ctx.tagName}>.`,
-      };
-    }
-  }
-
-  if (meta.requiresSiblingAttribute) {
-    const siblings = ctx.siblingAttributes.map((a) => a.toLowerCase());
-    if (!siblings.includes(meta.requiresSiblingAttribute.toLowerCase())) {
-      return {
-        code: 'missing-sibling',
-        message: `${directiveName} requires \`${meta.requiresSiblingAttribute}\` on the same element.`,
       };
     }
   }
