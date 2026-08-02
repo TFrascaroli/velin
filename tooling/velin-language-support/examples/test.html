@@ -37,10 +37,6 @@
     <!-- @velin-schema: script -->
 
     <div id="app">
-        <!-- vln-template must live on <template>, before any consumer, and
-             inside the same Velin.bind() root. Moving it off <template>
-             triggers a "vln-template is only valid on <template>"
-             diagnostic. `vln-vars` here declares the required variables. -->
         <template vln-template="'user-badge'" vln-vars="['label', 'person']">
             <div>
                 <span class="muted" vln-text="label + ':'"></span>

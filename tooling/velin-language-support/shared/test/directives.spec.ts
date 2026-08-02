@@ -34,88 +34,53 @@ describe('VELIN_DIRECTIVE_META', () => {
 
   describe('validateDirectivePlacement', () => {
     it('accepts vln-vars on <template> (declaration role)', () => {
-      expect(
-        validateDirectivePlacement('vln-vars', {
-          tagName: 'template',
-          siblingAttributes: [],
-        }),
-      ).toBeNull();
+      expect(validateDirectivePlacement('vln-vars', { tagName: 'template' })).toBeNull();
     });
 
     it('accepts vln-vars on a <div> (fragment provider role)', () => {
-      // The unified vln-vars API is valid on any element — the shared/
-      // language-support layer no longer distinguishes; runtime validation
-      // is the fragment plugin's job.
-      expect(
-        validateDirectivePlacement('vln-vars', {
-          tagName: 'div',
-          siblingAttributes: ['vln-fragment'],
-        }),
-      ).toBeNull();
+      // Unified vln-vars is valid on any element — runtime is what
+      // distinguishes declaration vs provider.
+      expect(validateDirectivePlacement('vln-vars', { tagName: 'div' })).toBeNull();
     });
 
     it('accepts vln-template on <template>', () => {
-      expect(
-        validateDirectivePlacement('vln-template', {
-          tagName: 'template',
-          siblingAttributes: [],
-        }),
-      ).toBeNull();
+      expect(validateDirectivePlacement('vln-template', { tagName: 'template' })).toBeNull();
     });
 
     it('rejects vln-template on a <div>', () => {
-      const err = validateDirectivePlacement('vln-template', {
-        tagName: 'div',
-        siblingAttributes: [],
-      });
+      const err = validateDirectivePlacement('vln-template', { tagName: 'div' });
       expect(err?.code).toBe('wrong-tag');
       expect(err?.message).toMatch(/only valid on <template>/);
     });
 
     it('accepts unconstrained directives anywhere', () => {
       for (const name of ['vln-text', 'vln-if', 'vln-loop', 'vln-on']) {
-        expect(
-          validateDirectivePlacement(name, {
-            tagName: 'div',
-            siblingAttributes: [],
-          }),
-        ).toBeNull();
+        expect(validateDirectivePlacement(name, { tagName: 'div' })).toBeNull();
       }
     });
   });
 
   describe('directivesValidAt', () => {
     it('excludes vln-template on non-template elements', () => {
-      const names = directivesValidAt({
-        tagName: 'div',
-        siblingAttributes: [],
-      }).map((m) => m.name);
+      const names = directivesValidAt({ tagName: 'div' }).map((m) => m.name);
       expect(names).not.toContain('vln-template');
       expect(names).toContain('vln-text');
     });
 
     it('includes vln-template on <template>', () => {
-      const names = directivesValidAt({
-        tagName: 'template',
-        siblingAttributes: [],
-      }).map((m) => m.name);
+      const names = directivesValidAt({ tagName: 'template' }).map((m) => m.name);
       expect(names).toContain('vln-template');
     });
 
     it('includes vln-vars anywhere (dual-role directive)', () => {
       for (const tagName of ['div', 'template', 'span']) {
-        const names = directivesValidAt({ tagName, siblingAttributes: [] }).map(
-          (m) => m.name,
-        );
+        const names = directivesValidAt({ tagName }).map((m) => m.name);
         expect(names, `expected vln-vars valid on <${tagName}>`).toContain('vln-vars');
       }
     });
 
     it('does NOT include the removed vln-var directive', () => {
-      const names = directivesValidAt({
-        tagName: 'div',
-        siblingAttributes: ['vln-fragment'],
-      }).map((m) => m.name);
+      const names = directivesValidAt({ tagName: 'div' }).map((m) => m.name);
       expect(names).not.toContain('vln-var');
     });
   });
