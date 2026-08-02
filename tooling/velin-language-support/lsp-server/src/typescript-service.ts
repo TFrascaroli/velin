@@ -8,6 +8,7 @@ import {
   CompletionItemKind,
   VelinSchemaReference,
   enclosingElementsAt,
+  extractDeclaredTemplateVars,
 } from '@velin/shared';
 
 export interface DefinitionLocation {
@@ -468,8 +469,13 @@ function completionsFromRootType(
         const elem = arrayType ? elementTypeOf(checker, arrayType) : undefined;
         if (!elem) return [];
         currentType = elem;
+        continue;
       }
-      continue;
+      // Untyped scope var (template variable, $index) — no property
+      // completions to offer without a type declaration. Falling through
+      // to rootType.getProperty would incorrectly surface root-state
+      // members for `templateVar.<x>` or `$index.<x>`.
+      return [];
     }
     const property = currentType.getProperty(part);
     if (!property?.valueDeclaration) return [];
@@ -614,8 +620,12 @@ function analyzeScope(
 
   // Outer→inner. Inner attrs overwrite outer for correct shadowing.
   for (const el of ancestors) {
+    let isTemplateDecl = false;
+    let templateVarsExpr: string | undefined;
     for (const attr of el.attributes) {
       if (attr.value === undefined) continue;
+      if (attr.name === 'vln-template') { isTemplateDecl = true; continue; }
+      if (attr.name === 'vln-vars') { templateVarsExpr = attr.value; continue; }
       const colon = attr.name.indexOf(':');
       if (colon < 0) continue;
       const prefix = attr.name.slice(0, colon);
@@ -630,6 +640,18 @@ function analyzeScope(
           sourceExpr: attr.value,
         };
         hasLoop = true;
+      }
+    }
+    // Only the declaration form (on <template vln-template="…">) puts
+    // names in scope. The provider form on a vln-fragment consumer shares
+    // the attribute name but passes values in, so we skip it.
+    if (isTemplateDecl && templateVarsExpr !== undefined) {
+      for (const name of extractDeclaredTemplateVars(templateVarsExpr)) {
+        scope[name] = {
+          type: 'template variable',
+          detail: `${name} (from template vln-vars)`,
+          documentation: `Declared by vln-vars="${templateVarsExpr}"`,
+        };
       }
     }
   }
