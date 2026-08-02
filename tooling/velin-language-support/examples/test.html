@@ -25,21 +25,30 @@
 
       • Identifiers inside vln-* directives are coloured by the semantic
         token provider (methods purple-ish, properties light-blue,
-        loop/template vars distinct from state-root variables).
+        loop vars distinct from state-root variables).
       • Autocomplete inside any vln-* expression suggests state members.
         Try typing `user.` inside the .card below.
       • F12 on `user.name`, `getSelected().name`, `groups[0].items`,
         `item.title`, or `group.name` jumps to its declaration in the
         <script> block.
-      • Removing `vln-fragment` from the <span> below should surface a
-        red "vln-var:name requires `vln-fragment` on the same element"
-        diagnostic.
-      • Moving `vln-vars` off the <template> should surface a
-        "vln-vars is only valid on <template>" diagnostic.
+      • Moving `vln-template` off the <template> element should surface
+        a "vln-template is only valid on <template>" diagnostic.
     -->
     <!-- @velin-schema: script -->
 
     <div id="app">
+        <!-- vln-template must live on <template>, before any consumer, and
+             inside the same Velin.bind() root. Moving it off <template>
+             triggers a "vln-template is only valid on <template>"
+             diagnostic. `vln-vars` here declares the required variables. -->
+        <template vln-template="'user-badge'" vln-vars="['label', 'person']">
+            <div>
+                <span class="muted" vln-text="label + ':'"></span>
+                <img class="avatar" vln-attr:src="person.avatar" />
+                <strong vln-text="person.name"></strong>
+            </div>
+        </template>
+
         <h1>Velin editor demo</h1>
 
         <!-- vln-if / vln-text / vln-input basics ------------------------ -->
@@ -77,12 +86,11 @@
             </div>
         </section>
 
-        <!-- vln-fragment + vln-vars + vln-var:* -------------------------- -->
+        <!-- vln-fragment + vln-vars object provider --------------------- -->
         <section class="card">
             <h2>Fragment with scoped vars</h2>
-            <span vln-fragment="user-badge"
-                  vln-var:label="'Current user'"
-                  vln-var:person="user"></span>
+            <span vln-fragment="'user-badge'"
+                  vln-vars="{ label: 'Current user', person: user }"></span>
         </section>
 
         <!-- vln-watch — rare form, fires handler when expression changes - -->
@@ -98,15 +106,6 @@
             Selected: <span vln-text="getSelected().name"></span>
         </section>
     </div>
-
-    <!-- vln-vars must live on <template>. Moving it off triggers a diagnostic. -->
-    <template id="user-badge" vln-vars="label, person">
-        <div>
-            <span class="muted" vln-text="label + ':'"></span>
-            <img class="avatar" vln-attr:src="person.avatar" />
-            <strong vln-text="person.name"></strong>
-        </div>
-    </template>
 
     <script src="https://unpkg.com/velin/dist/build/velin-all.min.js"></script>
     <script>

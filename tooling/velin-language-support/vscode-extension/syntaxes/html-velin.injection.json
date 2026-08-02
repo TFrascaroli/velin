@@ -16,7 +16,7 @@
   "repository": {
     "velin-declaring-subkey-double": {
       "name": "meta.attribute.velin.html",
-      "begin": "(vln-)(loop|var)(:)([\\w-]+)\\s*(=)\\s*(\")",
+      "begin": "(vln-)(loop)(:)([\\w-]+)\\s*(=)\\s*(\")",
       "beginCaptures": {
         "1": { "name": "entity.other.attribute-name.velin" },
         "2": { "name": "entity.name.tag.velin.directive" },
@@ -32,7 +32,7 @@
     },
     "velin-declaring-subkey-single": {
       "name": "meta.attribute.velin.html",
-      "begin": "(vln-)(loop|var)(:)([\\w-]+)\\s*(=)\\s*(')",
+      "begin": "(vln-)(loop)(:)([\\w-]+)\\s*(=)\\s*(')",
       "beginCaptures": {
         "1": { "name": "entity.other.attribute-name.velin" },
         "2": { "name": "entity.name.tag.velin.directive" },

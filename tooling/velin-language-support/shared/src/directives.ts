@@ -17,8 +17,8 @@ export interface DirectiveMeta {
   validOnTags?: string[];
   /**
    * If set, this directive requires the presence of another attribute on the
-   * same element. Used for e.g. vln-var:* which only makes sense alongside
-   * vln-fragment.
+   * same element. Reserved for future directives; currently unused now that
+   * the old `vln-var:*` sibling requirement is gone.
    */
   requiresSiblingAttribute?: string;
 }
@@ -75,8 +75,17 @@ export const VELIN_DIRECTIVE_META: DirectiveMeta[] = [
   {
     name: 'vln-fragment',
     hasSubkey: false,
-    documentation: 'Renders a <template> by id, providing scoped variables via sibling `vln-var:*` attributes.',
-    usage: 'vln-fragment="templateId"',
+    documentation:
+      "Renders a `<template vln-template=\"'id'\">` by id, providing scoped variables via a sibling `vln-vars=\"{ ... }\"` object literal.",
+    usage: 'vln-fragment="\'templateId\'"',
+  },
+  {
+    name: 'vln-template',
+    hasSubkey: false,
+    documentation:
+      "Registers a `<template>` under the given id (a JS expression, so string literals need quotes). Must appear before any `vln-fragment` consumer in the same `Velin.bind()` root.",
+    usage: 'vln-template="\'templateId\'"',
+    validOnTags: ['template'],
   },
   {
     name: 'vln-watch',
@@ -85,20 +94,11 @@ export const VELIN_DIRECTIVE_META: DirectiveMeta[] = [
     usage: 'vln-watch:handlerName="expression"',
   },
   {
-    name: 'vln-var',
-    hasSubkey: true,
-    documentation:
-      'Passes a scoped variable into a `vln-fragment` template. Must appear on the same element as `vln-fragment`.',
-    usage: 'vln-var:name="expression"',
-    requiresSiblingAttribute: 'vln-fragment',
-  },
-  {
     name: 'vln-vars',
     hasSubkey: false,
     documentation:
-      'Declares the required variables of a `<template vln-vars="a, b">`. Only valid on <template> elements.',
-    usage: 'vln-vars="var1, var2"',
-    validOnTags: ['template'],
+      "On `<template vln-template=\"'id'\">`: declares required variables — either as an array of names (`['a', 'b']`, pass-through) or an object of transformers (`{ a: fn }`, per-key). On a `vln-fragment` element: provides the values as an object literal (`{ a: expr, b: expr }`).",
+    usage: 'vln-vars="[\'a\', \'b\']" | vln-vars="{ a: fn }" | vln-vars="{ a: expr }"',
   },
   {
     name: 'vln-table',
