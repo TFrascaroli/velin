@@ -16,9 +16,9 @@ export interface DirectiveMeta {
    */
   validOnTags?: string[];
   /**
-   * If true, the directive is documented as removed/deprecated. Currently
-   * only used to hide the entry from completion suggestions; a hover
-   * provider that surfaces the deprecation is planned separately.
+   * If true, the directive is documented as removed/deprecated. Hidden
+   * from completion suggestions; the hover provider surfaces a Removed
+   * banner with the migration hint from `documentation`.
    */
   deprecated?: boolean;
 }

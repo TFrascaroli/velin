@@ -14,6 +14,8 @@ import {
   Diagnostic,
   DiagnosticSeverity,
   FileChangeType,
+  Hover,
+  MarkupKind,
 } from 'vscode-languageserver/node';
 
 import { TextDocument } from 'vscode-languageserver-textdocument';
@@ -24,6 +26,8 @@ import {
   CompletionItemKind,
   VELIN_DIRECTIVE_META,
   directivesValidAt,
+  extractDeclaredTemplateVars,
+  findDirectiveMeta,
   validateDirectivePlacement,
   scanElements,
   VelinSchemaReference,
@@ -31,6 +35,7 @@ import {
 import type { ScannedElement } from '@velin/shared';
 import { TypeScriptService } from './typescript-service';
 import { diagnoseSchemaRefs } from './schema-diagnostics';
+import { buildDirectiveHoverMarkdown } from './directive-hover';
 import { URI } from 'vscode-uri';
 import * as ts from 'typescript';
 
@@ -80,6 +85,7 @@ connection.onInitialize((params: InitializeParams) => {
         triggerCharacters: ['.', '(', '"', "'"],
       },
       definitionProvider: true,
+      hoverProvider: true,
       semanticTokensProvider: {
         // Modifiers left empty — we don't emit any today.
         legend: { tokenTypes: TOKEN_TYPES, tokenModifiers: [] },
@@ -298,6 +304,29 @@ connection.onDefinition(async (params) => {
   }
 });
 
+// ── Hover ─────────────────────────────────────────────────────────────────
+
+connection.onHover((params): Hover | null => {
+  if (!enabled) return null;
+  const document = documents.get(params.textDocument.uri);
+  if (!document) return null;
+
+  const offset = document.offsetAt(params.position);
+  const hit = directiveAttributeAt(document, offset);
+  if (!hit) return null;
+
+  const meta = findDirectiveMeta(hit.baseName);
+  if (!meta) return null;
+
+  return {
+    contents: { kind: MarkupKind.Markdown, value: buildDirectiveHoverMarkdown(meta) },
+    range: {
+      start: document.positionAt(hit.nameStart),
+      end: document.positionAt(hit.nameStart + hit.fullName.length),
+    },
+  };
+});
+
 // ── Semantic tokens ───────────────────────────────────────────────────────
 
 interface RootTypeCtx {
@@ -357,14 +386,26 @@ function getParsedDoc(document: TextDocument): ParsedDoc {
   const elements = Array.from(scanElements(document.getText()));
   const scopeVarNames = new Set<string>();
   for (const el of elements) {
+    let hasTemplate = false;
+    let varsAttrValue: string | undefined;
     for (const attr of el.attributes) {
       if (!attr.name.startsWith('vln-')) continue;
+      if (attr.name === 'vln-template') { hasTemplate = true; continue; }
+      if (attr.name === 'vln-vars') { varsAttrValue = attr.value; continue; }
       const colon = attr.name.indexOf(':');
       if (colon < 0) continue;
       const prefix = attr.name.slice(0, colon);
       if (prefix !== 'vln-loop') continue;
       const key = attr.name.slice(colon + 1);
       if (key) scopeVarNames.add(key);
+    }
+    // vln-vars is dual-role. Only the declaration form (on a <template
+    // vln-template="...">) puts new names in scope for the template body;
+    // the provider form on a vln-fragment consumer just passes values.
+    if (hasTemplate && varsAttrValue !== undefined) {
+      for (const name of extractDeclaredTemplateVars(varsAttrValue)) {
+        scopeVarNames.add(name);
+      }
     }
   }
   scopeVarNames.add('$index');
@@ -574,6 +615,31 @@ function elementContextAt(
   const el = findElementAtCached(getParsedDoc(document).elements, offset);
   if (!el) return null;
   return { tagName: el.tagName.toLowerCase() };
+}
+
+/**
+ * If `offset` sits on a `vln-…` attribute name, return the base directive
+ * name (`vln-on` for `vln-on:click`), the full attribute name, and the
+ * offset span. Returns null when the cursor is on the value, whitespace,
+ * or a non-Velin attribute.
+ */
+function directiveAttributeAt(
+  document: TextDocument,
+  offset: number,
+): { baseName: string; fullName: string; nameStart: number } | null {
+  const el = findElementAtCached(getParsedDoc(document).elements, offset);
+  if (!el) return null;
+  for (const attr of el.attributes) {
+    if (!attr.name.startsWith('vln-')) continue;
+    if (offset < attr.nameStart) continue;
+    if (offset > attr.nameStart + attr.name.length) continue;
+    return {
+      baseName: attr.name.split(':')[0],
+      fullName: attr.name,
+      nameStart: attr.nameStart,
+    };
+  }
+  return null;
 }
 
 async function getSchemaCompletions(
