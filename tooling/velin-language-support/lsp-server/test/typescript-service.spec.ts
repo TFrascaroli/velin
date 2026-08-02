@@ -416,3 +416,110 @@ describe('TypeScriptService.getCompletions (loop scope)', () => {
     expect(labels).toEqual(expect.arrayContaining(['id', 'name', 'email']));
   });
 });
+
+describe('TypeScriptService.getCompletions (template scope)', () => {
+  const svc = new TypeScriptService();
+
+  function makeSchemaDir(): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'velin-template-scope-'));
+    fs.writeFileSync(
+      path.join(dir, 'State.ts'),
+      `export interface State {
+         user: { name: string; email: string };
+         count: number;
+       }`,
+      'utf8',
+    );
+    return dir;
+  }
+
+  const stateSchema = {
+    type: 'typescript' as const,
+    source: './State.ts',
+    typeName: 'State',
+  };
+
+  it('surfaces vln-vars="[\'a\']" names inside the template body', async () => {
+    const dir = makeSchemaDir();
+    const html = [
+      '<!-- @velin-schema: ./State.ts#State -->',                   // 0
+      '<div id="root">',                                            // 1
+      '  <template vln-template="\'card\'" vln-vars="[\'title\']">',// 2
+      '    <span vln-text=""></span>',                              // 3
+      '  </template>',                                              // 4
+      '</div>',                                                     // 5
+    ].join('\n');
+    const htmlPath = path.join(dir, 'index.html');
+    fs.writeFileSync(htmlPath, html, 'utf8');
+    const htmlUri = URI.file(htmlPath).toString();
+
+    // Line 3 is inside the template body — declared `title` should join
+    // the ambient root scope (user, count).
+    const items = await svc.getCompletions(stateSchema, '', 0, htmlUri, 3, html);
+    const labels = items.map((i) => i.label);
+    expect(labels).toContain('title');
+    expect(labels).toContain('user');
+    expect(labels).toContain('count');
+  });
+
+  it('surfaces object-form vln-vars keys inside the template body', async () => {
+    const dir = makeSchemaDir();
+    const html = [
+      '<!-- @velin-schema: ./State.ts#State -->',
+      '<div id="root">',
+      '  <template vln-template="\'card\'" vln-vars="{ title: fn, badge: fn }">',
+      '    <span vln-text=""></span>',
+      '  </template>',
+      '</div>',
+    ].join('\n');
+    const htmlPath = path.join(dir, 'index2.html');
+    fs.writeFileSync(htmlPath, html, 'utf8');
+    const htmlUri = URI.file(htmlPath).toString();
+
+    const items = await svc.getCompletions(stateSchema, '', 0, htmlUri, 3, html);
+    const labels = items.map((i) => i.label);
+    expect(labels).toEqual(expect.arrayContaining(['title', 'badge']));
+  });
+
+  it('ignores vln-vars on a vln-fragment consumer (provider role)', async () => {
+    const dir = makeSchemaDir();
+    const html = [
+      '<!-- @velin-schema: ./State.ts#State -->',
+      '<div id="root">',
+      // Consumer, not a declaration — must NOT put `title` in scope.
+      '  <div vln-fragment="\'card\'" vln-vars="{ title: user.name }">',
+      '    <span vln-text=""></span>',
+      '  </div>',
+      '</div>',
+    ].join('\n');
+    const htmlPath = path.join(dir, 'index3.html');
+    fs.writeFileSync(htmlPath, html, 'utf8');
+    const htmlUri = URI.file(htmlPath).toString();
+
+    const items = await svc.getCompletions(stateSchema, '', 0, htmlUri, 3, html);
+    const labels = items.map((i) => i.label);
+    expect(labels).not.toContain('title');
+    expect(labels).toContain('user');
+  });
+
+  it('offers no member completions on an untyped template var', async () => {
+    const dir = makeSchemaDir();
+    const html = [
+      '<!-- @velin-schema: ./State.ts#State -->',
+      '<div id="root">',
+      '  <template vln-template="\'card\'" vln-vars="[\'title\']">',
+      '    <span vln-text="title."></span>',
+      '  </template>',
+      '</div>',
+    ].join('\n');
+    const htmlPath = path.join(dir, 'index4.html');
+    fs.writeFileSync(htmlPath, html, 'utf8');
+    const htmlUri = URI.file(htmlPath).toString();
+
+    // `title.` — we don't know its type, so return no misleading
+    // root-state members.
+    const expr = 'title.';
+    const items = await svc.getCompletions(stateSchema, expr, expr.length, htmlUri, 3, html);
+    expect(items).toEqual([]);
+  });
+});
