@@ -183,12 +183,10 @@ connection.onDidChangeWatchedFiles((params) => {
 function validateVelinPlacement(document: TextDocument): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
   for (const el of getParsedDoc(document).elements) {
-    const siblings = el.attributes.map((a) => a.name.toLowerCase());
     for (const attr of el.attributes) {
       if (!attr.name.startsWith('vln-')) continue;
       const err = validateDirectivePlacement(attr.name.split(':')[0], {
         tagName: el.tagName.toLowerCase(),
-        siblingAttributes: siblings,
       });
       if (!err) continue;
       diagnostics.push({
@@ -572,13 +570,10 @@ function firstSchemaRef(text: string, line: number): VelinSchemaReference | null
 function elementContextAt(
   document: TextDocument,
   offset: number,
-): { tagName: string; siblings: string[] } | null {
+): { tagName: string } | null {
   const el = findElementAtCached(getParsedDoc(document).elements, offset);
   if (!el) return null;
-  return {
-    tagName: el.tagName.toLowerCase(),
-    siblings: el.attributes.map((a) => a.name.toLowerCase()),
-  };
+  return { tagName: el.tagName.toLowerCase() };
 }
 
 async function getSchemaCompletions(
@@ -603,10 +598,10 @@ async function getSchemaCompletions(
 }
 
 function getDirectiveCompletions(
-  ctx: { tagName: string; siblings: string[] } | null,
+  ctx: { tagName: string } | null,
 ): LSPCompletionItem[] {
   const list = ctx
-    ? directivesValidAt({ tagName: ctx.tagName, siblingAttributes: ctx.siblings })
+    ? directivesValidAt({ tagName: ctx.tagName })
     : VELIN_DIRECTIVE_META;
 
   return list.map((meta) => ({
