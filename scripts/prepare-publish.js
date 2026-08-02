@@ -51,8 +51,8 @@ ensureDir(publishDir);
 copyFiles(filesToCopy, distBuild, publishDir);
 // Copy types
 copyFiles(typeFiles, distTypes, publishDir);
-// Copy LICENSE, NOTICE verbatim
-['LICENSE', 'NOTICE'].forEach(f => {
+// Copy LICENSE, NOTICE, CHANGELOG verbatim
+['LICENSE', 'NOTICE', 'CHANGELOG.md'].forEach(f => {
   const src = path.join(root, f);
   const dest = path.join(publishDir, f);
   if (fs.existsSync(src)) fs.copyFileSync(src, dest);
