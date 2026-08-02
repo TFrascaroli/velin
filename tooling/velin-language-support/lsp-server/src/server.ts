@@ -364,7 +364,7 @@ function getParsedDoc(document: TextDocument): ParsedDoc {
       const colon = attr.name.indexOf(':');
       if (colon < 0) continue;
       const prefix = attr.name.slice(0, colon);
-      if (prefix !== 'vln-loop' && prefix !== 'vln-var') continue;
+      if (prefix !== 'vln-loop') continue;
       const key = attr.name.slice(colon + 1);
       if (key) scopeVarNames.add(key);
     }
