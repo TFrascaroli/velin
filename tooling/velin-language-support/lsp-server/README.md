@@ -136,7 +136,7 @@ Register it in your `settings.json`:
 - `textDocument/semanticTokens/full` — identifiers coloured by role
   (property vs method vs loop-var).
 - `textDocument/publishDiagnostics` — flags misplaced directives
-  (`vln-vars` outside `<template>`, `vln-var:*` without `vln-fragment`).
+  (`vln-template` outside `<template>`).
 
 ## Building from source
 

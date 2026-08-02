@@ -630,12 +630,6 @@ function analyzeScope(
           sourceExpr: attr.value,
         };
         hasLoop = true;
-      } else if (prefix === 'vln-var') {
-        scope[key] = {
-          type: 'template variable',
-          detail: `${key} (from ${attr.value})`,
-          documentation: `Template variable from vln-var:${key}="${attr.value}"`,
-        };
       }
     }
   }

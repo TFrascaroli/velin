@@ -1,21 +1,22 @@
 # Templates & Fragments
 
-The Templates & Fragments module is an optional addon that provides reusable component-like functionality.
+The templates module is an optional add-on for reusing HTML chunks. It ships
+with `velin-all.js` and can be excluded if you only need core + standard
+directives.
 
-> **Note:** This module is included in `velin-all.js` but can be excluded if you only need core + standard directives.
+Two directives:
 
-## Overview
+- **`vln-template`** — registers a `<template>` under an id so consumers can
+  render it.
+- **`vln-fragment`** — renders a registered template into the current scope,
+  optionally providing values via `vln-vars`.
 
-Templates allow you to define reusable HTML chunks and instantiate them with different data, similar to components in other frameworks but without the complexity.
+## Basic usage
 
-## Basic Usage
-
-### Define a Template
-
-Use the standard HTML `<template>` tag with an `id` and declare required variables:
+### Define a template
 
 ```html
-<template id="userCard" vln-vars="user">
+<template vln-template="'userCard'" vln-vars="['user']">
   <div class="card">
     <h3 vln-text="user.name"></h3>
     <p vln-text="user.email"></p>
@@ -23,90 +24,156 @@ Use the standard HTML `<template>` tag with an `id` and declare required variabl
 </template>
 ```
 
-### Use the Template
+Both attribute values are **JavaScript expressions** — a string literal id
+needs quotes: `vln-template="'userCard'"`. `vln-vars="['user']"` declares the
+variables the template body reads.
 
-Use `vln-fragment` to instantiate the template:
+### Use the template
 
 ```html
-<div vln-fragment="'userCard'" vln-var:user="currentUser"></div>
+<div vln-fragment="'userCard'" vln-vars="{ user: currentUser }"></div>
 ```
 
-**Important:** Template names in `vln-fragment` are JavaScript expressions, so literal strings need quotes: `'userCard'`
+`vln-fragment="'userCard'"` picks the template by id (JS expression again —
+quote your literal). `vln-vars="{ user: currentUser }"` is the **provider**:
+an object whose keys satisfy the template's declaration, evaluated in the
+consumer's scope.
 
-## Template Variables
+## The two rules
 
-### Declaring Variables
+The rewrite trades some flexibility for two clear rules that fix a whole
+class of bugs.
 
-Use `vln-vars="var1, var2"` on the `<template>` tag to declare required variables (comma-separated):
+### Rule 1 — templates register in DOM order
+
+`vln-template` fires when Velin walks the element during `bind()`. A
+consumer that appears **before** its template in the DOM will render
+before the template registers and error with:
+
+```
+[Velin Templates] Template "foo" is not registered. Make sure a
+<template vln-template="'foo'">…</template> appears BEFORE this
+<div vln-fragment=…> in the DOM AND inside the same Velin.bind() root.
+```
+
+In practice: put your templates at the top of the bound root.
+
+If you get confused about what IS registered, call
+`Velin.debug.templates()` in the console — returns
+`[{id, connected}, …]` for every live registration.
+
+### Rule 2 — templates must live inside the bound root
+
+`bind()` only walks the subtree you give it. A `<template>` in `<head>` or
+outside `#app` never gets processed, so `vln-template` never registers it.
+Same error as above.
+
+## `vln-vars`: two roles, one attribute
+
+Same attribute name on both sides; the meaning depends on where it sits.
+
+### On `<template vln-template="…">`: declaration
+
+Tells Velin which variables the template body reads. Two forms:
+
+**Array of names — pass-through:**
 
 ```html
-<template id="productCard" vln-vars="product, onAddToCart">
-  <div class="product">
-    <h3 vln-text="product.name"></h3>
-    <p vln-text="'$' + product.price"></p>
-    <button vln-on:click="onAddToCart(product)">Add to Cart</button>
-  </div>
+<template vln-template="'userCard'" vln-vars="['user', 'onSave']">…</template>
+```
+
+Any value the consumer provides for `user` or `onSave` flows through
+unchanged.
+
+**Object of transformers — per-key hook:**
+
+```html
+<template vln-template="'userCard'"
+          vln-vars="{ user: requireUser, count: toNumber }">
+  <span vln-text="user.name"></span>
+  <span vln-text="count"></span>
 </template>
 ```
 
-### Providing Variables
+The value passed for `user` flows through `requireUser(v)` on every read.
+`count` flows through `toNumber(v)`. Transformers are **named function
+references** resolved in the template's own scope (top-level state helpers,
+usually) — the CSP-safe evaluator does not support inline arrow functions.
 
-Pass variables using `vln-var:variableName="expression"`:
-
-```html
-<div
-  vln-fragment="'productCard'"
-  vln-var:product="selectedProduct"
-  vln-var:onAddToCart="handleAddToCart">
-</div>
-```
-
-### Validation
-
-Velin validates that all required variables are provided:
+**State-level constant — reusable declaration:**
 
 ```html
-<!-- ERROR: Missing 'onAddToCart' variable -->
-<div vln-fragment="'productCard'" vln-var:product="selectedProduct"></div>
+<!-- state.modalVars === { user: requireUser } -->
+<template vln-template="'userCard'" vln-vars="modalVars">…</template>
 ```
 
-Console error:
-```
-[VLN009] Template 'productCard' requires missing variables: [onAddToCart].
-Add them as: vln-var:onAddToCart="yourValue"
-```
+Handy when several templates share the same shape.
 
-## Dynamic Template Selection
-
-Since `vln-fragment` values are JavaScript expressions, you can dynamically select templates:
+**No declaration — auto-discovery:**
 
 ```html
-<template id="adminCard" vln-vars="user">
-  <div class="admin-card">
-    <strong vln-text="user.name"></strong>
-    <button>Delete User</button>
-  </div>
+<template vln-template="'loose'">
+  <span vln-text="a"></span>
+  <span vln-text="b"></span>
 </template>
+```
 
-<template id="guestCard" vln-vars="user">
-  <div class="guest-card">
-    <span vln-text="user.name"></span>
-  </div>
-</template>
+Whatever keys the consumer provides become in-scope. No validation.
 
-<!-- Dynamically pick template based on role -->
+### On the `vln-fragment` element: provider
+
+An object literal whose keys must cover the declaration. Evaluated in the
+consumer's scope:
+
+```html
+<div vln-fragment="'userCard'"
+     vln-vars="{ user: currentUser, onSave: handleSave }"></div>
+```
+
+Spread works if you have a values bag ready:
+
+```html
+<div vln-fragment="'userCard'" vln-vars="{ ...defaults, user: currentUser }"></div>
+```
+
+Missing keys error clearly:
+
+```
+[Velin Templates] Template "userCard" requires missing variables: [onSave].
+Add them to vln-vars, e.g. vln-vars="{ onSave: yourValue, … }"
+```
+
+If the provider expression evaluates to a non-object (`null`, a string,
+an array), the error appends a spread hint:
+
+```
+… (provider `user` evaluated to string — expected an object;
+did you mean `{...user}`?)
+```
+
+## Dynamic template selection
+
+`vln-fragment` is a JS expression, so it can pick at runtime:
+
+```html
+<template vln-template="'adminCard'" vln-vars="['user']">…</template>
+<template vln-template="'guestCard'" vln-vars="['user']">…</template>
+
 <div vln-loop:user="users"
      vln-fragment="user.role + 'Card'"
-     vln-var:user="user">
-</div>
+     vln-vars="{ user: user }"></div>
 ```
 
-## Templates in Loops
+Same-name provider keys are safe — `vln-vars="{ user: user }"` under a
+loop variable `user` resolves via JS closure semantics, not shadow
+recursion.
 
-Common pattern: using templates to render list items:
+## Templates in loops
+
+Classic pattern:
 
 ```html
-<template id="todoItem" vln-vars="todo, actions">
+<template vln-template="'todoItem'" vln-vars="['todo', 'actions']">
   <li class="todo">
     <input type="checkbox" vln-input="todo.done" />
     <span vln-text="todo.text"></span>
@@ -117,318 +184,87 @@ Common pattern: using templates to render list items:
 <ul>
   <li vln-loop:todo="todos"
       vln-fragment="'todoItem'"
-      vln-var:todo="todo"
-      vln-var:actions="createActions(todo)">
-  </li>
+      vln-vars="{ todo: todo, actions: createActions(todo) }"></li>
 </ul>
-
-<script>
-const vln = Velin.bind(root, {
-  todos: [
-    { id: 1, text: 'Learn Velin', done: false },
-    { id: 2, text: 'Build something', done: false }
-  ],
-
-  createActions(todo) {
-    return {
-      delete: () => {
-        this.todos = this.todos.filter(t => t !== todo);
-      }
-    };
-  }
-});
-</script>
 ```
 
-## Lifecycle Events
+## Lifecycle events
 
-Templates and Fragments trigger native DOM events when they are created or destroyed. You can listen to these using standard `vln-on` listeners.
-
-### `init`
-
-Fired when a node and its entire subtree have been processed by Velin.
+Templates get the standard init/destroy events on any inner element:
 
 ```html
-<template id="chart">
-  <canvas vln-on:init="renderChart(event.target)"></canvas>
+<template vln-template="'chart'">
+  <canvas vln-on:init="renderChart(event.target)"
+          vln-on:destroy="disposeChart(event.target)"></canvas>
 </template>
 ```
 
-### `destroy`
+## Void elements are rejected
 
-Fired when a node's reactive state is being cleaned up (e.g., when a fragment is swapped or a loop item removed).
-
-```html
-<template id="timer">
-  <div vln-on:destroy="stopTimer()">
-    Time: <span vln-text="time"></span>
-  </div>
-</template>
-```
-
-## Component Pattern
-
-In Velin, **Templates ARE Components**. You don't need a separate registry. By combining templates, `vln-var`, and lifecycle events, you get full component functionality.
-
-1. **The View**: Defined in a `<template>` tag.
-2. **The Logic**: Defined in your central JavaScript state.
-3. **The Interface**: Documented via `vln-vars` and `@vln-type`.
-4. **The Lifecycle**: Managed via `vln-on:init` and `vln-on:destroy`.
-
-## IDE IntelliSense & Type Safety
-
-Velin provides a way to document the "interface" of your template so that IDEs (via the Velin VS Code extension) can provide autocomplete and type checking.
-
-### `@vln-type`
-
-Add a comment at the top of your `<template>` to link it to a JavaScript type (defined via JSDoc or TypeScript).
-
-```javascript
-// state.js
-/**
- * @typedef {Object} UserProfile
- * @property {string} name
- * @property {string} role
- */
-```
+You cannot host a fragment on `<img>`, `<input>`, `<br>`, etc. — they can't
+hold children. Use a container (`<div>`, `<span>`):
 
 ```html
-<!-- index.html -->
-<template id="userCard">
-  <!-- @vln-type {UserProfile} -->
-  <div class="card">
-    <h3 vln-text="name"></h3>
-    <span vln-text="role"></span>
-  </div>
-</template>
+<!-- ERROR -->
+<img vln-fragment="'card'" vln-vars="{ x: 1 }" />
+
+<!-- OK -->
+<span vln-fragment="'card'" vln-vars="{ x: 1 }"></span>
 ```
 
-The IDE will now provide autocomplete for `name` and `role` inside the template expressions and when using `vln-var:name` on a fragment.
+## Duplicate registrations
 
-## Complete Example
+If two `<template>`s register under the same id, the **later one wins** and
+Velin warns:
 
-Here's a complete example of a user management interface using the "Component Pattern":
-
-```html
-<!DOCTYPE html>
-<html>
-<head>
-  <script src="https://unpkg.com/@velinjs/all/velin-all.min.js"></script>
-  <style>
-    .user-card {
-      border: 1px solid #ddd;
-      padding: 1rem;
-      margin-bottom: 0.5rem;
-      border-radius: 4px;
-    }
-    .user-card h3 { margin: 0 0 0.5rem 0; }
-    button { margin-right: 0.5rem; }
-  </style>
-</head>
-<body>
-  <!-- Template Definition -->
-  <template id="userCard" vln-vars="user, actions">
-    <!-- @vln-type {UserCardProps} -->
-    <div class="user-card" vln-on:init="console.log('User card ready:', user.name)">
-      <h3 vln-text="user.name"></h3>
-      <p vln-text="user.email"></p>
-      <button vln-on:click="actions.edit()">Edit</button>
-      <button vln-on:click="actions.delete()">Delete</button>
-    </div>
-  </template>
-
-  <!-- App -->
-  <div id="app">
-    <h1>Users</h1>
-
-    <div vln-loop:user="users"
-         vln-fragment="'userCard'"
-         vln-var:user="user"
-         vln-var:actions="createUserActions(user)">
-    </div>
-  </div>
-
-  <script>
-    /**
-     * @typedef {Object} UserCardProps
-     * @property {Object} user
-     * @property {Object} actions
-     */
-
-    const vln = Velin.bind(document.getElementById('app'), {
-      users: [
-        { id: 1, name: 'Alice', email: 'alice@example.com' },
-        { id: 2, name: 'Bob', email: 'bob@example.com' },
-        { id: 3, name: 'Charlie', email: 'charlie@example.com' }
-      ],
-
-      createUserActions(user) {
-        return {
-          edit: () => {
-            const newName = prompt('Enter new name:', user.name);
-            if (newName) {
-              user.name = newName;
-            }
-          },
-          delete: () => {
-            if (confirm(`Delete ${user.name}?`)) {
-              this.users = this.users.filter(u => u !== user);
-            }
-          }
-        };
-      }
-    });
-  </script>
-</body>
-</html>
+```
+[Velin Templates] Template "foo" already registered — replacing.
 ```
 
-## When to Use Templates
+Makes hot-reload and edit-in-place workflows just work. If you didn't
+intend the duplication, the warning is your cue to find the copy-paste.
 
-Reach for templates when the same non-trivial chunk of markup shows up in more than one place, or when the shape of a section depends on runtime data.
+## Migration from the pre-rewrite API
 
-**Repeated complex structures** — e.g. a product card with twenty lines of markup used in a grid:
+The old sibling-attribute API (`<template id="…" vln-vars="a, b">` on the
+template, `vln-var:a="…"` on the consumer) was removed. The deprecation
+plugin errors loudly if you still have it:
 
-```html
-<template id="productCard" vln-vars="product">
-  <!-- 20 lines of HTML -->
-</template>
+```
+[Velin Templates] vln-var:foo was removed. Provide values via a single
+vln-vars="{...}" attribute on the vln-fragment element, e.g.
+<div vln-fragment="'myTpl'" vln-vars="{ foo: value }">.
 ```
 
-**Dynamic component selection** — pick a layout at runtime based on the data:
+Migration steps:
 
-```html
-<div vln-fragment="item.type + 'Layout'" ...></div>
-```
+1. Rename `<template id="foo" vln-vars="a, b">` → `<template vln-template="'foo'" vln-vars="['a', 'b']">`. Comma-separated string is gone; use a real JS array.
+2. Move the template inside the bound root, before its consumers.
+3. Replace sibling `vln-var:a="…" vln-var:b="…"` with a single `vln-vars="{ a: …, b: … }"` on the fragment element.
 
-**Reusable UI patterns** — the same card rendered in a dashboard and a search result:
+## When to use templates
 
-```html
-<template id="userCard">...</template>
+- Repeated non-trivial markup (a card with 20 lines used in a grid).
+- Dynamic component selection based on runtime data.
+- Reusable UI patterns rendered in more than one context.
 
-<div vln-fragment="'userCard'" ...></div>
-```
+## When NOT
 
-## When NOT to Use Templates
+- A simple repeated item — use `vln-loop` directly.
+- Server-rendered pages — prefer your server's partial system.
+- One-off markup — just write it inline.
 
-For a simple repeated item, use `vln-loop` directly — a template adds indirection you don't need:
+## Debugging checklist
 
-```html
-<li vln-loop:item="items" vln-text="item.name"></li>
-```
+1. **List what's registered:** `Velin.debug.templates()`
+2. **Check the id is quoted:** `vln-fragment="'foo'"`, not `vln-fragment="foo"` (unquoted looks up state.foo).
+3. **Check the template is inside the bound root and before consumers.**
+4. **Check the provider is an object literal:** `vln-vars="{ x: 1 }"`, not `vln-vars="x"`.
+5. **Look for the specific error line — the plugin's error messages name what's missing and where.**
 
-For server-rendered pages, prefer your server's partial system (Django `{% include %}`, Rails `render`, etc).
+## See also
 
-For one-off markup that only appears once, just write it inline.
-
-## Best Practices
-
-### 1. Keep templates small and focused
-
-**Good:**
-```html
-<template id="userAvatar" vln-vars="user">
-  <img vln-attr:src="user.avatar" vln-attr:alt="user.name" />
-</template>
-```
-
-**Avoid:**
-```html
-<template id="entirePage" vln-vars="pageData">
-  <!-- 200 lines of HTML -->
-</template>
-```
-
-### 2. Use descriptive variable names
-
-**Good:**
-```html
-<template id="productCard" vln-vars="product, onAddToCart">
-```
-
-**Avoid:**
-```html
-<template id="productCard" vln-vars="p, fn">
-```
-
-### 3. Pass functions for actions
-
-**Good:**
-```html
-<template id="card" vln-vars="item, actions">
-  <button vln-on:click="actions.delete()">Delete</button>
-</template>
-
-vln-var:actions="createActions(item)"
-```
-
-### 4. Use factory functions for component state
-
-```javascript
-function createCounter(initialValue = 0) {
-  return {
-    count: initialValue,
-    increment() { this.count++; },
-    decrement() { this.count--; }
-  };
-}
-
-const vln = Velin.bind(root, {
-  counterA: createCounter(0),
-  counterB: createCounter(10)
-});
-```
-
-## Comparison to Other Frameworks
-
-| Feature | Velin Templates | React | Vue | Web Components |
-|---------|----------------|-------|-----|----------------|
-| Build step | No | Yes | Optional | No |
-| CSS encapsulation | No | No | Yes (scoped) | Yes (Shadow DOM) |
-| Props validation | Basic | PropTypes/TS | Yes | No |
-| Dynamic selection | Yes | Yes | Yes | No |
-| Learning curve | Flat | Steep | Moderate | Moderate |
-| Native Lifecycle | Yes | Hooks | Hooks | Yes |
-
-## Debugging
-
-If templates aren't working:
-
-1. **Check template exists:**
-   ```javascript
-   console.log(document.getElementById('myTemplate'));
-   ```
-
-2. **Check for typos in fragment name:**
-   ```html
-   <!-- Make sure the ID matches -->
-   <template id="userCard">...</template>
-   <div vln-fragment="'userCard'"><!-- Not 'usercard' --></div>
-   ```
-
-3. **Verify all variables are provided:**
-   Look for `[VLN009]` errors in console
-
-4. **Check quotes in expressions:**
-   ```html
-   <!-- Correct: quotes inside attribute value -->
-   <div vln-fragment="'userCard'"></div>
-
-   <!-- Wrong: no quotes -->
-   <div vln-fragment="userCard"></div>
-   ```
-
-5. **Use browser DevTools:**
-   Inspect the element to see if content was rendered
-
-
----
-
-## See Also
-
-- **[API Reference: Low-Level APIs](./api-reference.md#low-level-apis)** - Understanding state composition and cleanup
-- **[Creating Plugins](./plugins.md)** - How `vln-fragment` works internally
-- **[Directives Guide](./directives.md)** - Other directives to use with templates
-- **[Getting Started](./getting-started.md)** - Basic concepts before using templates
-- **[Documentation Hub](./README.md)** - Navigate all Velin documentation
-
+- [Directives Guide](./directives.md)
+- [Creating Plugins](./plugins.md) — how the fragment plugin works internally
+- [API Reference](./api-reference.md#low-level-apis) — `compose()`, `cleanupState()`
+- [Documentation Hub](./README.md)

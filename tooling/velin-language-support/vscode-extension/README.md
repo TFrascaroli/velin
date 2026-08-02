@@ -16,8 +16,9 @@ step.
 - **Go to Definition (F12)** — jumps from an identifier in an expression
   to its declaration, through property access, call expressions, and
   index access (e.g. `getCurrentUser().name`, `users[0].email`).
-- **Placement diagnostics** — `vln-vars` outside `<template>` and
-  `vln-var:*` without a sibling `vln-fragment` are flagged.
+- **Placement diagnostics** — `vln-template` outside `<template>` is
+  flagged. `vln-vars` is dual-role: valid on both the template
+  (declaration) and any fragment consumer (provider values).
 
 ## Telling the extension where your state lives
 
