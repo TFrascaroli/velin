@@ -16,9 +16,9 @@ export interface DirectiveMeta {
    */
   validOnTags?: string[];
   /**
-   * If true, the directive is documented as removed/deprecated. Kept in the
-   * registry so the LSP can surface a migration hint instead of "unknown
-   * directive", but hidden from suggestion / completion providers.
+   * If true, the directive is documented as removed/deprecated. Currently
+   * only used to hide the entry from completion suggestions; a hover
+   * provider that surfaces the deprecation is planned separately.
    */
   deprecated?: boolean;
 }
@@ -102,8 +102,8 @@ export const VELIN_DIRECTIVE_META: DirectiveMeta[] = [
   },
   {
     // Deprecated. The runtime plugin exists solely to error loudly on
-    // pre-rewrite migrations. Kept here so the LSP shows the migration hint
-    // instead of "unknown directive" — will be removed before 1.0.
+    // pre-rewrite migrations. Listed here so a future hover provider can
+    // render the migration hint. Remove before 1.0.
     name: 'vln-var',
     hasSubkey: true,
     documentation:
@@ -190,8 +190,8 @@ export function validateDirectivePlacement(
 export function directivesValidAt(
   ctx: DirectivePlacementContext,
 ): DirectiveMeta[] {
-  // Deprecated directives stay in the registry (so the LSP can hover-hint
-  // migrations on existing code) but never appear as completion suggestions.
+  // Deprecated directives stay in the registry (a future hover provider
+  // will render migration hints) but never appear as completion suggestions.
   return VELIN_DIRECTIVE_META.filter(
     (m) => !m.deprecated && validateDirectivePlacement(m.name, ctx) === null,
   );
