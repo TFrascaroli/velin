@@ -21,6 +21,12 @@ export interface DirectiveMeta {
    * the old `vln-var:*` sibling requirement is gone.
    */
   requiresSiblingAttribute?: string;
+  /**
+   * If true, the directive is documented as removed/deprecated. Kept in the
+   * registry so the LSP can surface a migration hint instead of "unknown
+   * directive", but hidden from suggestion / completion providers.
+   */
+  deprecated?: boolean;
 }
 
 export const VELIN_DIRECTIVE_META: DirectiveMeta[] = [
@@ -99,6 +105,17 @@ export const VELIN_DIRECTIVE_META: DirectiveMeta[] = [
     documentation:
       "On `<template vln-template=\"'id'\">`: declares required variables — either as an array of names (`['a', 'b']`, pass-through) or an object of transformers (`{ a: fn }`, per-key). On a `vln-fragment` element: provides the values as an object literal (`{ a: expr, b: expr }`).",
     usage: 'vln-vars="[\'a\', \'b\']" | vln-vars="{ a: fn }" | vln-vars="{ a: expr }"',
+  },
+  {
+    // Deprecated. The runtime plugin exists solely to error loudly on
+    // pre-rewrite migrations. Kept here so the LSP shows the migration hint
+    // instead of "unknown directive" — will be removed before 1.0.
+    name: 'vln-var',
+    hasSubkey: true,
+    documentation:
+      "**Removed.** `vln-var:*` was replaced by a single `vln-vars=\"{ ... }\"` object on the `vln-fragment` element. Runtime errors loudly if used. Will disappear from the LSP registry once Velin ships 1.0.",
+    usage: 'vln-vars="{ name: value }" on the vln-fragment element',
+    deprecated: true,
   },
   {
     name: 'vln-table',
@@ -191,8 +208,10 @@ export function validateDirectivePlacement(
 export function directivesValidAt(
   ctx: DirectivePlacementContext,
 ): DirectiveMeta[] {
+  // Deprecated directives stay in the registry (so the LSP can hover-hint
+  // migrations on existing code) but never appear as completion suggestions.
   return VELIN_DIRECTIVE_META.filter(
-    (m) => validateDirectivePlacement(m.name, ctx) === null,
+    (m) => !m.deprecated && validateDirectivePlacement(m.name, ctx) === null,
   );
 }
 
