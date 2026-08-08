@@ -59,6 +59,45 @@ function undefinedIdError(directive, value) {
   );
 }
 
+/** Scope key for the slot bag shared between a fragment and its outlets. */
+const SLOTS_KEY = "ø__slots";
+
+/** Per-slot state key an outlet reads to register a reactive dep. */
+const SLOT_DEP_KEY = (name) => "ø__slot_" + name;
+
+/**
+ * Resolve a slot name from a raw attribute value (fragment-side) or an
+ * expression (outlet-side). Bare/empty → default slot "". Anything else must
+ * evaluate to a string.
+ * @param {string | null} raw
+ * @param {Function} evaluate
+ * @param {"vln-inlet" | "vln-outlet"} directive
+ * @returns {string | null} name, or null on error (already logged)
+ */
+function parseSlotName(raw, evaluate, directive) {
+  if (raw == null || raw.trim() === "") return "";
+  let value;
+  try {
+    value = evaluate(raw);
+  } catch (err) {
+    if (__DEV__) {
+      const msg = err && /** @type {any} */(err).message ? /** @type {any} */(err).message : String(err);
+      console.error(`[Velin Templates] ${directive}: failed to evaluate name \`${raw}\`: ${msg}`);
+    }
+    return null;
+  }
+  if (typeof value !== "string") {
+    if (__DEV__) {
+      console.error(
+        `[Velin Templates] ${directive} name must be a string. Got ${typeof value}. ` +
+        `Did you forget quotes? Use ${directive}="'name'".`
+      );
+    }
+    return null;
+  }
+  return value;
+}
+
 /**
  * @param {VelinCore} vln
  */
@@ -197,14 +236,14 @@ function setupTemplatesAndFragments(vln) {
    * scoped variables from the consumer.
    *
    *   <div vln-fragment="'userCard'"
-   *        vln-vars="{ user: currentUser, onSave: handleSave }"></div>
+   *        vln-vars="{ user: currentUser, onSave: handleSave }">
+   *     <template vln-inlet>…default slot content…</template>
+   *     <template vln-inlet="'actions'">…named slot content…</template>
+   *   </div>
    *
-   * The provider (`vln-vars` on the consumer) is evaluated in the consumer's
-   * scope; each key becomes an EXPR interpolation in the child scope that
-   * indexes into the provider object. Any transformer declared on the
-   * template rides on the interpolation and runs on every read.
-   *
-   * Dynamic template selection: `vln-fragment="user.role + 'Card'"`.
+   * Direct children of a fragment host must all be `<template vln-inlet>`
+   * (bare for the default slot, or named). Any other element there is a
+   * mistake — hard error, dropped.
    *
    * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/templates.md|Templates & Fragments Guide}
    */
@@ -224,13 +263,14 @@ function setupTemplatesAndFragments(vln) {
     },
 
     destroy: ({ node, pluginState }) => {
-      if (pluginState?.innerChild) pluginState.innerChild.cleanup(node);
+      // Cleaning inletCtx cascades to templateCtx (its child).
+      if (pluginState?.inletCtx) pluginState.inletCtx.cleanup(node);
     },
 
     render: ({ node, tracked, compose, pluginState = {} }) => {
       const templateId = tracked?.templateId;
-      const varsExpr = tracked?.varsExpr;
       const providedVars = tracked?.providedVars;
+      const varsExpr = tracked?.varsExpr;
 
       if (templateId === undefined || templateId === null) {
         console.error(undefinedIdError("vln-fragment", templateId));
@@ -265,19 +305,17 @@ function setupTemplatesAndFragments(vln) {
       }
       const { node: template, transformers } = entry;
 
-      // Same template — child scope's own effects handle interior updates.
+      // Same template — child scope's effects already own the interior.
       const templateChanged = !pluginState?.templateId || pluginState.templateId !== templateId;
-      if (!templateChanged && pluginState?.innerChild) {
+      if (!templateChanged && pluginState?.templateCtx) {
         return { halt: true, pluginState };
       }
 
-      // Template changed — cleanup and rebuild.
-      if (pluginState?.innerChild) pluginState.innerChild.cleanup(node);
-      node.innerHTML = "";
+      // Template swap: tear down old scopes (inletCtx cascades to templateCtx).
+      // `bag.slots` carries into the new bag below so we don't lose
+      // already-registered inlet content.
+      if (pluginState?.inletCtx) pluginState.inletCtx.cleanup(node);
 
-      // Coerce to a plain object; anything else (null, primitives, arrays)
-      // renders as "no keys provided", which trips the missing-var check
-      // below with a helpful type hint.
       const providerIsObject = providedVars && typeof providedVars === "object" && !Array.isArray(providedVars);
       const provided = providerIsObject ? providedVars : {};
 
@@ -294,34 +332,211 @@ function setupTemplatesAndFragments(vln) {
         return { halt: true };
       }
 
-      // Each declared or provided key becomes an EXPR interpolation in the
-      // child scope. The bracket-notation expression indexes into the
-      // consumer's vln-vars object; evaluation is routed to the consumer's
-      // scope by composeState's ø__enclosing chain — so `vln-vars="{ user: user }"`
-      // under a same-named parent identifier resolves via JS-closure
-      // semantics, not shadow recursion. Transformers ride via the
-      // interpolation's optional `transform` field.
+      // Two scopes on purpose:
+      //   inletCtx    = SLOTS_KEY only. Inlets fire here; their content DFs
+      //                 later re-mount under a sibling of inletCtx and thus
+      //                 see caller state — not the template's vln-vars.
+      //   templateCtx = child of inletCtx, adds caller-provided vln-vars.
+      //                 Template body descendants (including outlets) fire
+      //                 here, so `title` etc. resolve.
+      const carriedSlots = pluginState?.bag?.slots ?? Object.create(null);
+      /** @type {{slots: Record<string, DocumentFragment>, inletCtx: any}} */
+      const bag = { slots: carriedSlots, inletCtx: null };
+      const inletCtx = compose({ [SLOTS_KEY]: { literal: bag } });
+      bag.inletCtx = inletCtx;
+
       /** @type {Record<string, {expr: string, transform?: Function} | {literal: any}>} */
       const composeInit = {};
       const names = new Set([...declared, ...Object.keys(provided)]);
       for (const name of names) {
-        // JSON-quoted key so non-identifier names (e.g. "weird-name") still work.
         const expr = `(${varsExpr})[${JSON.stringify(name)}]`;
         const tfm = transformers[name];
         composeInit[name] = tfm ? { expr, transform: tfm } : { expr };
       }
+      const templateCtx = inletCtx.compose(composeInit);
 
-      const clone = template.content.cloneNode(true);
-      const innerChild = compose(composeInit);
-      Array.from(clone.childNodes).forEach(child => {
-        node.appendChild(child);
-        innerChild.processNode(child);
-      });
+      // First render: let each direct child self-register as an inlet under
+      // inletCtx. On template swap, bag.slots was carried over — inlets are
+      // long gone from the DOM (we wiped the host on first render).
+      if (!pluginState?.templateId) {
+        for (const child of Array.from(node.childNodes)) {
+          if (child.nodeType !== Node.ELEMENT_NODE) continue;
+          const el = /** @type {Element} */(child);
+          const isInletTemplate = el instanceof HTMLTemplateElement && el.hasAttribute("vln-inlet");
+          if (!isInletTemplate) {
+            if (__DEV__) {
+              console.error(
+                `[Velin Templates] Direct children of <${node.tagName.toLowerCase()} vln-fragment="'${templateId}'"> must be <template vln-inlet[="'name'"]>. ` +
+                `Got <${el.tagName.toLowerCase()}${el.hasAttribute("vln-inlet") ? " vln-inlet" : ""}>. Element was dropped.`
+              );
+            }
+            continue;
+          }
+          inletCtx.processNode(el);
+        }
+      }
+
+      // Wipe host: first render clears caller wrappers, later renders clear
+      // the previous template's DOM.
+      node.innerHTML = "";
+      const clone = /** @type {DocumentFragment} */(template.content.cloneNode(true));
+      Array.from(clone.childNodes).forEach(child => node.appendChild(child));
+      for (const child of Array.from(node.childNodes)) {
+        templateCtx.processNode(child);
+      }
 
       return {
         halt: true,
-        pluginState: { templateId, innerChild },
+        pluginState: { templateId, inletCtx, templateCtx, bag },
       };
+    },
+  });
+
+  /**
+   * vln-inlet: self-registers a `<template>`'s content as a slot into the
+   * enclosing fragment's bag. Bare = default slot; named via
+   * `vln-inlet="'name'"`. The template's `.content` is cloned into a
+   * DocumentFragment and stashed in `bag.slots[name]`; outlets rebind when
+   * `SLOT_DEP_KEY(name)` fires.
+   *
+   * Fires above STOPPER so an accidental foreign vln-* on the wrapper
+   * (e.g. `vln-inlet vln-loop:x`) short-circuits with a clear error rather
+   * than letting the other directive run against the template wrapper.
+   */
+  vln.plugins.registerPlugin({
+    name: "inlet",
+    priority: vln.plugins.priorities.STOPPER + 5,
+    render: ({ node, expr, evaluate, state, triggerEffects }) => {
+      if (!(node instanceof HTMLTemplateElement)) {
+        if (__DEV__) {
+          console.warn(
+            `[Velin Templates] vln-inlet must be on a <template>. Ignored on <${node.tagName.toLowerCase()}>.`
+          );
+        }
+        return { halt: true };
+      }
+      const foreignVln = Array.from(node.attributes)
+        .map(a => a.name)
+        .filter(n => n.startsWith("vln-") && n !== "vln-inlet");
+      if (foreignVln.length) {
+        if (__DEV__) {
+          console.error(
+            `[Velin Templates] <template vln-inlet> also carries [${foreignVln.join(", ")}]. ` +
+            `Move them inside the template. Element was dropped.`
+          );
+        }
+        return { halt: true };
+      }
+      const bag = state && state[SLOTS_KEY];
+      if (!bag) {
+        if (__DEV__) {
+          console.warn(
+            `[Velin Templates] vln-inlet must be on a <template> inside a <… vln-fragment=…> host. Ignored.`
+          );
+        }
+        return { halt: true };
+      }
+      const name = parseSlotName(expr, evaluate, "vln-inlet");
+      if (name == null) return { halt: true };
+      if (name in bag.slots) {
+        if (__DEV__) {
+          const label = name === "" ? "default slot" : `vln-inlet="'${name}'"`;
+          console.error(`[Velin Templates] ${label} is already filled — extras dropped.`);
+        }
+        return { halt: true };
+      }
+      const df = document.createDocumentFragment();
+      for (const child of Array.from(node.content.childNodes)) {
+        df.appendChild(child.cloneNode(true));
+      }
+      bag.slots[name] = df;
+      triggerEffects(SLOT_DEP_KEY(name));
+      return { halt: true };
+    },
+  });
+
+  /**
+   * vln-outlet: mount point inside a template. Bare = default slot; named
+   * via `vln-outlet="'name'"`. The outlet element itself is discarded —
+   * content replaces it, and the mounted subtree is processed under the
+   * caller's scope so directives bind against caller state.
+   *
+   * Reactive on its slot: track()s a sentinel key so any future write to
+   * `bag.slots[name]` (via `triggerEffects(ø__slot_<name>)`) re-runs this
+   * outlet — old mount is cleaned up, a fresh clone is inserted.
+   *
+   *   <template vln-template="'card'">
+   *     <div class="body"><div vln-outlet></div></div>
+   *     <footer><div vln-outlet="'actions'"></div></footer>
+   *   </template>
+   */
+  vln.plugins.registerPlugin({
+    name: "outlet",
+    priority: vln.plugins.priorities.STOPPER,
+
+    track: ({ expr, evaluate, state }) => {
+      const name = parseSlotName(expr, evaluate, "vln-outlet");
+      if (name == null) return { name: null };
+      // Sentinel read: registers a dep on the slot's key so future writes
+      // fire this outlet's effect. Value is never used, only the get-trap.
+      void state[SLOT_DEP_KEY(name)];
+      return { name };
+    },
+
+    destroy: ({ pluginState }) => {
+      if (pluginState?.mountedCtx) pluginState.mountedCtx.cleanup(pluginState.placeholder);
+      for (const root of pluginState?.mountedRoots || []) {
+        if (root.parentNode) root.parentNode.removeChild(root);
+      }
+    },
+
+    render: ({ node, tracked, state, pluginState = {} }) => {
+      const name = tracked?.name;
+      if (name == null) return { halt: true };
+
+      const bag = state && state[SLOTS_KEY];
+      if (!bag) {
+        if (__DEV__) {
+          console.warn(
+            `[Velin Templates] vln-outlet on <${node.tagName.toLowerCase()}> only works inside a ` +
+            `template mounted via vln-fragment. Ignored here.`
+          );
+        }
+        return { halt: true };
+      }
+
+      // First render: swap the outlet element for a comment placeholder we
+      // can use as an insertion anchor across reactive re-mounts.
+      let placeholder = pluginState.placeholder;
+      if (!placeholder) {
+        if (!node.parentNode) return { halt: true };
+        placeholder = document.createComment(`vln-outlet:${name}`);
+        node.parentNode.insertBefore(placeholder, node);
+        node.parentNode.removeChild(node);
+      }
+
+      // Tear down previous mount (bindings + DOM).
+      if (pluginState.mountedCtx) pluginState.mountedCtx.cleanup(placeholder);
+      for (const root of pluginState.mountedRoots || []) {
+        if (root.parentNode) root.parentNode.removeChild(root);
+      }
+
+      /** @type {Node[]} */
+      const mountedRoots = [];
+      /** @type {any} */
+      let mountedCtx = null;
+
+      const pristine = bag.slots[name];
+      if (pristine && pristine.childNodes.length && placeholder.parentNode) {
+        const clone = /** @type {DocumentFragment} */(pristine.cloneNode(true));
+        mountedRoots.push(...Array.from(clone.childNodes));
+        placeholder.parentNode.insertBefore(clone, placeholder);
+        // Fresh scope for this mount so re-mounts get clean teardown.
+        mountedCtx = bag.inletCtx.compose({});
+        for (const root of mountedRoots) mountedCtx.processNode(root);
+      }
+
+      return { halt: true, pluginState: { placeholder, mountedRoots, mountedCtx } };
     },
   });
 
@@ -337,11 +552,13 @@ function setupTemplatesAndFragments(vln) {
     // "missing variables" error.
     priority: vln.plugins.priorities.STOPPER,
     render: ({ node, subkey }) => {
-      console.error(
-        `[Velin Templates] vln-var:${subkey ?? ""} was removed. Provide values via a single ` +
-        `vln-vars="{...}" attribute on the vln-fragment element, e.g. ` +
-        `<${node.tagName.toLowerCase()} vln-fragment="'myTpl'" vln-vars="{ ${subkey ?? "name"}: value }">.`
-      );
+      if (__DEV__) {
+        console.error(
+          `[Velin Templates] vln-var:${subkey ?? ""} was removed. Provide values via a single ` +
+          `vln-vars="{...}" attribute on the vln-fragment element, e.g. ` +
+          `<${node.tagName.toLowerCase()} vln-fragment="'myTpl'" vln-vars="{ ${subkey ?? "name"}: value }">.`
+        );
+      }
       return { halt: true };
     },
   });
