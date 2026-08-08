@@ -519,7 +519,19 @@ function processPlugin(
   const stateKey = plugin.name + (subkey ? "_" + subkey : "");
   nodeState[stateKey] = {};
 
-  const compiledExpression = compile(expr);
+  /** @type {ASTNode} */
+  let compiledExpression;
+  try {
+    compiledExpression = compile(expr);
+  } catch (error) {
+    if (__DEV__) hook.ø__emit({ kind: "warn", code: "W007", state: reactiveState, message: `compile-throw in ${plugin.name}: ${error && error.message}`, ref: { expr, node } });
+    console.error(
+      `Error occurred while compiling expression '${expr}' in plugin '${plugin.name}':`,
+      error,
+    );
+    reactiveState.ø__depCaptures.pop();
+    return { halt: true };
+  }
   if (__DEV__) hook.ø__emit({ kind: "compile", state: reactiveState, expr });
   nodeState[stateKey + "__ø__exprAST"] = compiledExpression;
   if (!nodeState["ø__originalNode"]) {
@@ -1220,6 +1232,12 @@ function evalAst(ast, context, reactiveState = null) {
  *
  */
 function compile(expr) {
+  // Bare directive (attribute with no value, e.g. `<div vln-outlet>`) yields
+  // an undefined literal. Plugins that want to accept bare usage can just
+  // check `if (expr && expr.trim() !== "")` and treat the miss as "default".
+  if (expr == null || expr.trim() === "") {
+    return /** @type {any} */ ({ type: "Literal", value: undefined });
+  }
   const tokens = tokenize(expr);
   const ast = parse(tokens);
   if (__DEV__ && ast && typeof ast === "object") /** @type {any} */ (ast).ø__src = expr;
