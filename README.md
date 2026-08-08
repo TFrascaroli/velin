@@ -2,7 +2,7 @@
 
 **You assign to a property. The DOM updates.**
 
-**[Try it live →](https://tfrascaroli.github.io/velin/)** &nbsp;·&nbsp; [Docs](./docs/) &nbsp;·&nbsp; [Bundles](./docs/bundles.md) &nbsp;·&nbsp; [vs. Alpine / petite-vue / htmx](./docs/vs.md) &nbsp;·&nbsp; [FAQ](./docs/faq.md)
+**[Try it live →](https://tfrascaroli.github.io/velin/)** &nbsp;·&nbsp; [Docs](./docs/) &nbsp;·&nbsp; [Bundles](./docs/bundles.md) &nbsp;·&nbsp; [SSR](./docs/ssr.md) &nbsp;·&nbsp; [vs. Alpine / petite-vue / htmx](./docs/vs.md) &nbsp;·&nbsp; [FAQ](./docs/faq.md)
 
 ### Why Velin?
 
@@ -30,6 +30,15 @@ I also dislike magic. Naming conventions that decide routing behavior, component
 And the bloat. Velin ships a full CSP-compliant AST evaluator instead of leaning on `eval()` or `new Function()` — and it's *still* smaller than the alternatives. **9.8 KB gzipped for the everything bundle, 8.4 KB gzipped for the everyday combo** (core + directives). Load only what you use — see [bundles](docs/bundles.md).
 
 **Status:** Velin core is in **beta** (`1.0.0-beta.0`) — the API surface is mostly settled, performance and usability are where I want them, only a few remaining edges to smooth. The companion **Velin devtools is in alpha** (`0.1.0-alpha.0`) — it works and answers the questions it claims to, but expect rough visuals and shifting user journeys.
+
+## Where to use Velin
+
+Velin is small enough to sprinkle into an existing server-rendered page and coherent enough to be the whole client. Two wedges, same library:
+
+- **Sprinkle reactivity into a server-rendered page** — Blade, ERB, WordPress, Hugo, Jekyll, any template engine. Server renders the initial HTML and emits the same data as a JSON blob; `Velin.bind` picks it up and owns the DOM from there. No flash, no adopt-and-diff, no build step. See [hydrating from a server-rendered page](./docs/ssr.md).
+- **Build a whole SPA** — the [playground](https://tfrascaroli.github.io/velin/) is one: hash router, forms with validation, CRUD, a 500k-row virtual table, all in one plain object per screen. State lives in JS, not scattered across hooks and stores.
+
+Both cases use the same `Velin.bind(root, state)` call — the difference is only where `state` comes from.
 
 ## Getting Started
 
@@ -95,6 +104,7 @@ Full documentation is available in the [docs/](./docs/) directory.
 - [Templates & Components](./docs/templates.md)
 - [API Reference](./docs/api-reference.md)
 - [Creating Plugins](./docs/plugins.md)
+- [Hydrating from a server-rendered page (Blade / ERB / WordPress / Hugo)](./docs/ssr.md)
 
 ### Editor Support (experimental)
 
