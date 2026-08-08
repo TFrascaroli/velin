@@ -128,6 +128,107 @@ error appends a spread hint:
 did you mean `{...user}`?)
 ```
 
+## Slots: `vln-inlet` / `vln-outlet`
+
+`vln-vars` is enough for leaf widgets (badges, form fields) but painful for
+layouts (cards, modals, dialogs) where the caller wants to hand a whole
+subtree to the template. Slots are how you do that.
+
+- **`vln-outlet[="'name'"]`** — mount point inside a template. Bare
+  `vln-outlet` is the default slot; `vln-outlet="'actions'"` names one.
+- **`vln-inlet[="'name'"]`** — on a `<template>` that is a direct child of
+  `vln-fragment`, wraps the content that fills the matching outlet. Bare
+  `vln-inlet` = default slot.
+
+Direct children of a `vln-fragment` host **must** be `<template vln-inlet>`
+elements. Anything else is dropped with an error. Any other `vln-*`
+directive on the inlet `<template>` is also an error — put your directives
+inside the template.
+
+```html
+<template vln-template="'card'" vln-vars="['title']">
+  <div class="card">
+    <header vln-text="title"></header>
+    <div class="body">
+      <div vln-outlet></div>            <!-- default slot -->
+    </div>
+    <footer>
+      <div vln-outlet="'actions'"></div>
+    </footer>
+  </div>
+</template>
+
+<div vln-fragment="'card'" vln-vars="{ title: 'Users' }">
+  <template vln-inlet>                  <!-- default slot content -->
+    <ul vln-loop:u="users">
+      <li vln-text="u.name"></li>
+    </ul>
+  </template>
+  <template vln-inlet="'actions'">      <!-- named slot content -->
+    <button vln-on:click="save()">Save</button>
+  </template>
+</div>
+```
+
+Both directives take **JavaScript expressions**, same as everywhere else —
+quote your string literals.
+
+### Scope
+
+Slot content lives in the **caller's** scope, not the template's. In the
+example above, `users` and `save` are caller state; `title` is a template
+variable and is not visible to slot content.
+
+Every directive in your inlet — `vln-loop`, `vln-if`, `vln-on:click`,
+`vln-input` — binds against caller state, and updates flow through the
+caller's reactivity graph. The template is just the frame.
+
+### Wrappers are discarded
+
+Both wrappers disappear on mount. The inlet wrapper is peeled off entirely;
+the outlet wrapper is replaced by a comment placeholder. No stray tags
+survive in the final DOM.
+
+### Dynamic templates + slots
+
+Slot content is authored once and preserved as a pristine copy, so this
+works — swap the template id at runtime and the new template's outlets
+re-mount the same inlets. A single modal component can render whatever
+you need for its title, body, and actions across many template shapes.
+
+```html
+<div vln-fragment="currentModal.template" vln-vars="currentModal.vars">
+  <template vln-inlet="'title'">…</template>
+  <template vln-inlet><p vln-text="currentModal.message"></p></template>
+  <template vln-inlet="'actions'">…</template>
+</div>
+```
+
+### Errors and warnings
+
+Structural errors that would silently break a working deployment
+(unregistered template, missing required vars) print in every build.
+Everything else is dev-only.
+
+| Situation | Behaviour |
+| --- | --- |
+| Direct child of `vln-fragment` isn't `<template vln-inlet>` | dev: `console.error`, dropped |
+| Inlet `<template>` carrying another `vln-*` directive | dev: `console.error`, dropped |
+| Two inlets with the same name (or two bare inlets) | dev: `console.error`, first wins |
+| `vln-inlet` outside a fragment host | dev: `console.warn`, no-op |
+| `vln-outlet` outside a template | dev: `console.warn`, renders empty |
+| Outlet with no matching inlet | Silent (renders empty) |
+| Inlet with no matching outlet | Silent (dropped) |
+
+### Not supported (yet)
+
+- **Scoped slots** — data flowing from template back to caller (Vue's
+  `<template v-slot="{ item }">`). Pass callbacks via `vln-vars` if you
+  need this.
+- **Default content inside `vln-outlet`** when the caller provides nothing.
+- **Nested-fragment slot resolution** (slots inside a template that itself
+  uses another fragment).
+
 ## Dynamic template selection
 
 ```html
