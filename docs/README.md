@@ -16,6 +16,7 @@ Velin's documentation is organized into several key sections:
 **Building with Velin:**
 - [API Reference](./api-reference.md) - Complete API documentation
 - [Templates & Fragments](./templates.md) - Advanced composition patterns
+- [Hydrating from a server-rendered page](./ssr.md) - Blade / ERB / WordPress / Hugo
 
 **Extending Velin:**
 - [Creating Plugins](./plugins.md) - Build custom directives
