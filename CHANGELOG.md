@@ -6,6 +6,17 @@ All notable changes to `@velinjs/all`. Follows
 
 ## [Unreleased]
 
+### Added
+
+- `vln-inlet[="'name'"]` + `vln-outlet[="'name'"]` for slot
+  composition on templates. Direct children of a `vln-fragment`
+  host must be `<template vln-inlet>` elements (bare = default, or
+  named). Inlet content binds against the **caller's** scope.
+  Outlets are reactive on their slot, so dynamic template selection
+  with slots (`vln-fragment="whichCard"` swapping templates at
+  runtime) is a supported first-class case. No teleport; no
+  scoped-slot data flow (pass callbacks via `vln-vars`).
+
 ## [1.0.0-beta.4] — 2026-08-03
 
 ### Added
