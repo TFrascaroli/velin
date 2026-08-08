@@ -105,6 +105,14 @@ const EXAMPLES = [
     state:  'playground/examples/accordion.js',
   }),
   makeExample({
+    id: 'slots',
+    title: 'Slots (inlet / outlet)',
+    category: 'ui',
+    blurb: 'One card template, three fillable regions per instance.',
+    markup: 'playground/examples/slots.html',
+    state:  'playground/examples/slots.js',
+  }),
+  makeExample({
     id: 'themes',
     title: 'Theme switcher',
     category: 'ui',
