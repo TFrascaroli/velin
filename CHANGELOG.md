@@ -16,29 +16,6 @@ All notable changes to `@velinjs/all`. Follows
   with slots (`vln-fragment="whichCard"` swapping templates at
   runtime) is a supported first-class case. No teleport; no
   scoped-slot data flow (pass callbacks via `vln-vars`).
-- Opt-in enter/leave transitions on `vln-if`, `vln-loop`, `vln-route`,
-  and `vln-fragment` (including template-swap on fragments). Mounting
-  elements get `.vln-entering` for two animation frames; unmounting
-  elements get `.vln-leaving` and are held for the CSS
-  `transition-duration` (max of all properties) + 50 ms slack.
-  Interaction semantics by directive:
-  - `vln-if`/`vln-route`: fast re-toggle cancels the leave and revives
-    the same node (bindings intact; CSS reverses back to natural state).
-  - `vln-fragment`/`vln-route`: swaps are out-in — the new
-    template/route waits for the outgoing subtree to finish leaving,
-    then mounts. Rapid swaps collapse to the latest target. Reverting
-    to the outgoing target mid-leave revives it.
-  - `vln-loop`: with a keyed loop, a removed row animates from its
-    original slot; survivors don't shift until the leaving row is gone.
-    Rapid updates fast-forward any still-leaving ghosts.
-
-  Ships as a separate `velin-transitions` module
-  (`@velinjs/all/transitions`); bundled by `@velinjs/all`, deliberately
-  omitted from `velin-common`. Standalone plugin bundles no-op
-  transitions when the module isn't loaded.
-  `Velin.transitions.awaitLeave(node, done)` returns a `{ cancel }`
-  handle for use in custom mount/unmount plugins; `markEnter(node)` is
-  also exposed.
 
 ## [1.0.0-beta.4] — 2026-08-03
 

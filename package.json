@@ -48,9 +48,6 @@
     "./router": {
       "import": "./src/velin-router.js"
     },
-    "./transitions": {
-      "import": "./src/velin-transitions.js"
-    },
     "./devtools": {
       "import": "./dist/build/velin-devtools.min.js"
     }

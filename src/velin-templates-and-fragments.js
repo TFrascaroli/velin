@@ -102,15 +102,6 @@ function parseSlotName(raw, evaluate, directive) {
  * @param {VelinCore} vln
  */
 function setupTemplatesAndFragments(vln) {
-  // No-ops when the optional velin-transitions module isn't loaded. `leave`
-  // returns a `{ cancel }` handle in both modes.
-  const NOOP_LEAVE = { cancel: () => {} };
-  const leave = (node, done) => {
-    if (vln.transitions) return vln.transitions.awaitLeave(node, done);
-    done();
-    return NOOP_LEAVE;
-  };
-  const enter = (node) => { if (vln.transitions) vln.transitions.markEnter(node); };
   /**
    * vln-template: Registers a <template> under an id, evaluating the sibling
    * `vln-vars` declaration in the scope where the template lives.
@@ -274,13 +265,6 @@ function setupTemplatesAndFragments(vln) {
     destroy: ({ node, pluginState }) => {
       // Cleaning inletCtx cascades to templateCtx (its child).
       if (pluginState?.inletCtx) pluginState.inletCtx.cleanup(node);
-      // Fast-forward any children still mid-leave from a prior template swap.
-      if (pluginState?.leaving) {
-        for (const { node: ghost, handle } of pluginState.leaving) {
-          handle.cancel();
-          ghost.remove?.();
-        }
-      }
     },
 
     render: ({ node, tracked, compose, pluginState = {} }) => {
@@ -308,26 +292,6 @@ function setupTemplatesAndFragments(vln) {
         return { halt: true };
       }
 
-      const templateChanged = !pluginState?.templateId || pluginState.templateId !== templateId;
-      const leaving = pluginState?.leaving;
-      const isLeaving = leaving && leaving.length > 0;
-
-      // Same template, nothing leaving: no-op.
-      if (!templateChanged && !isLeaving && pluginState?.templateCtx) {
-        return { halt: true, pluginState };
-      }
-
-      // Same template but a leave is in flight (user reverted to the outgoing
-      // template mid-transition): cancel the leave and revive. Old scopes
-      // were kept live (cleanup is deferred until natural leave completion),
-      // so bindings just resume.
-      if (!templateChanged && isLeaving) {
-        for (const { handle } of leaving) handle.cancel();
-        leaving.length = 0;
-        pluginState.pendingArgs = null;
-        return { halt: true, pluginState };
-      }
-
       const entry = lookupTemplate(templateId);
       if (!entry) {
         console.error(
@@ -340,6 +304,17 @@ function setupTemplatesAndFragments(vln) {
         return { halt: true };
       }
       const { node: template, transformers } = entry;
+
+      // Same template — child scope's effects already own the interior.
+      const templateChanged = !pluginState?.templateId || pluginState.templateId !== templateId;
+      if (!templateChanged && pluginState?.templateCtx) {
+        return { halt: true, pluginState };
+      }
+
+      // Template swap: tear down old scopes (inletCtx cascades to templateCtx).
+      // `bag.slots` carries into the new bag below so we don't lose
+      // already-registered inlet content.
+      if (pluginState?.inletCtx) pluginState.inletCtx.cleanup(node);
 
       const providerIsObject = providedVars && typeof providedVars === "object" && !Array.isArray(providedVars);
       const provided = providerIsObject ? providedVars : {};
@@ -357,116 +332,63 @@ function setupTemplatesAndFragments(vln) {
         return { halt: true };
       }
 
-      // Snapshot everything the eventual mount needs. This is the "pending"
-      // that finalizeSwap uses when the old template's leave completes.
-      const pendingArgs = { templateId, template, transformers, providedVars, varsExpr, provided, declared };
+      // Two scopes on purpose:
+      //   inletCtx    = SLOTS_KEY only. Inlets fire here; their content DFs
+      //                 later re-mount under a sibling of inletCtx and thus
+      //                 see caller state — not the template's vln-vars.
+      //   templateCtx = child of inletCtx, adds caller-provided vln-vars.
+      //                 Template body descendants (including outlets) fire
+      //                 here, so `title` etc. resolve.
+      const carriedSlots = pluginState?.bag?.slots ?? Object.create(null);
+      /** @type {{slots: Record<string, DocumentFragment>, inletCtx: any}} */
+      const bag = { slots: carriedSlots, inletCtx: null };
+      const inletCtx = compose({ [SLOTS_KEY]: { literal: bag } });
+      bag.inletCtx = inletCtx;
 
-      // If a leave is already in flight from a prior swap, just update the
-      // pending target and bail — the completion callback will mount the
-      // latest pending when it fires.
-      if (isLeaving) {
-        pluginState.pendingArgs = pendingArgs;
-        return { halt: true, pluginState };
+      /** @type {Record<string, {expr: string, transform?: Function} | {literal: any}>} */
+      const composeInit = {};
+      const names = new Set([...declared, ...Object.keys(provided)]);
+      for (const name of names) {
+        const expr = `(${varsExpr})[${JSON.stringify(name)}]`;
+        const tfm = transformers[name];
+        composeInit[name] = tfm ? { expr, transform: tfm } : { expr };
       }
+      const templateCtx = inletCtx.compose(composeInit);
 
-      // Actually mounts the pending template. Extracted so it can be called
-      // both synchronously (first render) and asynchronously (after old
-      // children finish leaving on template swap).
-      const doMount = (args) => {
-        // Tear down old scopes now that the outgoing DOM is gone.
-        if (pluginState.inletCtx) pluginState.inletCtx.cleanup(node);
-
-        // Two scopes on purpose:
-        //   inletCtx    = SLOTS_KEY only. Inlets fire here; their content DFs
-        //                 later re-mount under a sibling of inletCtx and thus
-        //                 see caller state — not the template's vln-vars.
-        //   templateCtx = child of inletCtx, adds caller-provided vln-vars.
-        const carriedSlots = pluginState.bag?.slots ?? Object.create(null);
-        /** @type {{slots: Record<string, DocumentFragment>, inletCtx: any}} */
-        const bag = { slots: carriedSlots, inletCtx: null };
-        const inletCtx = compose({ [SLOTS_KEY]: { literal: bag } });
-        bag.inletCtx = inletCtx;
-
-        /** @type {Record<string, {expr: string, transform?: Function} | {literal: any}>} */
-        const composeInit = {};
-        const names = new Set([...args.declared, ...Object.keys(args.provided)]);
-        for (const name of names) {
-          const expr = `(${args.varsExpr})[${JSON.stringify(name)}]`;
-          const tfm = args.transformers[name];
-          composeInit[name] = tfm ? { expr, transform: tfm } : { expr };
-        }
-        const templateCtx = inletCtx.compose(composeInit);
-
-        // First-ever render: consume the caller's inlet declarations. On
-        // subsequent renders, bag.slots is already populated.
-        if (!pluginState.templateId) {
-          for (const child of Array.from(node.childNodes)) {
-            if (child.nodeType !== Node.ELEMENT_NODE) continue;
-            const el = /** @type {Element} */(child);
-            const isInletTemplate = el instanceof HTMLTemplateElement && el.hasAttribute("vln-inlet");
-            if (!isInletTemplate) {
-              if (__DEV__) {
-                console.error(
-                  `[Velin Templates] Direct children of <${node.tagName.toLowerCase()} vln-fragment="'${args.templateId}'"> must be <template vln-inlet[="'name'"]>. ` +
-                  `Got <${el.tagName.toLowerCase()}${el.hasAttribute("vln-inlet") ? " vln-inlet" : ""}>. Element was dropped.`
-                );
-              }
-              continue;
+      // First render: let each direct child self-register as an inlet under
+      // inletCtx. On template swap, bag.slots was carried over — inlets are
+      // long gone from the DOM (we wiped the host on first render).
+      if (!pluginState?.templateId) {
+        for (const child of Array.from(node.childNodes)) {
+          if (child.nodeType !== Node.ELEMENT_NODE) continue;
+          const el = /** @type {Element} */(child);
+          const isInletTemplate = el instanceof HTMLTemplateElement && el.hasAttribute("vln-inlet");
+          if (!isInletTemplate) {
+            if (__DEV__) {
+              console.error(
+                `[Velin Templates] Direct children of <${node.tagName.toLowerCase()} vln-fragment="'${templateId}'"> must be <template vln-inlet[="'name'"]>. ` +
+                `Got <${el.tagName.toLowerCase()}${el.hasAttribute("vln-inlet") ? " vln-inlet" : ""}>. Element was dropped.`
+              );
             }
-            inletCtx.processNode(el);
+            continue;
           }
+          inletCtx.processNode(el);
         }
-
-        // Wipe host and install the new template.
-        node.innerHTML = "";
-        const clone = /** @type {DocumentFragment} */(args.template.content.cloneNode(true));
-        const newChildren = Array.from(clone.childNodes);
-        newChildren.forEach(child => node.appendChild(child));
-        for (const child of newChildren) {
-          templateCtx.processNode(child);
-          if (child.nodeType === 1) enter(/** @type {Element} */(child));
-        }
-
-        pluginState.templateId = args.templateId;
-        pluginState.inletCtx = inletCtx;
-        pluginState.templateCtx = templateCtx;
-        pluginState.bag = bag;
-      };
-
-      // First render: nothing to leave, mount immediately.
-      if (!pluginState.templateId) {
-        pluginState.leaving = [];
-        doMount(pendingArgs);
-        return { halt: true, pluginState };
       }
 
-      // Template swap: keep old scopes live, start leaves on rendered
-      // children. Non-element children (text nodes) removed synchronously.
-      // Whichever pendingArgs is set when the last leave completes wins,
-      // so rapid successive swaps just overwrite the pending target.
-      pluginState.pendingArgs = pendingArgs;
-      pluginState.leaving = leaving || [];
+      // Wipe host: first render clears caller wrappers, later renders clear
+      // the previous template's DOM.
+      node.innerHTML = "";
+      const clone = /** @type {DocumentFragment} */(template.content.cloneNode(true));
+      Array.from(clone.childNodes).forEach(child => node.appendChild(child));
       for (const child of Array.from(node.childNodes)) {
-        if (child.nodeType === 1) {
-          const leavingEl = /** @type {Element} */(child);
-          const handle = leave(leavingEl, () => {
-            leavingEl.remove();
-            const list = pluginState.leaving;
-            const idx = list ? list.findIndex(x => x.node === leavingEl) : -1;
-            if (idx >= 0) list.splice(idx, 1);
-            if (list && list.length === 0 && pluginState.pendingArgs) {
-              const next = pluginState.pendingArgs;
-              pluginState.pendingArgs = null;
-              doMount(next);
-            }
-          });
-          pluginState.leaving.push({ node: leavingEl, handle });
-        } else {
-          child.parentNode?.removeChild(child);
-        }
+        templateCtx.processNode(child);
       }
 
-      return { halt: true, pluginState };
+      return {
+        halt: true,
+        pluginState: { templateId, inletCtx, templateCtx, bag },
+      };
     },
   });
 

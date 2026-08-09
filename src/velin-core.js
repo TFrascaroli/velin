@@ -299,7 +299,6 @@ const DefaultPluginPriorities = {
  * @property {ProcessNode} processNode
  * @property {Trackers} trackers
  * @property {(state: any) => VelinStateControl} getController Returns the scheduler control for a bound state (as returned by Velin.bind()). Use `.batch(fn)` on the result to batch effects across mutations.
- * @property {{awaitLeave: (node: Node, done: () => void) => void, markEnter: (node: Node) => void}=} transitions Optional. Attached by the `velin-transitions` module when it's loaded. See directives.md#transitions.
  * @property {VelinInternal} ø__internal
  */
 

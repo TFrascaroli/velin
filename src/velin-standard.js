@@ -9,16 +9,6 @@
  * @param {VelinCore} vln
  */
 function setupVelinStd(vln) {
-  // No-ops when the optional velin-transitions module isn't loaded. `leave`
-  // returns a `{ cancel }` handle in both modes so callers can uniformly
-  // abort an in-flight leave (e.g. revive a vln-if node on fast re-toggle).
-  const NOOP_LEAVE = { cancel: () => {} };
-  const leave = (node, done) => {
-    if (vln.transitions) return vln.transitions.awaitLeave(node, done);
-    done();
-    return NOOP_LEAVE;
-  };
-  const enter = (node) => { if (vln.transitions) vln.transitions.markEnter(node); };
   /**
    * When a parent substate rewrites an interpolation (e.g. keyed vln-loop
    * moves an item's `subkey` from `arr[oldI]` to `arr[newI]`), inherited
@@ -133,11 +123,6 @@ function setupVelinStd(vln) {
         pluginState.childCtx.cleanup(pluginState.activeNode);
         pluginState.activeNode.remove();
       }
-      if (pluginState?.leavingNode) {
-        pluginState.leaveHandle?.cancel();
-        pluginState.leavingCtx.cleanup(pluginState.leavingNode);
-        pluginState.leavingNode.remove();
-      }
       if (pluginState?.placeholder?.parentNode) {
         pluginState.placeholder.remove();
       }
@@ -155,50 +140,23 @@ function setupVelinStd(vln) {
         pluginState.initialized = true;
         pluginState.activeNode = null;
         pluginState.childCtx = null;
-        pluginState.leavingNode = null;
-        pluginState.leavingCtx = null;
-        pluginState.leaveHandle = null;
         parent.replaceChild(placeholder, node);
       }
 
       if (tracked) {
-        // Fast re-toggle: an in-flight leave still owns the previous node.
-        // Cancel it and revive — the CSS transition reverses back to natural
-        // state on its own, and bindings are still live (cleanup is deferred
-        // until leave completion).
-        if (pluginState.leavingNode) {
-          pluginState.leaveHandle?.cancel();
-          pluginState.activeNode = pluginState.leavingNode;
-          pluginState.childCtx = pluginState.leavingCtx;
-          pluginState.leavingNode = null;
-          pluginState.leavingCtx = null;
-          pluginState.leaveHandle = null;
-        } else if (!pluginState.activeNode) {
+        if (!pluginState.activeNode) {
           const clone = pluginState.template.cloneNode(true);
           consume(clone, attributeName, expr);
           pluginState.childCtx = compose({});
           pluginState.placeholder.parentNode.insertBefore(clone, pluginState.placeholder);
           pluginState.childCtx.processNode(clone);
           pluginState.activeNode = clone;
-          enter(clone);
         }
       } else if (pluginState.activeNode) {
-        const leaving = pluginState.activeNode;
-        const ctx = pluginState.childCtx;
+        pluginState.childCtx.cleanup(pluginState.activeNode);
+        pluginState.activeNode.remove();
         pluginState.activeNode = null;
         pluginState.childCtx = null;
-        pluginState.leavingNode = leaving;
-        pluginState.leavingCtx = ctx;
-        pluginState.leaveHandle = leave(leaving, () => {
-          // Only finalize if this leave wasn't superseded (cancel would
-          // have cleared leavingNode already).
-          if (pluginState.leavingNode !== leaving) return;
-          ctx.cleanup(leaving);
-          leaving.remove();
-          pluginState.leavingNode = null;
-          pluginState.leavingCtx = null;
-          pluginState.leaveHandle = null;
-        });
       }
 
       return { halt: true, pluginState };
@@ -543,16 +501,6 @@ function setupVelinStd(vln) {
         if (pluginState.children) {
           pluginState.children.forEach((child) => parent.removeChild(child));
         }
-        // Fast-forward any items still mid-leave: their reactive cleanup
-        // already ran when they were removed from the list — just stop
-        // the leave timer and drop the DOM node.
-        if (pluginState.leaving) {
-          for (const { node, handle } of pluginState.leaving) {
-            handle.cancel();
-            node.remove?.();
-          }
-          pluginState.leaving.length = 0;
-        }
         if (parent.contains(pluginState.template))
           parent.removeChild(pluginState.template);
         if (parent.contains(pluginState.placeholder))
@@ -564,7 +512,6 @@ function setupVelinStd(vln) {
       pluginState.parent = null;
       pluginState.template = null;
       pluginState.placeholder = null;
-      pluginState.leaving = null;
     },
     render: ({
       node,
@@ -590,19 +537,7 @@ function setupVelinStd(vln) {
         pluginState.children = [];
         pluginState.substates = [];
         pluginState.keys = [];
-        pluginState.leaving = [];
         parent.replaceChild(placeholder, node);
-      }
-
-      // Fast-forward any items still mid-leave from a previous render.
-      // Prevents ghost DOM from piling up when data changes faster than
-      // the leave animation. Reactive cleanup already ran at removal.
-      if (pluginState.leaving && pluginState.leaving.length) {
-        for (const { node: ghost, handle } of pluginState.leaving) {
-          handle.cancel();
-          ghost.remove?.();
-        }
-        pluginState.leaving.length = 0;
       }
 
       // Two supported shapes:
@@ -665,44 +600,6 @@ function setupVelinStd(vln) {
       const newKeys = new Array(items.length);
       const usedOld = new Set();
       const seen = keyField ? new Set() : null;
-
-      // Precompute which old nodes are about to leave. Survivors then treat
-      // those nodes as "transparent" for the in-position check — instead of
-      // compacting past them (which would visually pull the leaving row to
-      // the end of the list), survivors stay where they were and the
-      // leaving row animates from its actual slot.
-      const willLeave = new Set();
-      if (keyField) {
-        const newKeySet = new Set();
-        for (const item of items) {
-          if (item != null && typeof item === 'object' &&
-              Object.prototype.hasOwnProperty.call(item, keyField)) {
-            newKeySet.add(item[keyField]);
-          }
-        }
-        for (let j = 0; j < oldKeys.length; j++) {
-          if (!newKeySet.has(oldKeys[j])) willLeave.add(oldChildren[j]);
-        }
-      } else {
-        // Positional: the trailing overflow leaves.
-        for (let j = items.length; j < oldChildren.length; j++) {
-          willLeave.add(oldChildren[j]);
-        }
-      }
-
-      /**
-       * True when `reusedNode` is already effectively adjacent to
-       * `lastInserted` among survivors — i.e. any intermediate DOM
-       * siblings are all in `willLeave`.
-       */
-      const inPositionSkippingLeaving = (reusedNode) => {
-        let n = lastInserted.nextSibling;
-        while (n && n !== reusedNode) {
-          if (!willLeave.has(n)) return false;
-          n = n.nextSibling;
-        }
-        return n === reusedNode;
-      };
 
       let lastInserted = placeholder;
 
@@ -771,11 +668,8 @@ function setupVelinStd(vln) {
             reusedChild.triggerEffects('$index');
           }
 
-          // Only move DOM when the node isn't already in position. A
-          // survivor with only will-leave nodes between it and
-          // lastInserted counts as in position — the will-leave nodes
-          // will vanish shortly, restoring adjacency without a move.
-          if (!inPositionSkippingLeaving(reusedNode)) {
+          // Only move DOM when the node isn't already in position.
+          if (reusedNode.previousSibling !== lastInserted) {
             placeholder.parentNode.insertBefore(reusedNode, lastInserted.nextSibling);
           }
           lastInserted = reusedNode;
@@ -793,7 +687,6 @@ function setupVelinStd(vln) {
           newSubstates[i] = child;
           child.processNode(clone);
           placeholder.parentNode.insertBefore(clone, lastInserted.nextSibling);
-          enter(clone);
           lastInserted = clone;
         }
       }
@@ -801,18 +694,8 @@ function setupVelinStd(vln) {
       for (let j = 0; j < oldSubstates.length; j++) {
         if (!usedOld.has(j)) {
           const childNode = oldChildren[j];
+          childNode.remove?.();
           oldSubstates[j].cleanup(childNode);
-          if (childNode) {
-            const leaving = pluginState.leaving;
-            const handle = leave(childNode, () => {
-              childNode.remove?.();
-              // Drop from tracking on natural completion. If FF already
-              // pulled this entry, findIndex returns -1 — no-op.
-              const idx = leaving.findIndex(x => x.node === childNode);
-              if (idx >= 0) leaving.splice(idx, 1);
-            });
-            leaving.push({ node: childNode, handle });
-          }
         }
       }
 
