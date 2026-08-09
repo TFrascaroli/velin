@@ -8,6 +8,44 @@
  * @param {VelinCore} vln
  */
 function setupVelinRouter(vln) {
+  // No-ops when the optional velin-transitions module isn't loaded. `leave`
+  // returns a `{ cancel }` handle in both modes so callers can uniformly
+  // abort an in-flight leave.
+  const NOOP_LEAVE = { cancel: () => {} };
+  const leave = (node, done) => {
+    if (vln.transitions) return vln.transitions.awaitLeave(node, done);
+    done();
+    return NOOP_LEAVE;
+  };
+  const enter = (node) => { if (vln.transitions) vln.transitions.markEnter(node); };
+
+  // Cross-directive coordination for vln-route: when path changes, a route
+  // that's leaving and a route that would mount fire in the same tick, and
+  // effect order depends on DOM order — so the mounting route can fire
+  // BEFORE the leaving sibling has registered its leave. `mountedCount`
+  // lets us detect that race: if anyone was mounted at the time we want
+  // to mount, defer via microtask so racing leaves get a chance to bump
+  // `leavingCount` first. `pendingMounts` queues mount closures to drain
+  // when `leavingCount` reaches 0. Keyed by the router's state proxy so
+  // multiple routers coexist.
+  /** @type {WeakMap<object, {leavingCount: number, mountedCount: number, pendingMounts: Function[]}>} */
+  const routeCoords = new WeakMap();
+  const getCoord = (routerState) => {
+    if (!routerState) return null;
+    let coord = routeCoords.get(routerState);
+    if (!coord) {
+      coord = { leavingCount: 0, mountedCount: 0, pendingMounts: [] };
+      routeCoords.set(routerState, coord);
+    }
+    return coord;
+  };
+  const drainMounts = (coord) => {
+    if (coord.leavingCount !== 0) return;
+    const pending = coord.pendingMounts;
+    if (pending.length === 0) return;
+    coord.pendingMounts = [];
+    for (const fn of pending) fn();
+  };
   /**
    * vln-router="routeName"
    * Creates a scope with $route bound to 'routeName'.
@@ -60,6 +98,8 @@ function setupVelinRouter(vln) {
         pluginState.initialized = true;
         pluginState.unwatch = onHashChange;
         pluginState.scopedChild = compose({ $__route: { expr } });
+        // Prime the coord so child vln-route directives see it on first render.
+        getCoord(routerState);
       }
 
       return {
@@ -96,11 +136,16 @@ function setupVelinRouter(vln) {
         pluginState.childCtx.cleanup(pluginState.activeNode);
         pluginState.activeNode.remove();
       }
+      if (pluginState?.leavingNode) {
+        pluginState.leaveHandle?.cancel();
+        pluginState.leavingCtx.cleanup(pluginState.leavingNode);
+        pluginState.leavingNode.remove();
+      }
       if (pluginState?.placeholder?.parentNode) {
         pluginState.placeholder.remove();
       }
     },
-    render: ({ node, expr, compose, consume, tracked, pluginState = {}, attributeName }) => {
+    render: ({ node, expr, compose, consume, evaluate, tracked, pluginState = {}, attributeName }) => {
       const parent = node.parentNode || pluginState.parent;
       if (!parent) return { halt: true };
 
@@ -113,32 +158,106 @@ function setupVelinRouter(vln) {
         pluginState.initialized = true;
         pluginState.activeNode = null;
         pluginState.childCtx = null;
+        pluginState.leavingNode = null;
+        pluginState.leavingCtx = null;
+        pluginState.leaveHandle = null;
+        pluginState.queuedMount = null;
         parent.replaceChild(placeholder, node);
       }
 
       const pattern = tracked.targetPath.replace(/:([^/]+)/g, '(?<$1>[^/]+)');
       const regex = new RegExp(`^${pattern}$`);
-      const match = (tracked.currentPath || "").match(regex);
+      const matches = (path) => regex.test(path || "");
+      const match = matches(tracked.currentPath);
+
+      const coord = getCoord(evaluate("$__route"));
+
+      // Mount body — extracted so it can run either synchronously (no
+      // sibling was mounted), via a microtask (a sibling was mounted and
+      // may still race a leave), or via the coord drain (a sibling is
+      // known to be leaving). Re-verifies match against the CURRENT
+      // router path so a rapid nav-and-back doesn't mount a route the
+      // user already navigated away from.
+      const performMount = () => {
+        pluginState.queuedMount = null;
+        if (pluginState.activeNode) return; // already mounted (revived, etc.)
+        if (!matches(evaluate("$__route.path"))) return; // stale
+        const clone = pluginState.template.cloneNode(true);
+        consume(clone, attributeName, expr);
+        pluginState.childCtx = compose({});
+        pluginState.placeholder.parentNode.insertBefore(clone, pluginState.placeholder);
+        pluginState.childCtx.processNode(clone);
+        pluginState.activeNode = clone;
+        if (coord) coord.mountedCount++;
+        enter(clone);
+      };
 
       if (match) {
-        if (!pluginState.activeNode) {
-          const clone = pluginState.template.cloneNode(true);
-          // Consume the attribute on the clone to prevent re-processing this plugin
-          consume(clone, attributeName, expr);
-
-          // Create scoped child for cleanup tracking
-          pluginState.childCtx = compose({});
-
-          pluginState.placeholder.parentNode.insertBefore(clone, pluginState.placeholder);
-          pluginState.childCtx.processNode(clone);
-          pluginState.activeNode = clone;
+        // Revive: same route came back while its old subtree was still
+        // leaving. Undo the leave-side coord bookkeeping and drain any
+        // sibling mounts that were queued behind our leave.
+        if (pluginState.leavingNode) {
+          pluginState.leaveHandle?.cancel();
+          pluginState.activeNode = pluginState.leavingNode;
+          pluginState.childCtx = pluginState.leavingCtx;
+          pluginState.leavingNode = null;
+          pluginState.leavingCtx = null;
+          pluginState.leaveHandle = null;
+          if (coord) {
+            coord.leavingCount--;
+            coord.mountedCount++;
+            drainMounts(coord);
+          }
+        } else if (!pluginState.activeNode && !pluginState.queuedMount) {
+          if (coord && coord.leavingCount > 0) {
+            // A sibling has already registered its leave — queue behind it.
+            pluginState.queuedMount = performMount;
+            coord.pendingMounts.push(performMount);
+          } else if (coord && coord.mountedCount > 0) {
+            // A sibling was mounted at the top of this tick but hasn't
+            // fired its effect yet (DOM-order race). Defer to a microtask;
+            // once the sibling's leave registers, we'll queue behind it.
+            pluginState.queuedMount = performMount;
+            queueMicrotask(() => {
+              if (pluginState.queuedMount !== performMount) return; // superseded
+              pluginState.queuedMount = null;
+              if (coord.leavingCount > 0) coord.pendingMounts.push(performMount);
+              else performMount();
+            });
+          } else {
+            performMount();
+          }
         }
       } else {
+        // Path no longer matches. If we had queued a mount, clear our own
+        // reference — the drain (or the microtask trampoline) will see the
+        // cleared queuedMount and no-op.
+        if (pluginState.queuedMount) {
+          pluginState.queuedMount = null;
+        }
         if (pluginState.activeNode) {
-          pluginState.childCtx.cleanup(pluginState.activeNode);
-          pluginState.activeNode.remove();
+          const leaving = pluginState.activeNode;
+          const ctx = pluginState.childCtx;
           pluginState.activeNode = null;
           pluginState.childCtx = null;
+          pluginState.leavingNode = leaving;
+          pluginState.leavingCtx = ctx;
+          if (coord) {
+            coord.mountedCount--;
+            coord.leavingCount++;
+          }
+          pluginState.leaveHandle = leave(leaving, () => {
+            if (pluginState.leavingNode !== leaving) return;
+            ctx.cleanup(leaving);
+            leaving.remove();
+            pluginState.leavingNode = null;
+            pluginState.leavingCtx = null;
+            pluginState.leaveHandle = null;
+            if (coord) {
+              coord.leavingCount--;
+              drainMounts(coord);
+            }
+          });
         }
       }
 

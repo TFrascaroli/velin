@@ -1,0 +1,187 @@
+<h1 class="text-3xl font-bold mb-6">Transitions</h1>
+
+<p class="text-gray-600 mb-6">
+  Velin holds mounting and unmounting nodes in the DOM long enough for a
+  CSS transition to play. On mount, the node gets <code>.vln-entering</code>
+  for two animation frames. On unmount, it gets <code>.vln-leaving</code>
+  until the CSS <code>transition-duration</code> (max across all
+  properties) + 50 ms elapses. Write CSS against those two class names.
+</p>
+
+<p class="text-gray-600 mb-8">
+  Fast interactions cancel gracefully: re-toggling a <code>vln-if</code> or
+  navigating back to a <code>vln-route</code> mid-leave
+  <strong>revives the same node</strong> (CSS reverses back to natural
+  state); rapid updates on <code>vln-loop</code> or template swaps on
+  <code>vln-fragment</code> <strong>fast-forward</strong> pending ghosts
+  so nothing piles up on screen.
+</p>
+
+<style>
+  .fade {
+    transition: opacity 300ms ease, transform 300ms ease;
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .fade.vln-entering,
+  .fade.vln-leaving {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+
+  .item {
+    transition: opacity 250ms ease, transform 250ms ease, background-color 250ms ease;
+    opacity: 1;
+    transform: translateX(0);
+  }
+  .item.vln-entering {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+  .item.vln-leaving {
+    opacity: 0;
+    transform: translateX(16px);
+    background-color: #fee2e2;
+  }
+
+  .card-body {
+    transition: opacity 300ms ease, transform 300ms ease;
+    opacity: 1;
+    transform: scale(1);
+  }
+  .card-body.vln-entering,
+  .card-body.vln-leaving {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+
+  .route-panel {
+    transition: opacity 300ms ease, transform 300ms ease;
+    opacity: 1;
+    transform: translateX(0);
+  }
+  .route-panel.vln-entering {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  .route-panel.vln-leaving {
+    opacity: 0;
+    transform: translateX(-24px);
+  }
+</style>
+
+<div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+
+  <!-- ─── vln-if ────────────────────────────────────────────────── -->
+  <section>
+    <h2 class="font-semibold mb-3">vln-if</h2>
+    <button
+      class="px-3 py-1 mb-3 bg-blue-600 text-white rounded hover:bg-blue-700"
+      vln-on:click="visible = !visible">
+      Toggle
+    </button>
+    <div
+      vln-if="visible"
+      class="fade p-4 bg-blue-50 border border-blue-200 rounded">
+      Fades in on mount, fades out on unmount. Re-toggle mid-leave to see
+      the same node revive.
+    </div>
+  </section>
+
+  <!-- ─── vln-loop (keyed) ──────────────────────────────────────── -->
+  <section>
+    <h2 class="font-semibold mb-3">vln-loop (keyed)</h2>
+    <div class="flex gap-2 mb-3 flex-wrap">
+      <button
+        class="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700"
+        vln-on:click="add()">Add</button>
+      <button
+        class="px-3 py-1 bg-gray-200 rounded hover:bg-gray-300"
+        vln-on:click="items = []">Clear</button>
+    </div>
+    <ul class="space-y-2">
+      <li
+        vln-loop:item="{collection: items, key: 'id'}"
+        class="item p-3 bg-white border border-gray-200 rounded flex justify-between items-center">
+        <span vln-text="item.label"></span>
+        <button
+          class="text-red-600 hover:text-red-800"
+          vln-on:click="remove(item.id)">×</button>
+      </li>
+    </ul>
+    <p class="text-xs text-gray-500 mt-3">
+      Remove an item from the middle — the correct row animates out and
+      the others stay put. That's the keyed diff at work. Positional
+      <code>vln-loop:item="items"</code> would visually shift the list up
+      instantly and animate the trailing slot instead. Also try clicking
+      <em>Clear</em> mid-animation: the pending ghosts get fast-forwarded.
+    </p>
+  </section>
+
+  <!-- ─── vln-fragment (template swap) ──────────────────────────── -->
+  <section>
+    <h2 class="font-semibold mb-3">vln-fragment (template swap)</h2>
+
+    <template vln-template="'card-user'" vln-vars="['name']">
+      <div class="card-body p-4 bg-white border border-gray-200 rounded">
+        <div class="text-xs text-gray-500 mb-1">USER CARD</div>
+        <div class="font-medium" vln-text="'Hello, ' + name"></div>
+      </div>
+    </template>
+    <template vln-template="'card-msg'" vln-vars="['count']">
+      <div class="card-body p-4 bg-white border border-gray-200 rounded">
+        <div class="text-xs text-gray-500 mb-1">MESSAGES</div>
+        <div class="font-medium">
+          You have <span vln-text="count"></span> unread messages.
+        </div>
+      </div>
+    </template>
+
+    <div class="flex gap-2 mb-3">
+      <button
+        class="px-3 py-1 bg-purple-600 text-white rounded hover:bg-purple-700"
+        vln-on:click="whichCard = 'card-user'">User</button>
+      <button
+        class="px-3 py-1 bg-purple-600 text-white rounded hover:bg-purple-700"
+        vln-on:click="whichCard = 'card-msg'">Messages</button>
+    </div>
+    <div vln-fragment="whichCard" vln-vars="{ name: 'Tim', count: 3 }"></div>
+    <p class="text-xs text-gray-500 mt-3">
+      Swap templates back and forth quickly — the old card fades out while
+      the new one fades in; a third swap mid-leave FFs the pending ghost.
+    </p>
+  </section>
+
+  <!-- ─── vln-route ────────────────────────────────────────────── -->
+  <section vln-router="txRoute">
+    <h2 class="font-semibold mb-3">vln-route</h2>
+    <div class="flex gap-2 mb-3">
+      <a
+        href="#/tx/home"
+        class="px-3 py-1 bg-amber-600 text-white rounded hover:bg-amber-700 no-underline">Home</a>
+      <a
+        href="#/tx/about"
+        class="px-3 py-1 bg-amber-600 text-white rounded hover:bg-amber-700 no-underline">About</a>
+    </div>
+
+    <div class="relative">
+      <div vln-route="'/tx/home'" class="route-panel p-4 bg-amber-50 border border-amber-200 rounded">
+        <div class="text-xs text-gray-500 mb-1">HOME</div>
+        Slides in from the right, slides out to the left. Navigate away
+        and back before the leave finishes — same node revives.
+      </div>
+      <div vln-route="'/tx/about'" class="route-panel p-4 bg-amber-50 border border-amber-200 rounded">
+        <div class="text-xs text-gray-500 mb-1">ABOUT</div>
+        Two routes share the same animation contract; the leaving one
+        slides away while the entering one slides in.
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<p class="text-sm text-gray-500 mt-8">
+  The library only owns the timing — the animation itself is CSS you
+  write. Any element with no transition/animation removes synchronously,
+  so this is zero-cost when unused.
+</p>

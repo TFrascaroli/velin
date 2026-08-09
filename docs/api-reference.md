@@ -445,6 +445,67 @@ destroy: ({ pluginState }) => {
 
 ---
 
+## Transitions (optional module)
+
+Attached to `Velin.transitions` when the `velin-transitions` module is
+loaded. `@velinjs/all` bundles it; `velin-common` does not. If the
+module isn't loaded, `Velin.transitions` is `undefined` and the four
+mount/unmount directives fall back to synchronous removal.
+
+### `Velin.transitions.awaitLeave(node, done)`
+
+Add `.vln-leaving` to `node`, then hold it in the DOM for the CSS
+`transition-duration` (or `animation-duration`) + 50 ms slack, then
+call `done`. For multi-property transitions, waits for the longer of
+the durations. If the node has no transition — or isn't an Element /
+isn't connected — `done` fires synchronously.
+
+Implementation uses `setTimeout` rather than `transitionend`, so
+multi-property transitions like `transition: opacity 200ms, transform
+400ms` don't fire early on the first property to complete.
+
+**Parameters:**
+- `node` (Node): Element to hold.
+- `done` (() => void): Called exactly once when it's safe to remove the
+  node from the DOM. The caller performs the removal.
+
+**Returns:** `{ cancel(): void }` — call `cancel()` before completion to
+abort the leave: `vln-leaving` is stripped, the timer is cleared, and
+`done` is never invoked. The caller keeps the node in place (typically
+letting the CSS transition reverse back to its natural state). Calling
+`cancel()` after `done` has already fired is a no-op. Use this to
+implement "revive on remount" (see how `vln-if` handles fast toggling)
+or fast-forward (see how `vln-loop` handles rapid list changes — call
+`cancel()` then finalize immediately).
+
+**Use it from custom plugins whose `render` or `destroy` removes a
+subtree** — this is what `vln-if`, `vln-loop`, `vln-route`, and
+`vln-fragment` use internally to honor the class contract described in
+[Transitions](./directives.md#transitions). Guard the lookup so your
+plugin still works when the module isn't loaded:
+
+```javascript
+const NOOP = { cancel: () => {} };
+const leave = (node, done) => {
+  if (Velin.transitions) return Velin.transitions.awaitLeave(node, done);
+  done();
+  return NOOP;
+};
+```
+
+### `Velin.transitions.markEnter(node)`
+
+Add `.vln-entering` to `node`, then strip it after two animation frames
+so a CSS transition against `.vln-entering` runs from the entering
+state to the natural state. If the node has no transition/animation,
+the class is added and removed synchronously, and the leftover empty
+`class=""` attribute is cleaned up.
+
+**Parameters:**
+- `node` (Node): Just-mounted element. Non-Elements are ignored.
+
+---
+
 ## Error Codes
 
 Velin uses error codes in console messages:
