@@ -38,6 +38,12 @@ function maxAnimTime(el) {
   );
 }
 
+// Remove `cls` and drop the empty `class=""` attribute leftover from classList.
+function stripClass(node, cls) {
+  node.classList.remove(cls);
+  if (node.getAttribute('class') === '') node.removeAttribute('class');
+}
+
 const NOOP_HANDLE = { cancel: () => {} };
 
 /**
@@ -79,8 +85,7 @@ export function awaitLeave(node, done) {
       if (finished) return;
       finished = true;
       clearTimeout(timer);
-      node.classList.remove('vln-leaving');
-      if (node.getAttribute('class') === '') node.removeAttribute('class');
+      stripClass(node, 'vln-leaving');
     },
   };
 }
@@ -95,16 +100,12 @@ export function awaitLeave(node, done) {
 export function markEnter(node) {
   if (!(node instanceof Element)) return;
   node.classList.add('vln-entering');
-  const stripAndTidy = () => {
-    node.classList.remove('vln-entering');
-    if (node.getAttribute('class') === '') node.removeAttribute('class');
-  };
   if (maxAnimTime(node) <= 0) {
-    stripAndTidy();
+    stripClass(node, 'vln-entering');
     return;
   }
   requestAnimationFrame(() => {
-    requestAnimationFrame(stripAndTidy);
+    requestAnimationFrame(() => stripClass(node, 'vln-entering'));
   });
 }
 
