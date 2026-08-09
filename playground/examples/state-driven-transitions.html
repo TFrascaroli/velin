@@ -1,0 +1,85 @@
+<h1 class="text-3xl font-bold mb-6">State-driven enter/leave</h1>
+
+<p class="text-gray-600 mb-6">
+  Velin doesn't ship a transitions system — reactivity is enough. Toggle a
+  boolean flag, animate against it with <code>vln-class</code>, and swap the
+  underlying state after the CSS duration. Two patterns cover almost every
+  case: a boolean flag around <code>vln-if</code>, and per-item flags on a
+  keyed <code>vln-loop</code>.
+</p>
+
+<style>
+  .fade {
+    transition: opacity 300ms ease, transform 300ms ease;
+    opacity: 1;
+    transform: translateY(0);
+  }
+  .fade.leaving {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+
+  .item {
+    transition: opacity 300ms ease, transform 300ms ease, background-color 300ms ease;
+    opacity: 1;
+    transform: translateX(0);
+  }
+  .item.leaving {
+    opacity: 0;
+    transform: translateX(16px);
+    background-color: #fee2e2;
+  }
+</style>
+
+<div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+
+  <section>
+    <h2 class="font-semibold mb-3">Fade a panel</h2>
+    <button
+      class="px-3 py-1 mb-3 bg-blue-600 text-white rounded hover:bg-blue-700"
+      vln-on:click="togglePanel()">
+      Toggle
+    </button>
+    <div
+      vln-if="panelShown"
+      vln-class="{ leaving: panelLeaving }"
+      class="fade p-4 bg-blue-50 border border-blue-200 rounded">
+      One boolean (<code>panelLeaving</code>) drives the CSS. On hide, we
+      flip it, wait 300 ms, then flip <code>panelShown = false</code>.
+      Fifteen lines of state, no library help.
+    </div>
+  </section>
+
+  <section>
+    <h2 class="font-semibold mb-3">Slide-out list items</h2>
+    <div class="flex gap-2 mb-3">
+      <button
+        class="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700"
+        vln-on:click="add()">Add</button>
+    </div>
+    <ul class="space-y-2">
+      <li
+        vln-loop:item="{collection: items, key: 'id'}"
+        vln-class="{ leaving: item.leaving }"
+        class="item p-3 bg-white border border-gray-200 rounded flex justify-between items-center">
+        <span vln-text="item.label"></span>
+        <button
+          class="text-red-600 hover:text-red-800"
+          vln-on:click="remove(item.id)">×</button>
+      </li>
+    </ul>
+    <p class="text-xs text-gray-500 mt-3">
+      Each item owns a <code>leaving</code> flag. <code>remove(id)</code>
+      sets it to <code>true</code>, then splices the item out of the array
+      after the CSS duration. The keyed loop keeps the row in place while
+      it fades, so the transition plays where you'd expect.
+    </p>
+  </section>
+
+</div>
+
+<p class="text-sm text-gray-500 mt-8">
+  The same pattern extends to route swaps (delay setting a route path) or
+  template swaps (delay setting a <code>vln-fragment</code> id). Anywhere
+  you'd want an animation, insert a flag + a delay.
+</p>
