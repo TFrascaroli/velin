@@ -19,7 +19,7 @@
   <script src="https://unpkg.com/@velinjs/all@beta/velin-all.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
-<body vln-router-scroll="route">
+<body>
 
   <div id="app">
     <!-- Templates for reactive pages (need parent-state access via fragments).
@@ -140,6 +140,8 @@
         <a href="https://github.com/TFrascaroli/velin" target="_blank" rel="noopener" class="external">GitHub ↗</a>
       </nav>
     </header>
+
+    <div hidden vln-watch:resetScroll="route.path"></div>
 
     <main class="site-main" vln-router="route">
       <div vln-route="'/'"                vln-page="pages.landing"></div>

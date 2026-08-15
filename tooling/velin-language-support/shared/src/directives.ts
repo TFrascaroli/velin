@@ -118,12 +118,6 @@ export const VELIN_DIRECTIVE_META: DirectiveMeta[] = [
     usage: 'vln-table="config"',
   },
   {
-    name: 'vln-evt',
-    hasSubkey: true,
-    documentation: 'Custom event helper (velin-events plugin).',
-    usage: 'vln-evt:name="handler"',
-  },
-  {
     name: 'vln-route',
     hasSubkey: false,
     documentation: 'Router route match (velin-router plugin).',
