@@ -118,6 +118,21 @@ export const VELIN_DIRECTIVE_META: DirectiveMeta[] = [
     usage: 'vln-table="config"',
   },
   {
+    name: 'vln-inlet',
+    hasSubkey: false,
+    documentation:
+      'Declares slot content on a `<template>` child of a `vln-fragment` host. Bare = default slot; `vln-inlet="\'name\'"` = named slot. Content binds against the caller\'s scope.',
+    usage: 'vln-inlet[="\'name\'"]',
+    validOnTags: ['template'],
+  },
+  {
+    name: 'vln-outlet',
+    hasSubkey: false,
+    documentation:
+      "Marks where the caller's inlet content is projected inside a template. Bare = default slot; `vln-outlet=\"'name'\"` = named slot.",
+    usage: 'vln-outlet[="\'name\'"]',
+  },
+  {
     name: 'vln-route',
     hasSubkey: false,
     documentation: 'Router route match (velin-router plugin).',
