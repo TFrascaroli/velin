@@ -555,77 +555,27 @@ given pattern. Patterns support `:param` placeholders.
   hidden) and re-cloned on match.
 - Must be a descendant of a `vln-router` element.
 
-### `vln-router-scroll`
+**Resetting scroll on navigation.** Not a built-in — `vln-watch`
+covers it in a few lines. Put a handler on your state, watch the
+router's `path`:
 
-Resets scroll position on the element it sits on every time the referenced
-router's `path` changes. Put it on whichever element actually owns the scroll
-for your layout — the `<html>` element for a normal page, or an inner scroll
-container (e.g. `<main>` with `overflow: auto`) for app shells.
-
-**Syntax:** `vln-router-scroll="stateKey"` — where `stateKey` is the same key
-you passed to `vln-router`.
-
-**Example:**
 ```html
-<html vln-router-scroll="myRoute">
-  <body>
-    <nav>...</nav>
-    <div vln-router="myRoute">
-      <div vln-route="'/'">...</div>
-      <div vln-route="'/about'">...</div>
-    </div>
-  </body>
-</html>
+<div vln-router="myRoute">
+  <div hidden vln-watch:resetScroll="$__route.path"></div>
+  <div vln-route="'/'">...</div>
+  <div vln-route="'/about'">...</div>
+</div>
+
+<script>
+  Velin.bind(document.body, {
+    resetScroll() { window.scrollTo(0, 0); }
+  });
+</script>
 ```
 
-**Notes:**
-- Fires only when `path` actually changes, so reactive re-renders on the same
-  route don't move the viewport.
-- Does not fire on initial mount.
-- Uses `scrollTo(0, 0)` when available, falls back to setting `scrollTop`/
-  `scrollLeft`. For `<html>` / `<body>` targets it delegates to
-  `window.scrollTo(0, 0)`.
-- Not tied to nesting — the directive doesn't have to be an ancestor or
-  descendant of the router, only in the same reactive scope so the router's
-  state key resolves.
-
-## Event Orchestration
-
-These plugins are available in the optional `velin-events.js` module.
-
-### `vln-evt-alias`
-
-Listens for an existing DOM event and re-dispatches it as a new event name. Useful for mapping internal component events to parent expectations.
-
-**Syntax:** `vln-evt-alias:newName="'sourceEvent'"`
-
-**Example:**
-```html
-<!-- Listen for 'success' from a lib and fire it as 'saved' -->
-<div vln-evt-alias:saved="'success'"></div>
-```
-
-### `vln-evt-contain`
-
-Stops the propagation of specified events at the capture phase.
-
-**Syntax:** `vln-evt-contain="expression"` where the expression evaluates to
-either a single event name (string) or an array of event names.
-
-**Examples:**
-```html
-<!-- Single event -->
-<div class="modal" vln-evt-contain="'click'"></div>
-
-<!-- Multiple events -->
-<div class="modal" vln-evt-contain="['click', 'keypress']"></div>
-
-<!-- Reactive: bind to state -->
-<div class="modal" vln-evt-contain="containedEvents"></div>
-```
-
-The expression is tracked reactively — change the bound value and listeners
-are rewired automatically.
+`vln-watch` doesn't fire on initial mount, so the viewport only
+moves on actual navigations. Swap `window.scrollTo` for a
+container's `scrollTop = 0` if the scroll lives on an inner element.
 
 ---
 

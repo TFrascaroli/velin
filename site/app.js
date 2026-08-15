@@ -230,6 +230,10 @@ Velin.bind(document.body, {
     vscode:   { markup: 'pages/vscode.html' },
   },
 
+  resetScroll() {
+    window.scrollTo(0, 0);
+  },
+
   startsWith(str, prefix) {
     return typeof str === 'string' && str.indexOf(prefix) === 0;
   },

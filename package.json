@@ -42,9 +42,6 @@
     "./templates": {
       "import": "./src/velin-templates-and-fragments.js"
     },
-    "./events": {
-      "import": "./src/velin-events.js"
-    },
     "./router": {
       "import": "./src/velin-router.js"
     },

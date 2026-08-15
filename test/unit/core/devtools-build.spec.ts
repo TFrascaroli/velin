@@ -7,7 +7,6 @@ const DIST = path.resolve(__dirname, "../../../dist/build");
 const coreArtifacts = [
   "velin-core.min.js",
   "velin-all.min.js",
-  "velin-events.min.js",
   "velin-router.min.js",
   "velin-standard.min.js",
   "velin-templates-and-fragments.min.js",
