@@ -1,6 +1,6 @@
 # Choosing a bundle
 
-Velin ships seven bundles. Most pages don't need `velin-all`. Pick the
+Velin ships six bundles. Most pages don't need `velin-all`. Pick the
 smallest one that covers your directives.
 
 Sizes are minified / gzipped, current as of the last release.
@@ -12,14 +12,13 @@ Sizes are minified / gzipped, current as of the last release.
 | **velin-common** | 23.5 KB | 8.4 KB | `velin-core` + `velin-standard`, prebundled. | **The default for most apps** — everyday interactive HTML without fragments/router/events. |
 | **velin-templates-and-fragments** | 1.8 KB | 1.0 KB | `<template>` support and `vln-fragment` — reusable render islands. **Requires core.** | You have repeated sub-trees you want to keep in one place. |
 | **velin-router** | 2.1 KB | 1.0 KB | `vln-router` and `vln-route` — hash-based SPA routing. **Requires core.** | You're building a single-page app with URL-driven views. |
-| **velin-events** | 1.0 KB | 0.6 KB | `vln-evt-alias` and `vln-evt-contain` — advanced event routing. **Requires core.** | You need to rename events or contain propagation across a subtree. |
 | **velin-all** | 28.3 KB | 9.8 KB | Everything above in one file. | You want a single script tag and don't want to think about it. |
 
 ## Sizing rules of thumb
 
 - **A landing page or blog widget**: `velin-common` or even just `velin-core` + the two or three directives you use.
 - **A CRUD form or dashboard**: `velin-common`. Add `velin-templates-and-fragments` if you're repeating row templates.
-- **A single-page app with client-side routing**: `velin-common` + `velin-router`. Add fragments/events only if you use them.
+- **A single-page app with client-side routing**: `velin-common` + `velin-router`. Add fragments only if you use them.
 - **Prototyping / examples / not sure yet**: `velin-all`. Optimize later.
 
 ## How to include a bundle
@@ -66,7 +65,6 @@ import 'velin/core';           // core only
 import 'velin/std';            // adds standard directives (needs core loaded first)
 import 'velin/templates';      // adds vln-fragment (needs core)
 import 'velin/router';         // adds vln-router / vln-route (needs core)
-import 'velin/events';         // adds evt-alias / evt-contain (needs core)
 ```
 
 Every subpath returns the same singleton on `window.Velin` — the imports
@@ -80,5 +78,5 @@ gives you the default export as a convenience for TypeScript users.
 - **Never load two "core-including" bundles.** Don't mix `velin-all` with
   `velin-core`, or `velin-common` with `velin-standard`. You'll get a
   registered-twice warning and duplicate work.
-- **Add-on order doesn't matter.** `velin-router` and `velin-events` and
+- **Add-on order doesn't matter.** `velin-router` and
   `velin-templates-and-fragments` can load in any order after core.

@@ -19,7 +19,6 @@ const bundles = [
   'velin-standard',                  // core-dependent std plugins
   'velin-templates-and-fragments',   // vln-fragment / <template>
   'velin-router',                    // vln-router / vln-route
-  'velin-events',                    // event aliases + evt-contain
 ];
 
 const filesToCopy = bundles.flatMap(b => [`${b}.min.js`, `${b}.min.js.map`]);
@@ -95,7 +94,6 @@ const subpaths = {
   './std':      'velin-standard',
   './templates':'velin-templates-and-fragments',
   './router':   'velin-router',
-  './events':   'velin-events',
 };
 
 const publishPkg = {

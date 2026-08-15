@@ -17,6 +17,17 @@ All notable changes to `@velinjs/all`. Follows
   runtime) is a supported first-class case. No teleport; no
   scoped-slot data flow (pass callbacks via `vln-vars`).
 
+### Removed
+
+- `velin-events` bundle (`vln-evt-alias`, `vln-evt-contain`) and the
+  `./events` subpath export. Neither directive was reactivity: alias
+  is event renaming, contain is capture-phase `stopPropagation` —
+  both a handful of lines of user plugin. Sharpens the reactivity-
+  primitive positioning; drops the bundle from `velin-all`.
+- `vln-router-scroll`. UX polish, not reactivity — reset-on-nav is
+  a `vln-watch:handler="$__route.path"` one-liner. Docs show the
+  recipe under `vln-route`.
+
 ## [1.0.0-beta.4] — 2026-08-03
 
 ### Added
