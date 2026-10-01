@@ -19,7 +19,7 @@
  * @property {boolean} wrapping Whether or not we are currently wrapping nested objects (to prevent false positives when setting the wrapped values)
  * @property {any} currentCycleID Marker used to deduplicate re-entrant dependency capture cycles
  * @property {number} batchDepth Nesting depth of active batch() calls; effects are queued when > 0
- * @property {Set<Function>} batchQueue Deferred effects collected while batchDepth > 0
+ * @property {Map<Function, number>} batchQueue Deferred effects collected while batchDepth > 0; value is the mutationSeq of the last mutation that queued each effect (dev-only correlation id, 0 for non-mutation queuings)
  * @property {(fn: () => void) => void} batch Defers effects triggered inside fn until fn returns, then flushes once (deduplicated). Safe to nest.
  */
 
@@ -627,9 +627,14 @@ function processPlugin(
     if (__DEV__) {
       /** @type {any} */ (effect).ø__debug = {
         node, expr, pluginName: plugin.name, subkey,
+        state: reactiveState,
         recentPaths: new Array(DEBUG_PATH_RING),
         ø__pathRingHead: 0,
+        recentRuns: new Array(DEBUG_PATH_RING),
+        ø__runRingHead: 0,
+        reads: [],
       };
+      if (node) hook.ø__registerEffectNode(node, effect);
     }
     const entries = [...depCapture.deps];
     // Filter out any dep that is at or above ANY trickling root in the stack.
@@ -644,6 +649,9 @@ function processPlugin(
       : entries;
     if (deps.length && __DEV__)
       console.log("Dependencies tracked: " + deps.join(", "));
+    if (__DEV__ && /** @type {any} */ (effect).ø__debug) {
+      /** @type {any} */ (effect).ø__debug.reads = deps.slice();
+    }
     for (const dep of deps) {
       let prop = dep;
       if (!reactiveState.bindings.has(prop))
@@ -1421,13 +1429,14 @@ function getSetter(reactiveState, expr) {
  * Triggers all reactive effects bound to a property and clears stale bindings
  * @param {string} prop Property path that changed
  * @param {ReactiveState} reactiveState The reactive state
+ * @param {number=} mutationSeq Correlation id from the mutation that caused this trigger (dev-only; may be omitted for user-invoked triggerEffects)
  * @returns {void}
  */
-function triggerEffects(prop, reactiveState) {
+function triggerEffects(prop, reactiveState, mutationSeq) {
   if (!reactiveState.bindings.has(prop)) return;
   const ctrl = reactiveState.ø__control;
   if (__DEV__) {
-    hook.ø__emit({ kind: "trigger", state: reactiveState, path: prop, queued: ctrl.batchDepth > 0, effectCount: reactiveState.bindings.get(prop)?.size ?? 0 });
+    hook.ø__emit({ kind: "trigger", state: reactiveState, path: prop, queued: ctrl.batchDepth > 0, effectCount: reactiveState.bindings.get(prop)?.size ?? 0, mutationSeq });
   }
   for (const effect of reactiveState.bindings.get(prop) || []) {
     if (__DEV__ && /** @type {any} */ (effect).ø__debug) {
@@ -1436,16 +1445,18 @@ function triggerEffects(prop, reactiveState) {
       dbg.ø__pathRingHead = (dbg.ø__pathRingHead + 1) % DEBUG_PATH_RING;
     }
     if (ctrl.batchDepth > 0) {
-      ctrl.batchQueue.add(effect);
+      // Preserve the mutationSeq of the LAST mutation that queued this
+      // effect — that's the one the eventual run gets credited to.
+      ctrl.batchQueue.set(effect, mutationSeq || 0);
     } else {
       if (__DEV__) {
         hook.stats.updateCounter++;
         const t0 = hook.ø__now();
         effect();
         const dbg = /** @type {any} */ (effect).ø__debug;
-        hook.ø__emit({ kind: "effect", state: reactiveState, path: prop, node: dbg?.node, expr: dbg?.expr, pluginName: dbg?.pluginName, durationMs: hook.ø__now() - t0 });
+        hook.ø__emit({ kind: "effect", state: reactiveState, path: prop, node: dbg?.node, expr: dbg?.expr, pluginName: dbg?.pluginName, durationMs: hook.ø__now() - t0, mutationSeq, effect });
         if (dbg && dbg.node && typeof document !== "undefined" && !document.contains(dbg.node)) {
-          hook.stats.orphanedEffectsSinceStart++;
+          hook.ø__trackOrphan();
           hook.ø__emit({ kind: "warn", code: "W001", message: "dangling-effect: effect ran on detached node", state: reactiveState, ref: { path: prop, expr: dbg.expr } });
         }
       } else {
@@ -1482,8 +1493,8 @@ function setupState(obj) {
     wrapping: false,
     currentCycleID: null,
     batchDepth: 0,
-    /** @type {Set<Function>} */
-    batchQueue: new Set(),
+    /** @type {Map<Function, number>} effect → mutationSeq of the last queuing */
+    batchQueue: new Map(),
     batch(fn) {
       this.batchDepth++;
       try {
@@ -1491,15 +1502,15 @@ function setupState(obj) {
       } finally {
         this.batchDepth--;
         if (this.batchDepth === 0 && this.batchQueue.size) {
-          const effects = [...this.batchQueue];
+          const effects = [...this.batchQueue.entries()];
           this.batchQueue.clear();
-          for (const effect of effects) {
+          for (const [effect, seq] of effects) {
             if (__DEV__) {
               hook.stats.updateCounter++;
               const t0 = hook.ø__now();
               effect();
               const dbg = /** @type {any} */ (effect).ø__debug;
-              hook.ø__emit({ kind: "effect", state: reactiveState, path: dbg?.recentPaths?.[dbg?.ø__pathRingHead === 0 ? DEBUG_PATH_RING - 1 : dbg.ø__pathRingHead - 1] ?? "", node: dbg?.node, expr: dbg?.expr, pluginName: dbg?.pluginName, durationMs: hook.ø__now() - t0 });
+              hook.ø__emit({ kind: "effect", state: reactiveState, path: dbg?.recentPaths?.[dbg?.ø__pathRingHead === 0 ? DEBUG_PATH_RING - 1 : dbg.ø__pathRingHead - 1] ?? "", node: dbg?.node, expr: dbg?.expr, pluginName: dbg?.pluginName, durationMs: hook.ø__now() - t0, mutationSeq: seq, effect });
             } else {
               effect();
             }
@@ -1565,8 +1576,12 @@ function setupState(obj) {
         const result = Reflect.set(target, prop, value);
 
         if (old !== value && !init && !ø__control.wrapping) {
-          if (__DEV__) hook.ø__emit({ kind: "mutate", state: reactiveState, path: path + "." + prop.toString(), op: "set", from: old, to: value });
-          triggerEffects(path + "." + prop.toString(), reactiveState);
+          let seq;
+          if (__DEV__) {
+            const ev = hook.ø__emit({ kind: "mutate", state: reactiveState, path: path + "." + prop.toString(), op: "set", from: old, to: value });
+            seq = ev && ev.mutationSeq;
+          }
+          triggerEffects(path + "." + prop.toString(), reactiveState, seq);
         }
         return result;
       },
@@ -1611,8 +1626,12 @@ function setupState(obj) {
           return function (...args) {
             const result = value.apply(target, args);
             if (!init) {
-              if (__DEV__) hook.ø__emit({ kind: "mutate", state: reactiveState, path, op: "arrayMethod", method: prop.toString() });
-              triggerEffects(path, reactiveState);
+              let seq;
+              if (__DEV__) {
+                const ev = hook.ø__emit({ kind: "mutate", state: reactiveState, path, op: "arrayMethod", method: prop.toString() });
+                seq = ev && ev.mutationSeq;
+              }
+              triggerEffects(path, reactiveState, seq);
             }
             return result;
           };
@@ -1653,15 +1672,27 @@ function setupState(obj) {
         ) {
           const innerPath = path + "[" + prop.toString() + "]";
           if (old !== value && !init) {
-            if (__DEV__) hook.ø__emit({ kind: "mutate", state: reactiveState, path: innerPath, op: "set", from: old, to: value });
-            triggerEffects(innerPath, reactiveState);
+            let seq;
+            if (__DEV__) {
+              const ev = hook.ø__emit({ kind: "mutate", state: reactiveState, path: innerPath, op: "set", from: old, to: value });
+              seq = ev && ev.mutationSeq;
+            }
+            triggerEffects(innerPath, reactiveState, seq);
           }
         } else if (old !== value && !init && !ø__control.wrapping) {
-          if (__DEV__) hook.ø__emit({ kind: "mutate", state: reactiveState, path: path + "." + prop.toString(), op: "set", from: old, to: value });
-          triggerEffects(path + "." + prop.toString(), reactiveState);
+          let seq;
+          if (__DEV__) {
+            const ev = hook.ø__emit({ kind: "mutate", state: reactiveState, path: path + "." + prop.toString(), op: "set", from: old, to: value });
+            seq = ev && ev.mutationSeq;
+          }
+          triggerEffects(path + "." + prop.toString(), reactiveState, seq);
           if (prop === "length") {
-            if (__DEV__) hook.ø__emit({ kind: "mutate", state: reactiveState, path, op: "set", from: old, to: value });
-            triggerEffects(path, reactiveState);
+            let seq2;
+            if (__DEV__) {
+              const ev2 = hook.ø__emit({ kind: "mutate", state: reactiveState, path, op: "set", from: old, to: value });
+              seq2 = ev2 && ev2.mutationSeq;
+            }
+            triggerEffects(path, reactiveState, seq2);
           }
         }
         return result;
