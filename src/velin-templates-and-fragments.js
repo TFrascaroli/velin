@@ -490,7 +490,7 @@ function setupTemplatesAndFragments(vln) {
       }
     },
 
-    render: ({ node, tracked, state, pluginState = {} }) => {
+    render: ({ node, tracked, state, pluginState = {}, ø__rerootDebug }) => {
       const name = tracked?.name;
       if (name == null) return { halt: true };
 
@@ -513,6 +513,9 @@ function setupTemplatesAndFragments(vln) {
         placeholder = document.createComment(`vln-outlet:${name}`);
         node.parentNode.insertBefore(placeholder, node);
         node.parentNode.removeChild(node);
+        // Re-anchor our effect's debug node — the outlet element is gone,
+        // the placeholder is the live anchor across re-mounts.
+        ø__rerootDebug?.(placeholder);
       }
 
       // Tear down previous mount (bindings + DOM).

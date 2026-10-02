@@ -100,7 +100,7 @@ function setupVelinRouter(vln) {
         pluginState.placeholder.remove();
       }
     },
-    render: ({ node, expr, compose, consume, tracked, pluginState = {}, attributeName }) => {
+    render: ({ node, expr, compose, consume, tracked, pluginState = {}, attributeName, ø__rerootDebug }) => {
       const parent = node.parentNode || pluginState.parent;
       if (!parent) return { halt: true };
 
@@ -114,6 +114,9 @@ function setupVelinRouter(vln) {
         pluginState.activeNode = null;
         pluginState.childCtx = null;
         parent.replaceChild(placeholder, node);
+        // Re-anchor our effect's debug node to the live placeholder so
+        // devtools don't flag us as a leak. See vln-loop for the pattern.
+        ø__rerootDebug?.(placeholder);
       }
 
       const pattern = tracked.targetPath.replace(/:([^/]+)/g, '(?<$1>[^/]+)');

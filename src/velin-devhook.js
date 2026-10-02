@@ -673,6 +673,10 @@ export function createDevHook() {
     const detachedEffects = [];
     const detachedStates = [];
     const inDoc = typeof document !== "undefined";
+    // Composed states share effect refs — the same loop effect lives in
+    // both the parent state's bindings and each child iteration's. Dedup
+    // so one leaky effect counts once, not N times.
+    const seen = new WeakSet();
     for (const s of statesIterable) {
       const sNode = stateNodes.get(s);
       if (inDoc && sNode && !document.contains(sNode)) {
@@ -680,8 +684,14 @@ export function createDevHook() {
       }
       for (const [path, set] of s.bindings) {
         for (const eff of set) {
+          if (seen.has(eff)) continue;
+          seen.add(eff);
           const dbg = eff.ø__debug;
           if (!dbg || !dbg.node) continue;
+          // Only effects whose node was once in the document count as leaks.
+          // Internal template clones (vln-loop's cloneable prototype) are
+          // bound to never-connected nodes by design; skip them.
+          if (!dbg.wasConnected) continue;
           if (inDoc && !document.contains(dbg.node)) {
             const rs = runStats(eff);
             detachedEffects.push({
