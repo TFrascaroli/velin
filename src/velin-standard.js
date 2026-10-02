@@ -127,7 +127,7 @@ function setupVelinStd(vln) {
         pluginState.placeholder.remove();
       }
     },
-    render: ({ node, expr, compose, consume, tracked, pluginState = {}, attributeName }) => {
+    render: ({ node, expr, compose, consume, tracked, pluginState = {}, attributeName, ø__rerootDebug }) => {
       const parent = node.parentNode || pluginState.parent;
       if (!parent) return { halt: true };
 
@@ -141,6 +141,9 @@ function setupVelinStd(vln) {
         pluginState.activeNode = null;
         pluginState.childCtx = null;
         parent.replaceChild(placeholder, node);
+        // Re-anchor our effect's debug node to the live placeholder so
+        // devtools don't flag us as a leak. See vln-loop for the pattern.
+        ø__rerootDebug?.(placeholder);
       }
 
       if (tracked) {
@@ -522,6 +525,7 @@ function setupVelinStd(vln) {
       compose,
       consume,
       pluginState = {},
+      ø__rerootDebug,
     }) => {
       const parent = node.parentNode || pluginState.parent;
       if (!parent) return { halt: true };
@@ -538,6 +542,10 @@ function setupVelinStd(vln) {
         pluginState.substates = [];
         pluginState.keys = [];
         parent.replaceChild(placeholder, node);
+        // Our effect's debug anchor was the now-replaced template; re-anchor
+        // to the live placeholder so devtools' leak scan doesn't flag it as
+        // a detached effect. Prod builds define this as undefined.
+        ø__rerootDebug?.(placeholder);
       }
 
       // Two supported shapes:

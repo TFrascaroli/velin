@@ -607,6 +607,21 @@ function processPlugin(
           attributeName,
           attributeValue,
           expr,
+          // Dev-only: let plugins re-anchor this effect's debug node when
+          // they replace the original with a placeholder/different live
+          // node (e.g. vln-loop replaces the template with a placeholder).
+          // No-op in prod builds — devtools don't exist to care.
+          ø__rerootDebug: __DEV__ ? (newNode) => {
+            const d = /** @type {any} */ (effect).ø__debug;
+            if (!d) return;
+            d.node = newNode;
+            if (newNode) {
+              hook.ø__registerEffectNode(newNode, effect);
+              if (typeof document !== "undefined" && document.contains(newNode)) {
+                d.wasConnected = true;
+              }
+            }
+          } : undefined,
         });
       } catch (error) {
         if (__DEV__) hook.ø__emit({ kind: "warn", code: "W006", state: reactiveState, message: `render-throw in ${plugin.name}: ${error && error.message}`, ref: { expr, node } });
@@ -633,6 +648,10 @@ function processPlugin(
         recentRuns: new Array(DEBUG_PATH_RING),
         ø__runRingHead: 0,
         reads: [],
+        // Was this effect ever bound to a node that was in the document? Used
+        // by leaks() to distinguish real leaks from internal template-clone
+        // effects (vln-loop's cloneable prototype never attaches to the DOM).
+        wasConnected: node != null && typeof document !== "undefined" && document.contains(node),
       };
       if (node) hook.ø__registerEffectNode(node, effect);
     }
@@ -1310,7 +1329,7 @@ function evaluateAst(ast, reactiveState) {
       const src = (ast && /** @type {any} */ (ast).ø__src) || "";
       hook.ø__recordExpressionEval(src, dt);
       hook.ø__emit({ kind: "evaluate", state: reactiveState, expr: src, durationMs: dt, ok: true });
-      if (dt > 8) hook.ø__emit({ kind: "warn", code: "W002", state: reactiveState, message: `slow-expression: ${src} took ${dt.toFixed(1)}ms`, ref: { expr: src } });
+      if (dt > 16) hook.ø__emit({ kind: "warn", code: "W002", state: reactiveState, message: `slow-expression: ${src} took ${dt.toFixed(1)}ms`, ref: { expr: src } });
       return r;
     } catch (err) {
       const dt = hook.ø__now() - t0;
@@ -1455,9 +1474,13 @@ function triggerEffects(prop, reactiveState, mutationSeq) {
         effect();
         const dbg = /** @type {any} */ (effect).ø__debug;
         hook.ø__emit({ kind: "effect", state: reactiveState, path: prop, node: dbg?.node, expr: dbg?.expr, pluginName: dbg?.pluginName, durationMs: hook.ø__now() - t0, mutationSeq, effect });
-        if (dbg && dbg.node && typeof document !== "undefined" && !document.contains(dbg.node)) {
-          hook.ø__trackOrphan();
-          hook.ø__emit({ kind: "warn", code: "W001", message: "dangling-effect: effect ran on detached node", state: reactiveState, ref: { path: prop, expr: dbg.expr } });
+        if (dbg && dbg.node && typeof document !== "undefined") {
+          const connected = document.contains(dbg.node);
+          if (connected) dbg.wasConnected = true;
+          else {
+            hook.ø__trackOrphan();
+            hook.ø__emit({ kind: "warn", code: "W001", message: "dangling-effect: effect ran on detached node", state: reactiveState, ref: { path: prop, expr: dbg.expr } });
+          }
         }
       } else {
         effect();
