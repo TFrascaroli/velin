@@ -60,6 +60,7 @@
  * @property {string[]=} tricklingRoots Stack of root paths for dependency filtering. Dependencies at or above any of these levels are filtered out (used by vln-loop, nested loops stack their roots so the outer one isn't lost).
  * @property {PluginHelpers=} ø__helpers Pre-bound helper bundle built once per substate (see buildPluginHelpers)
  * @property {ReactiveState|null} ø__enclosing The enclosing (parent) reactive state — null at root. Set by composeState. Interpolation expressions on this scope evaluate against ø__enclosing, giving them JS-closure semantics.
+ * @property {Node | null} [ø__rootNode] For root states only (set by bind()): the DOM node the state was bound against. Used by unbind() to pass the right node to cleanupState → emitLifecycle. Absent on composed child states.
  */
 
 /**
@@ -111,7 +112,7 @@ const DefaultPluginPriorities = {
  * @property {string} name
  * @property {number=} priority
  * @property {(args: {compiledExpression: ASTNode, expr: string, node: Node, subkey: string | null, attributeName: string, attributeValue: string, state: any, evaluate: Function, evaluateAst: Function, getSetter: Function, compose: Function, consume: Function, triggerEffects: Function}) => Ttracked} [track] Optional function to track dependencies from an expression
- * @property {(args: {compiledExpression: ASTNode, expr: string, node: Element, subkey: string | null, tracked: Ttracked, pluginState?: any, attributeName: string, attributeValue: string, state: any, evaluate: Function, evaluateAst: Function, getSetter: Function, compose: Function, consume: Function, triggerEffects: Function}) => PluginControl | void} render Function to apply reactive updates to a node
+ * @property {(args: {compiledExpression: ASTNode, expr: string, node: Element, subkey: string | null, tracked: Ttracked, pluginState?: any, attributeName: string, attributeValue: string, state: any, evaluate: Function, evaluateAst: Function, getSetter: Function, compose: Function, consume: Function, triggerEffects: Function, ø__rerootDebug?: (newNode: Node | null) => void}) => PluginControl | void} render Function to apply reactive updates to a node
  * @property {PluginDestroyerFn} [destroy]
  */
 
@@ -274,7 +275,7 @@ const DefaultPluginPriorities = {
 /** @typedef {(node: Element, attr: string, expr: string) => void} ConsumeAttribute */
 
 /** @typedef {(reactiveState: ReactiveState, init: ComposeInit) => ReactiveState} ComposeState */
-/** @typedef {(parentState: ReactiveState, innerState: ReactiveState, node?: Node | null) => void} CleanupState */
+/** @typedef {(parentState: ReactiveState | null, innerState: ReactiveState, node?: Node | null) => void} CleanupState */
 /** @typedef {<T extends object>(root?: Element | DocumentFragment, initialState?: T) => T} Bind */
 
 /** @typedef {(args: { expr: string, compiledExpression: ASTNode, evaluate: Function, evaluateAst: Function, getSetter: Function, compose: Function, consume: Function, triggerEffects: Function, state: any, node: Node, subkey: string | null }) => any} ExpressionTracker */
@@ -289,6 +290,7 @@ const DefaultPluginPriorities = {
 /**
  * @typedef {Object} VelinCore
  * @property {Bind} bind
+ * @property {(state: any) => void} unbind Tears down a root bound by Velin.bind(). Clears every effect, every composed child state, fires every plugin's destroy. Idempotent; throws if the argument is not a state returned by Velin.bind().
  * @property {VelinPluginManager<any>} plugins
  * @property {Evaluate} evaluate
  * @property {EvaluateAST} evaluateAst
@@ -307,7 +309,12 @@ const plugins = new Map();
 /** @type {WeakMap<Node, any>} */
 const pluginStates = new WeakMap();
 /** @type {WeakMap<object, ReactiveState>} */
-const rootStates = new WeakMap();
+// All live state proxies — roots from Velin.bind() AND children from
+// composeState (vln-loop / vln-if / vln-fragment iterations). The wrapper
+// struct has `ø__enclosing` for the parent-link, so "is this a child?"
+// collapses to `wrapper.ø__enclosing != null`. Cleaned states are deleted.
+/** @type {WeakMap<object, ReactiveState>} */
+const states = new WeakMap();
 
 if (__DEV__) {
   // eslint-disable-next-line
@@ -1496,8 +1503,8 @@ function triggerEffects(prop, reactiveState, mutationSeq) {
  * @returns {VelinStateControl}
  */
 function getController(state) {
-  const wrapper = rootStates.get(state);
-  if (!wrapper) {
+  const wrapper = states.get(state);
+  if (!wrapper || wrapper.ø__enclosing) {
     throw new Error("[Velin] getController: argument is not a state returned by Velin.bind().");
   }
   return wrapper.ø__control;
@@ -1835,6 +1842,7 @@ function composeState(reactiveState, init) {
   };
   inner.ø__helpers = buildPluginHelpers(inner);
   reactiveState.ø__innerStates.add(inner);
+  states.set(innerStateProxy, inner);
   if (__DEV__) {
     hook.ø__trackState(inner);
     hook.ø__registerParent(inner, reactiveState);
@@ -1852,6 +1860,8 @@ function composeState(reactiveState, init) {
  */
 function cleanupState(parentState, innerState, node = null) {
   if (parentState === innerState) return;
+  // Already cleaned (e.g. idempotent unbind). Nothing to do.
+  if (!innerState || innerState.bindings == null) return;
 
   if (__DEV__) hook.ø__emit({ kind: "cleanup", state: innerState, node });
 
@@ -1882,12 +1892,19 @@ function cleanupState(parentState, innerState, node = null) {
   innerState.ø__finalizers.forEach((fn) => fn());
   // Recursively clear child states
   innerState.ø__innerStates.forEach((inner) => cleanupState(innerState, inner));
-  // Delete from chain
-  if (!parentState.ø__innerStates.delete(innerState)) {
-    throw new Error(
-      "[VLN011] Failed to delete inner state from parent. This indicates a state management corruption.",
-    );
+  // Delete from parent chain. parentState is null for root unbinds — the
+  // the proxy→wrapper lookup is dropped at the end of this function.
+  if (parentState) {
+    if (!parentState.ø__innerStates.delete(innerState)) {
+      throw new Error(
+        "[VLN011] Failed to delete inner state from parent. This indicates a state management corruption.",
+      );
+    }
   }
+  // Drop from the global proxy→wrapper map before nulling .state — after
+  // this, nothing can resolve this proxy, which is exactly what unbind
+  // / parent-cleanup promised.
+  if (innerState.state) states.delete(innerState.state);
   // De-ref
   innerState.bindings = null;
   innerState.interpolations = null;
@@ -1897,6 +1914,33 @@ function cleanupState(parentState, innerState, node = null) {
   innerState.ø__finalizers = null;
   innerState.ø__innerBindings = null;
   innerState.ø__innerStates = null;
+}
+
+/**
+ * Tears down a root bound by Velin.bind(). Clears every effect, every
+ * composed child state, fires every plugin's destroy. Idempotent — a
+ * second call on an already-unbound state is a no-op.
+ *
+ * Throws only when handed a child state (from compose / vln-loop /
+ * vln-if / vln-fragment / etc.): those are owned by their parent and
+ * are torn down automatically when the parent is. Any other input (an
+ * unknown object, a plain state that was never bound, a now-unbound
+ * root) is a silent no-op.
+ *
+ * @param {any} state The proxy returned by Velin.bind().
+ * @returns {void}
+ */
+function unbind(state) {
+  const rs = states.get(state);
+  if (!rs) return; // unknown or already-unbound — no-op
+  if (rs.ø__enclosing) {
+    throw new Error(
+      "[Velin] unbind: this is a child state (from compose / vln-loop / " +
+      "vln-if / vln-fragment). Child states are owned by their parent and " +
+      "tear down when the parent does. Call unbind on the root instead.",
+    );
+  }
+  cleanupState(null, rs, rs.ø__rootNode || null);
 }
 
 /**
@@ -2086,8 +2130,9 @@ function bind(root, initialState) {
   if (root === undefined) root = document.body;
   if (initialState === undefined) initialState = {};
   const reactiveState = setupState(initialState);
+  reactiveState.ø__rootNode = root;
   processNode(root, reactiveState);
-  rootStates.set(reactiveState.state, reactiveState);
+  states.set(reactiveState.state, reactiveState);
   if (__DEV__) {
     hook.ø__trackState(reactiveState);
     hook.ø__registerStateNode(reactiveState, root);
@@ -2099,6 +2144,7 @@ function bind(root, initialState) {
 /** @type {VelinCore} */
 const Velin = {
   bind,
+  unbind,
   getSetter,
   composeState,
   cleanupState,
@@ -2117,7 +2163,7 @@ const Velin = {
   trackers,
   ø__internal: {
     pluginStates,
-    getWrapper: (state) => rootStates.get(state),
+    getWrapper: (state) => states.get(state),
     consumeAttribute,
     triggerEffects: (prop, reactiveState) => {
       triggerEffects("root." + prop, reactiveState);
