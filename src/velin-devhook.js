@@ -124,6 +124,37 @@ export function createDevHook() {
   let logSize = 0;
   let logCap = RING_DEFAULT;
 
+  // The dev hook is an observer. It must not keep anything alive. Every
+  // ref we hold past the synchronous emit — in the log ring, in
+  // mutationRing, in signal payloads — goes through WeakRef so that
+  // unbind/GC can reclaim its targets. Readers deref on access.
+  const WK = (v) => (v == null ? v : new WeakRef(v));
+  const UN = (v) => (v && typeof v.deref === "function" ? v.deref() : v);
+  // Fields on an emit that may hold a strong ref worth GC-friendly stashing.
+  const WEAK_FIELDS = ["state", "node", "effect", "parent", "child", "rootNode"];
+  function toRetainable(ev) {
+    const out = { ...ev };
+    for (const k of WEAK_FIELDS) if (out[k]) out[k] = WK(out[k]);
+    // ev.ref may carry { node, state, ... } — wrap those too.
+    if (out.ref && typeof out.ref === "object") {
+      const r = { ...out.ref };
+      for (const k of WEAK_FIELDS) if (r[k]) r[k] = WK(r[k]);
+      out.ref = r;
+    }
+    return out;
+  }
+  function liveEntry(e) {
+    if (!e) return e;
+    const out = { ...e };
+    for (const k of WEAK_FIELDS) if (out[k]) out[k] = UN(out[k]);
+    if (out.ref && typeof out.ref === "object") {
+      const r = { ...out.ref };
+      for (const k of WEAK_FIELDS) if (r[k]) r[k] = UN(r[k]);
+      out.ref = r;
+    }
+    return out;
+  }
+
   /** @type {Set<WeakRef<any>>} */
   const stateRefs = new Set();
   /** @type {WeakMap<any, Node>} */
@@ -192,7 +223,9 @@ export function createDevHook() {
         const first = mutationRing.keys().next().value;
         mutationRing.delete(first);
       }
-      mutationRing.set(ev.mutationSeq, { path: ev.path, state: ev.state, t: ev.t });
+      // state ref stored weakly — mutationRing is bounded but can retain
+      // thousands of entries, and we must not keep torn-down states alive.
+      mutationRing.set(ev.mutationSeq, { path: ev.path, state: WK(ev.state), t: ev.t });
       if (ev.path) aggMut.record(ev.path, ev.t, 0, null);
 
       if (typeof requestAnimationFrame !== "undefined") {
@@ -235,10 +268,12 @@ export function createDevHook() {
         dbg.ø__runRingHead = (dbg.ø__runRingHead + 1) % DEBUG_RUN_RING;
       }
       if ((ev.durationMs || 0) > LONG_EFFECT_THRESHOLD_MS) {
+        // node/effect refs stored weakly — signal entries persist across
+        // the whole session in the devtools' signalMap.
         emitSignal({
           kind: "long-effect",
           severity: "warn",
-          payload: { expr: ev.expr, durationMs: ev.durationMs, node: ev.node, effect: ev.effect },
+          payload: { expr: ev.expr, durationMs: ev.durationMs, node: WK(ev.node), effect: WK(ev.effect) },
           dismissKey: `long-effect:${ev.expr || "?"}`,
         });
       }
@@ -253,14 +288,15 @@ export function createDevHook() {
       });
     }
 
-    log[logHead] = ev;
-    logHead = (logHead + 1) % logCap;
-    if (logSize < logCap) logSize++;
-
+    // Subscribers see the live event (synchronous). We store a WeakRef-
+    // wrapped copy in the ring so retention doesn't outlive the referents.
     for (const l of listeners) {
       try { l(ev); }
       catch (err) { queueMicrotask(() => { throw err; }); }
     }
+    log[logHead] = toRetainable(ev);
+    logHead = (logHead + 1) % logCap;
+    if (logSize < logCap) logSize++;
     return ev;
   }
 
@@ -435,10 +471,11 @@ export function createDevHook() {
         let lastMutation = null;
         const snap = readLog();
         for (let i = snap.length - 1; i >= 0; i--) {
-          const ev = snap[i];
-          if (ev.kind !== "mutate" || ev.state !== st) continue;
-          if (!(dbg.reads || []).includes(ev.path)) continue;
-          lastMutation = ev;
+          const raw = snap[i];
+          if (raw.kind !== "mutate") continue;
+          if (UN(raw.state) !== st) continue;
+          if (!(dbg.reads || []).includes(raw.path)) continue;
+          lastMutation = liveEntry(raw);
           break;
         }
         let currentValue;
@@ -787,7 +824,10 @@ export function createDevHook() {
         subscriberMeta.delete(fn);
       };
     },
-    get log() { return readLog(); },
+    // External view: deref the WeakRef-wrapped refs so consumers get live
+    // objects (or null if the referent was GC'd). Internal readers use
+    // readLog() + UN() to avoid double-walking.
+    get log() { return readLog().map(liveEntry); },
     get emitSeq() { return emitSeq; },
     get mutationSeq() { return mutationSeq; },
     setLogCapacity(n) {
@@ -832,7 +872,7 @@ export function createDevHook() {
       if (!state) return;
       ignoredStates.add(state);
       const snap = readLog();
-      const kept = snap.filter((ev) => !(ev.state === state));
+      const kept = snap.filter((ev) => UN(ev.state) !== state);
       log = new Array(logCap);
       logHead = 0;
       logSize = 0;

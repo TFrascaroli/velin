@@ -278,9 +278,12 @@
         what: "This expression ran once and took the time shown. Over 16ms means the UI dropped a frame while this ran.",
         why:  "Long single-run cost shows up as jank: scroll stutters, input lag, animation hitches. Rare long runs are tolerable; recurring ones are not.",
         action: "Open the effect's trace to see what state paths it reads and when it recently ran. Common fixes: narrow dependencies, defer the work (idle/async), or avoid DOM reads inside the expression.",
-        drill: (sig) => sig.payload?.effect
-          ? el("button", { class: "btn primary", onclick: () => openExplainEffect(sig.payload.effect) }, "explain this effect")
-          : null,
+        drill: (sig) => {
+          const eff = sig.payload?.effect?.deref ? sig.payload.effect.deref() : sig.payload?.effect;
+          return eff
+            ? el("button", { class: "btn primary", onclick: () => openExplainEffect(eff) }, "explain this effect")
+            : null;
+        },
       },
       "orphan-spike": {
         headline: "Effects are firing on nodes that aren't in the document.",
@@ -668,7 +671,9 @@
               const expr = ev.expr || "(no expr)";
               let b = recording.buffer.get(expr);
               if (!b) {
-                b = { calls: 0, totalMs: 0, maxMs: 0, drivers: new Map(), sampleEffect: ev.effect };
+                // Weakly held: a long recording must not keep torn-down
+                // effects alive. deref at render time; drop if GC'd.
+                b = { calls: 0, totalMs: 0, maxMs: 0, drivers: new Map(), sampleEffect: ev.effect ? new WeakRef(ev.effect) : null };
                 recording.buffer.set(expr, b);
               }
               b.calls++;
@@ -741,7 +746,8 @@
           el("td", { class: "dim" }, drivers),
         );
         tr.addEventListener("click", () => {
-          if (r.sampleEffect) openExplainEffect(r.sampleEffect);
+          const eff = r.sampleEffect?.deref?.();
+          if (eff) openExplainEffect(eff);
         });
         table.appendChild(tr);
       }
