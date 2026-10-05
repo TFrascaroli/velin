@@ -1,0 +1,131 @@
+<div class="max-w-5xl">
+  <div class="mb-6">
+    <h1 class="text-3xl font-bold">Devtools 101</h1>
+    <p class="text-gray-600 mt-1">
+      A working task tracker. Nothing feels broken. Open the panel
+      (<kbd class="bg-gray-200 px-1.5 py-0.5 rounded text-xs font-mono">Ctrl + Shift + V</kbd>)
+      and follow the steps — each surfaces something the UI never shows.
+    </p>
+  </div>
+
+  <!-- ── The app ───────────────────────────────────────────────────── -->
+  <div vln-class="'theme-' + theme" class="bg-white rounded-lg border border-gray-300 p-4 mb-6">
+    <div class="flex items-center gap-3 mb-4 pb-3 border-b border-gray-200">
+      <h2 class="text-lg font-semibold flex-1">Tasks</h2>
+      <label class="text-sm text-gray-600">theme:</label>
+      <select vln-input="theme" class="border rounded px-2 py-1 text-sm">
+        <option value="light">light</option>
+        <option value="dark">dark</option>
+        <option value="hc">high-contrast</option>
+      </select>
+    </div>
+
+    <div class="flex gap-2 mb-3">
+      <input vln-input="filter" placeholder="filter tasks…" class="flex-1 px-2 py-1 border rounded text-sm" />
+      <button vln-on:click="addTask()"     class="px-3 py-1 bg-blue-500   text-white rounded text-sm">+ add</button>
+      <button vln-on:click="markAllDone()" class="px-3 py-1 bg-emerald-600 text-white rounded text-sm">✓ all done</button>
+      <button vln-on:click="loadDemo()"    class="px-3 py-1 bg-gray-500   text-white rounded text-sm">load 500</button>
+    </div>
+
+    <ul class="divide-y divide-gray-100 max-h-72 overflow-y-auto border border-gray-100 rounded">
+      <li vln-loop:task="filteredTasks" class="flex items-center gap-3 px-3 py-2 hover:bg-gray-50">
+        <input type="checkbox" vln-input="task.done" />
+        <span
+          vln-text="task.priority"
+          vln-class="'priority-' + task.priority + ' theme-badge-' + theme"
+          class="px-2 py-0.5 rounded text-xs font-mono"
+        ></span>
+        <span vln-text="task.title" vln-class="{ 'line-through text-gray-400': task.done }" class="flex-1"></span>
+        <button vln-on:click="openDetails(task)" class="text-xs text-blue-600 hover:underline">details</button>
+      </li>
+      <li vln-if="filteredTasks.length === 0" class="px-3 py-6 text-center text-gray-400 text-sm">
+        no tasks match
+      </li>
+    </ul>
+
+    <div class="text-xs text-gray-400 mt-2 font-mono" vln-text="debugLine"></div>
+  </div>
+
+  <!-- ── Walkthrough ───────────────────────────────────────────────── -->
+  <div class="space-y-2">
+    <h2 class="text-xl font-semibold mb-2">Guided tour</h2>
+
+    <details class="border rounded p-3" open>
+      <summary class="font-medium cursor-pointer">1 — Pick an element</summary>
+      <p class="text-sm mt-2">
+        <kbd class="bg-gray-100 border px-1 rounded text-xs font-mono">Ctrl+Shift+P</kbd>, hover a priority badge, click.
+        The popover lists the states that own the node, every directive bound to it, each expression,
+        the state paths it reads, and the mutation that last changed each value. All at once, from a click.
+      </p>
+    </details>
+
+    <details class="border rounded p-3">
+      <summary class="font-medium cursor-pointer">2 — Hidden fan-out</summary>
+      <p class="text-sm mt-2">
+        <code>hotspots</code> → <strong>Record</strong>, toggle the theme dropdown 3 times, <strong>Stop</strong>.
+        The badge class <code>'priority-' + task.priority + ' theme-badge-' + theme</code> fires once per visible row per toggle.
+        Three top-level writes produced <code>3 × rowCount</code> re-renders — invisible fan-out across sibling rows that happen to share one dep.
+        Move <code>theme-badge-X</code> to the container; one write, one effect.
+      </p>
+    </details>
+
+    <details class="border rounded p-3">
+      <summary class="font-medium cursor-pointer">3 — The innocent debug line</summary>
+      <p class="text-sm mt-2">
+        See the gray line below the list? Looks like a cheap stat summary. <strong>Record</strong>, toggle one checkbox, <strong>Stop</strong>.
+        <code>debugLine</code> ran — it reads <code>JSON.stringify(this.tasks)</code>, so Velin captured a dep on every field of every task.
+        Any mutation anywhere re-serializes the whole list for one display character.
+      </p>
+    </details>
+
+    <details class="border rounded p-3">
+      <summary class="font-medium cursor-pointer">4 — Clean code, loud footprint</summary>
+      <p class="text-sm mt-2">
+        <strong>Record</strong>, click <strong>✓ all done</strong>, <strong>Stop</strong>.
+        <code>filteredTasks</code> and <code>debugLine</code> each fired once per task. The code is a plain <code>for</code> loop assigning
+        <code>t.done = true</code> — nothing looks wrong, but every assignment synchronously flushes every dependent effect.
+        Open <code>devtools-101.js</code> and uncomment the <code>Velin.getController(this).batch(() =&gt; { … })</code> wrapper around the loop.
+        Record again — the per-expression counts collapse from N to 1.
+      </p>
+    </details>
+
+    <details class="border rounded p-3">
+      <summary class="font-medium cursor-pointer">5 — What watches this?</summary>
+      <p class="text-sm mt-2">
+        <code>dependents</code>, path <code>root.theme</code>, scope <strong>wide</strong>. Every expression that would re-run if you changed the theme, with its node and estimated cost.
+        Narrow scope answers "which effects on this exact state read this path"; wide descends into composed children (every row's state).
+        You can't get this answer from source grep — iteration deps aren't visible until runtime.
+      </p>
+    </details>
+
+    <details class="border rounded p-3">
+      <summary class="font-medium cursor-pointer">6 — The invisible leak</summary>
+      <p class="text-sm mt-2">
+        Click <strong>details</strong> on any task, close the modal (× or <kbd class="bg-gray-100 border px-1 rounded text-xs font-mono">Esc</kbd>), repeat five times.
+        <code>leaks</code> → <strong>run scan</strong>: <code>detachedStates</code> and <code>detachedEffects</code> both grew.
+        Each modal mounts a nested <code>Velin.bind()</code>; closing only removes DOM. The state tree is still alive, bindings still registered.
+        Uncomment the <code>Velin.unbind(nestedState)</code> line in <code>openDetails</code> — scan goes clean.
+      </p>
+    </details>
+
+    <details class="border rounded p-3">
+      <summary class="font-medium cursor-pointer">7 — Push it until signals fire</summary>
+      <p class="text-sm mt-2">
+        <strong>load 500</strong>, then type into the filter. Toasts appear bottom-right. The filter uses an O(n²) highlight match that crosses the 16ms frame budget on 500 rows, tripping <code>W002 slow-expression</code>.
+        <code>signals</code> opens the persistent inbox — each entry has a human-written <em>what / why / what to do</em>, and drills into <code>explainEffect</code> for <code>recentRuns</code>, <code>reads</code>, and <code>whyDidThisRun</code>.
+      </p>
+    </details>
+  </div>
+</div>
+
+<style>
+  [class*="theme-light"] { background: #fff; color: #111; }
+  [class*="theme-dark"]  { background: #1f2937; color: #e5e7eb; }
+  [class*="theme-hc"]    { background: #000; color: #fff; }
+  .theme-badge-light { background: #e5e7eb; }
+  .theme-badge-dark  { background: #374151; color: #f3f4f6; }
+  .theme-badge-hc    { background: #fff; color: #000; outline: 1px solid #fff; }
+  .priority-high   { color: #dc2626; font-weight: bold; }
+  .priority-medium { color: #d97706; }
+  .priority-low    { color: #16a34a; }
+</style>
