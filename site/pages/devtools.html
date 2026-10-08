@@ -1,42 +1,48 @@
 <div class="prose">
   <h1>Velin Devtools</h1>
   <p class="lede">
-    An in-page companion for inspecting Velin state trees, directive bindings,
-    and reactive updates as they fire. Currently in <strong>alpha</strong> —
-    it answers the questions it claims to, but expect rough visuals.
+    An in-page companion that answers the questions you can't get from
+    DOM inspection, console logs, or Chrome's Performance tab: which
+    effects a state path triggers, where a leak is still rooted, which
+    mutation drove the slow run, which binding is quietly re-firing.
   </p>
 
-  <h2>Trying it now</h2>
-  <p>
-    Run the site in dev mode and devtools is injected into every
-    <code>/playground/</code> page automatically:
-  </p>
-  <pre><code>npm run serve:dev
-# open http://localhost:3123/playground/hello-world.html
-# press Ctrl+Shift+V to toggle the devtools panel</code></pre>
-  <p>
-    Open any <a vln-attr:href="'#/examples'">example</a>, then open the same
-    example directly at its <code>/playground/</code> URL — devtools attaches
-    to whatever Velin instance is running on that page.
-  </p>
-
-  <h2>What you get</h2>
+  <h2>Six questions it answers</h2>
   <ul>
-    <li>A live tree of every reactive state object bound in the page.</li>
-    <li>Per-directive breakdown of which expressions read which state paths.</li>
-    <li>An update log — every property write, in order, with the directives it triggered.</li>
+    <li><strong>Where does this value come from?</strong> Pick any node, see every state that owns it, every directive bound to it, the expression each evaluates, and the mutation that last changed each value.</li>
+    <li><strong>What watches this path?</strong> Query a state + path, get every effect that would re-run — including iteration deps that source grep misses.</li>
+    <li><strong>What's actually expensive?</strong> Record a session, interact with the page, stop — see every expression that ran, how often, with the mutation that drove it. Attribution is at the Velin expression level, not the JS function level.</li>
+    <li><strong>Why did this effect just run?</strong> Opens an effect's recent-runs trace, the paths it reads, and which path triggered the latest run.</li>
+    <li><strong>Am I leaking?</strong> On-demand scan surfaces effects still bound to nodes removed from the document, state roots detached from the DOM, and hook subscribers that were never released.</li>
+    <li><strong>Something crossed a threshold.</strong> A persistent signals inbox with human-written explainers for thrash, long effects, and orphan spikes — each entry drills into the relevant surface.</li>
   </ul>
 
-  <h2>Full reference</h2>
+  <h2>Try it</h2>
   <p>
-    The <a vln-attr:href="'#/docs/devtools'">devtools doc</a> covers every tab,
-    the question it answers, snapshot cadence, and how to attach the panel
-    to your own page.
+    The <a vln-attr:href="'/playground/'">playground</a> ships a dedicated
+    guided tour: a working task tracker with five realistic, invisible-to-the-eye
+    bugs. Each step points at the specific devtools surface that reveals it,
+    and the fixes for batching and leak teardown are commented right in the
+    source so you can toggle them on and watch the metrics collapse.
   </p>
+  <p>
+    From the sidebar in the playground, pick <strong>Devtools 101</strong> at
+    the bottom. Press <kbd>Ctrl+Shift+V</kbd> to open the panel. Follow the
+    seven steps.
+  </p>
+
+  <h2>Attaching to your own page</h2>
+  <p>
+    Build Velin with <code>__DEV__=true</code> and load
+    <code>velin-devtools.dev.js</code> after your Velin bundle. The companion
+    tree-shakes to zero in production builds.
+  </p>
+  <pre><code>&lt;script src="velin.dev.js"&gt;&lt;/script&gt;
+&lt;script src="velin-devtools.dev.js"&gt;&lt;/script&gt;</code></pre>
 
   <h2>Status</h2>
   <p>
-    Devtools is <code>0.1.0-alpha.0</code>. Visual polish and clearer user
-    journeys are the current focus.
+    Devtools is <code>0.2.0-alpha</code>. The hook API and the six question
+    surfaces are stable; UI polish is the current focus.
   </p>
 </div>
