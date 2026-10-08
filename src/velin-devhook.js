@@ -168,8 +168,6 @@ export function createDevHook() {
 
   const stats = {
     updateCounter: 0,
-    effectCount: 0,
-    bindingsCount: 0,
     orphanedEffectsSinceStart: 0,
     /** @type {Map<string, {calls: number, totalMs: number, maxMs: number, lastCall: number}>} */
     expressionEvalTime: new Map(),
@@ -322,16 +320,6 @@ export function createDevHook() {
     },
   };
 
-  function refreshStats() {
-    let effectCount = 0, bindingsCount = 0;
-    for (const s of statesIterable) {
-      bindingsCount += s.bindings.size;
-      for (const set of s.bindings.values()) effectCount += set.size;
-    }
-    stats.effectCount = effectCount;
-    stats.bindingsCount = bindingsCount;
-  }
-
   function peek(reactiveState, pathParts) {
     const caps = reactiveState.ø__depCaptures;
     const shim = { capturingDeps: false, deps: new Set() };
@@ -361,38 +349,6 @@ export function createDevHook() {
       out.push(p);
     }
     return out;
-  }
-
-  // Bounded top-N by effect count. Skips cheap-inner work: only pays the
-  // node/expr allocations for paths that make the cut.
-  function topBindings(limit) {
-    const heap = [];
-    let stateIdx = 0;
-    for (const s of statesIterable) {
-      for (const [path, effects] of s.bindings) {
-        const n = effects.size;
-        if (heap.length >= limit && n <= heap[0].effectCount) continue;
-        let sampleExpr = "";
-        const nodes = [];
-        for (const e of effects) {
-          const dbg = e.ø__debug;
-          if (dbg) {
-            if (!sampleExpr && dbg.expr) sampleExpr = dbg.expr;
-            if (dbg.node) nodes.push(dbg.node);
-          }
-        }
-        const row = { stateIdx, path, effectCount: n, sampleExpr, nodes };
-        if (heap.length < limit) {
-          heap.push(row);
-          heap.sort((a, b) => a.effectCount - b.effectCount);
-        } else {
-          heap[0] = row;
-          heap.sort((a, b) => a.effectCount - b.effectCount);
-        }
-      }
-      stateIdx++;
-    }
-    return heap.sort((a, b) => b.effectCount - a.effectCount);
   }
 
   // ── Phase 1 query APIs ──────────────────────────────────────────────────
@@ -641,24 +597,6 @@ export function createDevHook() {
     return results.sort((a, b) => b.totalMs - a.totalMs);
   }
 
-  /**
-   * Windowed top-N mutation paths. avgFanout is the average number of
-   * effects triggered per mutation for that path within the window.
-   */
-  function topMutations(opts) {
-    const windowMs = (opts && opts.windowMs) || 1000;
-    const t = now();
-    const results = [];
-    for (const path of aggMut.keys()) {
-      const q = aggMut.query(path, t, windowMs);
-      if (!q) continue;
-      const avgFanout = q.fanoutCount ? +(q.fanoutSum / q.fanoutCount).toFixed(2) : 0;
-      if (q.calls === 0 && q.fanoutCount === 0) continue;
-      results.push({ path, count: q.calls, avgFanout });
-    }
-    return results.sort((a, b) => b.count - a.count);
-  }
-
   function currentFrameMutations() {
     return new Map(frameMutations);
   }
@@ -828,8 +766,6 @@ export function createDevHook() {
     // objects (or null if the referent was GC'd). Internal readers use
     // readLog() + UN() to avoid double-walking.
     get log() { return readLog().map(liveEntry); },
-    get emitSeq() { return emitSeq; },
-    get mutationSeq() { return mutationSeq; },
     setLogCapacity(n) {
       if (typeof n !== "number" || n < 1) return;
       const snap = readLog();
@@ -844,10 +780,7 @@ export function createDevHook() {
       }
     },
     stats,
-    refreshStats,
     peek,
-    whyDidThisRun,
-    topBindings,
 
     // Phase 1 APIs
     explainNode,
@@ -857,7 +790,6 @@ export function createDevHook() {
     hotspots,
     explainEffect,
     leaks,
-    topMutations,
     currentFrameMutations,
     onSignal,
 

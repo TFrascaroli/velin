@@ -112,6 +112,39 @@
     };
     const clear = (n) => { while (n.firstChild) n.removeChild(n.firstChild); };
     const fmtMs = (n) => (n == null ? "—" : (+n).toFixed(2) + "ms");
+    // UI-only: paths carry the "root." prefix internally (bindings keys
+    // use it, dependentsOf expects it). Users read the leading dots as
+    // noise, so we strip them for display. Raw path still goes to any
+    // devtools API that needs it.
+    const fmtPath = (p) => typeof p === "string" && p.startsWith("root.") ? p.slice(5) : p;
+    // Inverse: user types "count" into the dependents prompt; hook APIs
+    // expect "root.count". Normalize once at the input boundary.
+    const toInternalPath = (p) => typeof p === "string" && !p.startsWith("root.") ? "root." + p : p;
+
+    // Stash a value into window.tempN (incrementing N) and log it. Matches
+    // Chrome DevTools' "store as global variable" pattern — makes any
+    // reference the devtools surfaced (a state, a node, an effect, a value)
+    // reachable from the console without clicking through the UI tree.
+    let tempCounter = 1;
+    function stashBtn(getValue, hint) {
+      const label = hint || "this value";
+      const btn = el("button", {
+        class: "iconbtn stash",
+        title: `Save ${label} to window.tempN (next: temp${tempCounter}). Click to inspect it from the console.`,
+      }, "{ }");
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const v = typeof getValue === "function" ? getValue() : getValue;
+        const name = `temp${tempCounter++}`;
+        /** @type any */ (window)[name] = v;
+        // Keep the tooltip's next-N in sync with the counter for subsequent clicks.
+        btn.title = `Save ${label} to window.tempN (next: temp${tempCounter}). Click to inspect it from the console.`;
+        // eslint-disable-next-line no-console
+        console.log(`%c[Velin devtools]%c saved ${label} to %cwindow.${name}%c  —  inspect with: window.${name}`,
+          "color:#7cf;font-weight:bold", "", "color:#ad9;font-weight:bold", "", v);
+      });
+      return btn;
+    }
     const fmtAgo = (t) => {
       const dt = hook.ø__now() - t;
       if (dt < 1000) return "just now";
@@ -255,7 +288,7 @@
     function formatSignalMessage(sig) {
       const p = sig.payload || {};
       switch (sig.kind) {
-        case "thrash":      return `${p.path} × ${p.count}`;
+        case "thrash":      return `${fmtPath(p.path)} × ${p.count}`;
         case "long-effect": return `${p.expr || "?"} took ${fmtMs(p.durationMs)}`;
         case "orphan-spike": return `${p.count} orphaned effects in ${p.windowMs}ms`;
         case "warn":        return `[${p.code}] ${p.message}`;
@@ -460,12 +493,14 @@
         const chain = el("div", { class: "prov-states" });
         info.states.forEach((s, i) => {
           const sNode = hook.nodeFor(s);
-          chain.appendChild(el("span", {
+          const label = el("span", {
             class: "prov-state",
             title: sNode ? nodeLabel(sNode) : "",
             onmouseenter: () => sNode && highlightExternal(sNode, true),
             onmouseleave: () => sNode && highlightExternal(sNode, false),
-          }, sNode ? nodeLabel(sNode) : `state#${i}`));
+          }, sNode ? nodeLabel(sNode) : `state#${i}`);
+          const wrap = el("span", { class: "prov-state-wrap" }, label, stashBtn(() => s.state ?? s, "the state proxy"));
+          chain.appendChild(wrap);
           if (i < info.states.length - 1) chain.appendChild(el("span", { class: "prov-arrow" }, " › "));
         });
         root.appendChild(chain);
@@ -484,6 +519,7 @@
         box.appendChild(el("div", { class: "prov-row" },
           el("span", { class: "prov-label" }, "current"),
           el("span", { class: "prov-val" }, shortValue(b.currentValue)),
+          stashBtn(() => b.currentValue, "the current evaluated value"),
         ));
         if (b.reads && b.reads.length) {
           const readsRow = el("div", { class: "prov-row" }, el("span", { class: "prov-label" }, "reads"));
@@ -493,7 +529,7 @@
               class: "chip",
               title: "Show dependents",
               onclick: () => openDependents(r.state, r.path),
-            }, r.path));
+            }, fmtPath(r.path)));
           }
           readsRow.appendChild(readsChips);
           box.appendChild(readsRow);
@@ -503,7 +539,8 @@
           box.appendChild(el("div", { class: "prov-row" },
             el("span", { class: "prov-label" }, "last mut"),
             el("span", { class: "prov-val" },
-              `${m.path} ${m.op || ""}${m.method ? " " + m.method : ""} → ${shortValue(m.to)} (${fmtAgo(m.t)})`),
+              `${fmtPath(m.path)} ${m.op || ""}${m.method ? " " + m.method : ""} → ${shortValue(m.to)} (${fmtAgo(m.t)})`),
+            stashBtn(() => m.to, "the value just written"),
           ));
         }
         root.appendChild(box);
@@ -515,14 +552,14 @@
     function openDependentsPrompt() {
       state.openModal = "dependents";
       const body = el("div", { class: "dep" });
-      body.appendChild(el("div", { class: "muted" }, "Enter a path (e.g. root.count) — pick a bound root state first, if there are multiple."));
+      body.appendChild(el("div", { class: "muted" }, "Enter a path (e.g. count or user.name) — pick a bound root state first, if there are multiple."));
       const rootStates = [...hook.states].filter((s) => !hook.parentOf(s));
       const select = el("select", { class: "field" });
       rootStates.forEach((s, i) => {
         const n = hook.nodeFor(s);
         select.appendChild(el("option", { value: String(i) }, n ? nodeLabel(n) : `state#${i}`));
       });
-      const input = el("input", { class: "field", type: "text", placeholder: "root.count" });
+      const input = el("input", { class: "field", type: "text", placeholder: "count" });
       const scopeToggle = el("select", { class: "field" },
         el("option", { value: "narrow" }, "narrow"),
         el("option", { value: "wide" }, "wide"),
@@ -531,7 +568,7 @@
       const out = el("div", { class: "dep-results" });
       runBtn.addEventListener("click", () => {
         const s = rootStates[+select.value];
-        const path = input.value.trim();
+        const path = toInternalPath(input.value.trim());
         state.dependentsScope = scopeToggle.value;
         if (!s || !path) return;
         renderDependentsInto(out, s, path, scopeToggle.value);
@@ -547,7 +584,7 @@
       const body = el("div", { class: "dep" });
       body.appendChild(el("div", { class: "dep-head" },
         el("span", { class: "muted" }, "path"),
-        el("code", { class: "code" }, path),
+        el("code", { class: "code" }, fmtPath(path)),
       ));
       const scopeToggle = el("div", { class: "row" },
         scopeBtn("narrow"),
@@ -624,17 +661,7 @@
         "Record a performance session: press Record, interact with the page, press Stop. The table shows every expression that ran during the capture, how often, and how long. Nothing is sampled or decayed — the recording is a complete capture."));
       const recBtn = el("button", { class: "btn primary" }, "● Record");
       const timer = el("span", { class: "muted" }, "");
-      const summary = el("div", { class: "muted" });
       const out = el("div", { class: "hot-results" });
-
-      // Ambient perf summary — always current, independent of recording.
-      const renderSummary = () => {
-        hook.refreshStats();
-        summary.textContent =
-          `states: ${[...hook.states].length}  ·  bindings: ${hook.stats.bindingsCount}  ·  ` +
-          `effects: ${hook.stats.effectCount}  ·  orphaned effects since start: ${hook.stats.orphanedEffectsSinceStart}`;
-      };
-      renderSummary();
 
       let timerId = null;
       const updateTimer = () => {
@@ -653,7 +680,6 @@
         recBtn.textContent = "● Record";
         recBtn.classList.remove("recording");
         timer.textContent = `captured · ${(elapsed / 1000).toFixed(1)}s · ${rows.length} expressions`;
-        renderSummary();
       };
       const start = () => {
         if (recording) return;
@@ -696,8 +722,6 @@
       body.appendChild(el("div", { class: "muted", style: "font-size:11px;margin:0 0 8px" },
         "total: cumulative time in this expression during the capture · max: slowest single run · driven by: mutations that triggered it, with counts"));
       body.appendChild(out);
-      body.appendChild(el("div", { class: "prov-section-title" }, "ambient state"));
-      body.appendChild(summary);
 
       // Modal cleanup — stop any active recording on close.
       const prevCloseModal = closeModal;
@@ -737,7 +761,7 @@
         el("th", null, "driven by"),
       ));
       for (const r of rows) {
-        const drivers = r.drivers.slice(0, 3).map((d) => `${d.path}×${d.count}`).join(", ") || "—";
+        const drivers = r.drivers.slice(0, 3).map((d) => `${fmtPath(d.path)}×${d.count}`).join(", ") || "—";
         const tr = el("tr", { class: "clickable" },
           el("td", { class: "expr" }, r.expr),
           el("td", { class: "num" }, fmtMs(r.totalMs)),
@@ -807,9 +831,10 @@
       };
       container.appendChild(sect("detachedEffects", r.detachedEffects, (e) => {
         const row = el("div", { class: "leak-row clickable" },
-          el("code", { class: "code" }, e.path),
+          el("code", { class: "code" }, fmtPath(e.path)),
           el("span", { class: "dim" }, " · "),
           el("span", { class: "expr" }, e.expr),
+          stashBtn(() => e.effect, "the detached effect fn"),
         );
         row.addEventListener("click", () => openExplainEffect(e.effect));
         return row;
@@ -836,6 +861,8 @@
       const body = el("div", { class: "eff" });
       body.appendChild(el("div", { class: "row" },
         el("code", { class: "code big" }, info.expr || "(no expr)"),
+        stashBtn(() => effect, "the effect fn"),
+        info.node ? stashBtn(() => info.node, "the bound DOM node") : null,
       ));
       body.appendChild(el("div", { class: "muted" },
         `${info.pluginName || "?"}${info.subkey ? ":" + info.subkey : ""}   on ${nodeLabel(info.node)}`));
@@ -845,7 +872,7 @@
         readsRow.appendChild(el("button", {
           class: "chip",
           onclick: () => openDependents(r.state, r.path),
-        }, r.path));
+        }, fmtPath(r.path)));
       }
       body.appendChild(readsRow);
       body.appendChild(el("div", { class: "prov-section-title" }, "recent runs"));
@@ -864,7 +891,7 @@
           table.appendChild(el("tr", null,
             el("td", { class: "num" }, String(i + 1)),
             el("td", { class: "dim" }, fmtAgo(r.t)),
-            el("td", { class: "expr" }, r.path || "—"),
+            el("td", { class: "expr" }, fmtPath(r.path) || "—"),
             el("td", { class: "num" }, r.mutationSeq ? String(r.mutationSeq) : "—"),
             el("td", { class: "num" }, fmtMs(r.durationMs)),
           ));
@@ -873,7 +900,7 @@
       }
       body.appendChild(el("div", { class: "prov-section-title" }, "why did this run"));
       body.appendChild(el("div", { class: "wdtr" }, info.whyDidThisRun.length
-        ? info.whyDidThisRun.map((p) => el("code", { class: "chip static" }, p))
+        ? info.whyDidThisRun.map((p) => el("code", { class: "chip static" }, fmtPath(p)))
         : [el("span", { class: "empty small" }, "no recorded trigger paths yet")]));
       openModalWith("Effect: " + (info.expr || "?"), body, "explain-effect");
     }
@@ -1031,6 +1058,9 @@
   .iconbtn { font: inherit; background: transparent; color: #888; border: 0;
              cursor: pointer; padding: 0 4px; }
   .iconbtn:hover { color: #7cf; }
+  .iconbtn.stash { font-size: 10px; opacity: 0.35; margin-left: 4px;
+                   font-family: ui-monospace, monospace; }
+  .iconbtn.stash:hover { opacity: 1; color: #ad9; }
   .field { font: inherit; background: #0a0a0a; color: #ddd; border: 1px solid #555;
            border-radius: 3px; padding: 3px 6px; }
 
