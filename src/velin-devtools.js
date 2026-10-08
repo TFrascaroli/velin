@@ -1,25 +1,25 @@
 // @ts-nocheck
 /**
- * Velin devtools companion, phase 2 rebuild. Loads as a separate script
- * against a .dev.js Velin build; a no-op against prod builds (no hook).
+ * Velin devtools companion, v0.3 drawer shell.
  *
- * Design (see .plans/devtools-improvements.md phase 2):
- * - Question-first UI, not a data warehouse. Six queries → six surfaces.
- * - Primary entry is pick-mode: click a node → provenance popover.
- * - Persistent hotspots panel polls only while it's open. Nothing else polls.
- * - Signal-driven notifications: hook.onSignal → badge count + toast.
- * - Panel body is plain DOM + subscribe. NOT a Velin app — deliberately
- *   sidesteps the "reactive machinery to debug reactive machinery" trap.
- * - Shadow root isolates styles + prevents host page from styling us.
+ * Design (see .plans/devtools-v0.3-facelift.md):
+ * - One side drawer. No modals. No toasts. No popovers.
+ * - Icon rail on the left of the drawer swaps the main content in place.
+ * - Breadcrumb at the top shows drill history (Esc / back-arrow walks it).
+ * - Badge shows unread signal count; click opens the drawer on Signals.
+ * - Plain DOM + hook.subscribe inside a shadow root. Not a Velin app.
+ *
+ * Iteration 1 ports Inspect (pick + provenance) and Signals (inbox).
+ * Record / Leaks / Query / Explain are rail stubs that render a
+ * "coming next" placeholder. Iteration 2 and 3 port them.
  */
 
 (function () {
   if (typeof window === "undefined") return;
   if (window.__VELIN_DEVTOOLS_COMPANION__) return;
 
-  const VERSION = "0.2.0-alpha.0";
+  const VERSION = "0.3.0-alpha.0";
   const HOOK_KEY = "__VELIN_DEVTOOLS_HOOK__";
-  const TOAST_LIFETIME_MS = 4000;
   const OFF_BY_QS = new URLSearchParams(location.search).get("velin-devtools") === "off";
   const OFF_BY_LS = typeof localStorage !== "undefined" && localStorage.getItem("velinDevtools") === "off";
   if (OFF_BY_QS || OFF_BY_LS) return;
@@ -40,68 +40,42 @@
           }
         },
       });
-    } catch { /* prop already set as data */ }
+    } catch { /* already a data property */ }
 
     const check = () => queueMicrotask(() => {
       if (!window[HOOK_KEY]) {
         console.warn("[Velin devtools] Velin was not built with __DEV__=true; devtools cannot attach.");
       }
     });
-    if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", check);
-    } else {
-      check();
-    }
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", check);
+    else check();
   }
 
   function attach(hook) {
-    // ── Shadow root ──────────────────────────────────────────────────────
+    // ── Shadow root ────────────────────────────────────────────────────
     const host = document.createElement("div");
     host.style.cssText = "position:fixed;z-index:2147483647;inset:0;pointer-events:none;";
     const shadow = host.attachShadow({ mode: "open" });
-    shadow.innerHTML = TEMPLATE_HTML;
+    shadow.innerHTML = TEMPLATE;
     document.documentElement.appendChild(host);
 
     const $ = (sel) => shadow.querySelector(sel);
-    const $$ = (sel) => shadow.querySelectorAll(sel);
 
     const badge = $(".badge");
     const badgeCount = $(".badge .count");
-    const cmdbar = $(".cmdbar");
-    const popover = $(".popover");
-    const modal = $(".modal");
-    const modalBody = $(".modal-body");
-    const modalTitle = $(".modal-title");
-    const toasts = $(".toasts");
+    const drawer = $(".drawer");
+    const crumbs = $(".crumbs");
+    const bodyEl = $(".body");
+    const railBtns = Array.from(shadow.querySelectorAll(".rail button"));
 
-    // ── State ────────────────────────────────────────────────────────────
-    // All UI state is plain JS. Mutators call the relevant re-render.
-    const state = {
-      cmdbarOpen: false,
-      pickMode: false,
-      pickedNode: null,
-      openModal: null,        // 'hotspots' | 'leaks' | 'dependents' | 'explain-effect' | 'signal' | 'signals' | null
-      dependentsScope: "narrow",
-      dependentsState: null,  // ReactiveState currently being queried
-      dependentsPath: null,   // string
-    };
-
-    // Signals in-flight. Map keyed by dismissKey; { sig, count, unread }.
-    const signalMap = new Map();
-    const signalOrder = [];  // insertion order, newest last
-    const SIGNAL_HISTORY_MAX = 100;
-
-    // Currently-highlighted node under the pick cursor (so we can un-outline).
-    let pickHighlight = null;
-
-    // ── Rendering helpers ────────────────────────────────────────────────
+    // ── Rendering helpers ──────────────────────────────────────────────
     const el = (tag, attrs, ...children) => {
       const n = document.createElement(tag);
       if (attrs) for (const k in attrs) {
+        if (attrs[k] == null) continue;
         if (k === "class") n.className = attrs[k];
         else if (k === "style") n.style.cssText = attrs[k];
         else if (k.startsWith("on")) n.addEventListener(k.slice(2), attrs[k]);
-        else if (k === "html") n.innerHTML = attrs[k];
         else n.setAttribute(k, attrs[k]);
       }
       for (const c of children) {
@@ -111,40 +85,6 @@
       return n;
     };
     const clear = (n) => { while (n.firstChild) n.removeChild(n.firstChild); };
-    const fmtMs = (n) => (n == null ? "—" : (+n).toFixed(2) + "ms");
-    // UI-only: paths carry the "root." prefix internally (bindings keys
-    // use it, dependentsOf expects it). Users read the leading dots as
-    // noise, so we strip them for display. Raw path still goes to any
-    // devtools API that needs it.
-    const fmtPath = (p) => typeof p === "string" && p.startsWith("root.") ? p.slice(5) : p;
-    // Inverse: user types "count" into the dependents prompt; hook APIs
-    // expect "root.count". Normalize once at the input boundary.
-    const toInternalPath = (p) => typeof p === "string" && !p.startsWith("root.") ? "root." + p : p;
-
-    // Stash a value into window.tempN (incrementing N) and log it. Matches
-    // Chrome DevTools' "store as global variable" pattern — makes any
-    // reference the devtools surfaced (a state, a node, an effect, a value)
-    // reachable from the console without clicking through the UI tree.
-    let tempCounter = 1;
-    function stashBtn(getValue, hint) {
-      const label = hint || "this value";
-      const btn = el("button", {
-        class: "iconbtn stash",
-        title: `Save ${label} to window.tempN (next: temp${tempCounter}). Click to inspect it from the console.`,
-      }, "{ }");
-      btn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        const v = typeof getValue === "function" ? getValue() : getValue;
-        const name = `temp${tempCounter++}`;
-        /** @type any */ (window)[name] = v;
-        // Keep the tooltip's next-N in sync with the counter for subsequent clicks.
-        btn.title = `Save ${label} to window.tempN (next: temp${tempCounter}). Click to inspect it from the console.`;
-        // eslint-disable-next-line no-console
-        console.log(`%c[Velin devtools]%c saved ${label} to %cwindow.${name}%c  —  inspect with: window.${name}`,
-          "color:#7cf;font-weight:bold", "", "color:#ad9;font-weight:bold", "", v);
-      });
-      return btn;
-    }
     const fmtAgo = (t) => {
       const dt = hook.ø__now() - t;
       if (dt < 1000) return "just now";
@@ -154,7 +94,7 @@
     const nodeLabel = (node) => {
       if (!node || node.nodeType !== 1) return "?";
       let seg = node.tagName.toLowerCase();
-      if (node.id) return `${seg}#${node.id}`;
+      if (node.id) return `<${seg}#${node.id}>`;
       if (node.classList && node.classList.length) seg += `.${node.classList[0]}`;
       return `<${seg}>`;
     };
@@ -167,13 +107,89 @@
       if (typeof v === "object") return "{…}";
       return String(v);
     };
+    const fmtPath = (p) => typeof p === "string" && p.startsWith("root.") ? p.slice(5) : p;
 
-    // ── Badge + command bar ──────────────────────────────────────────────
+    // ── Navigation stack ───────────────────────────────────────────────
+    // Each frame: { surface, label, data, build }.
+    // build(data) must return a DOM node (the body).
+    const stack = [];
+
+    function navigate(frame) {
+      stack.push(frame);
+      renderFrame();
+    }
+    function navigateReplace(frame) {
+      stack.length = 0;
+      stack.push(frame);
+      renderFrame();
+    }
+    function navigateUp() {
+      if (stack.length <= 1) return;
+      stack.pop();
+      renderFrame();
+    }
+    function renderFrame() {
+      const frame = stack[stack.length - 1];
+      if (!frame) return;
+      // Rail active state follows the current surface.
+      railBtns.forEach((b) => b.classList.toggle("active", b.dataset.surface === frame.surface));
+      // Breadcrumbs
+      clear(crumbs);
+      stack.forEach((f, i) => {
+        const crumb = el("button", {
+          class: "crumb" + (i === stack.length - 1 ? " current" : ""),
+          onclick: () => { stack.length = i + 1; renderFrame(); },
+        }, f.label);
+        crumbs.appendChild(crumb);
+        if (i < stack.length - 1) crumbs.appendChild(el("span", { class: "crumb-sep" }, "›"));
+      });
+      // Body
+      clear(bodyEl);
+      bodyEl.appendChild(frame.build(frame.data));
+    }
+
+    // ── Drawer open/close ──────────────────────────────────────────────
+    let open = false;
+    function openDrawer(initial) {
+      open = true;
+      drawer.classList.add("open");
+      if (initial || !stack.length) {
+        navigateReplace(initial || entries.inspect());
+      }
+      markSignalsRead();
+    }
+    function closeDrawer() {
+      open = false;
+      drawer.classList.remove("open");
+      if (pickMode) cancelPickMode();
+    }
+
+    // ── Rail entries ───────────────────────────────────────────────────
+    const entries = {
+      inspect: () => ({ surface: "inspect", label: "Inspect", data: null, build: buildInspect }),
+      record:  () => ({ surface: "record",  label: "Record",  data: null, build: buildPlaceholder("Record") }),
+      leaks:   () => ({ surface: "leaks",   label: "Leaks",   data: null, build: buildPlaceholder("Leaks") }),
+      signals: () => ({ surface: "signals", label: "Signals", data: null, build: buildSignals }),
+      query:   () => ({ surface: "query",   label: "Query",   data: null, build: buildPlaceholder("Query") }),
+    };
+
+    railBtns.forEach((b) => {
+      b.addEventListener("click", () => {
+        const key = b.dataset.surface;
+        if (entries[key]) navigateReplace(entries[key]());
+      });
+    });
+
+    // ── Badge + signals ────────────────────────────────────────────────
+    /** @type {Map<string, {sig: any, count: number, unread: boolean}>} */
+    const signalMap = new Map();
+    const signalOrder = [];
+    const SIGNAL_HISTORY_MAX = 100;
+
     function renderBadge() {
       const unread = [...signalMap.values()].reduce((a, s) => a + (s.unread ? 1 : 0), 0);
       badgeCount.textContent = unread || "";
       badgeCount.style.display = unread ? "inline-block" : "none";
-      // Severity color for the badge ring
       let sev = null;
       for (const s of signalMap.values()) {
         if (!s.unread) continue;
@@ -183,215 +199,19 @@
       badge.classList.toggle("has-warn", sev === "warn");
       badge.classList.toggle("has-info", sev === "info" && sev !== "warn");
     }
-
-    badge.addEventListener("click", (e) => {
-      e.stopPropagation();
-      state.cmdbarOpen = !state.cmdbarOpen;
-      cmdbar.classList.toggle("open", state.cmdbarOpen);
-      // Opening the bar marks all signals read.
-      if (state.cmdbarOpen) markAllSignalsRead();
-    });
-
-    cmdbar.addEventListener("click", (e) => {
-      const cmd = e.target && e.target.dataset && e.target.dataset.cmd
-        || (e.target.closest && e.target.closest("[data-cmd]")?.dataset.cmd);
-      if (!cmd) return;
-      switch (cmd) {
-        case "pick": startPickMode(); break;
-        case "hotspots": openHotspots(); break;
-        case "leaks": openLeaks(); break;
-        case "dependents": openDependentsPrompt(); break;
-        case "signals": openSignalsInbox(); break;
-        case "close": closeAll(); break;
-      }
-    });
-
-    function renderSigCount() {
-      const el = cmdbar.querySelector(".sig-count");
-      const n = signalMap.size;
-      el.textContent = n ? String(n) : "";
-      el.style.display = n ? "inline-block" : "none";
-    }
-
-    function closeAll() {
-      state.cmdbarOpen = false;
-      cmdbar.classList.remove("open");
-      closeModal();
-      closePopover();
-      if (state.pickMode) cancelPickMode();
-    }
-
-    // ── Modals ───────────────────────────────────────────────────────────
-    function openModalWith(title, body, name) {
-      state.openModal = name;
-      modalTitle.textContent = title;
-      clear(modalBody);
-      modalBody.appendChild(body);
-      modal.classList.add("open");
-    }
-    function closeModal() {
-      state.openModal = null;
-      modal.classList.remove("open");
-    }
-    $(".modal-close").addEventListener("click", closeModal);
-
-    // ── Popover (provenance) ─────────────────────────────────────────────
-    function positionPopoverNear(rect) {
-      const pw = 380, ph = 300;
-      const vw = window.innerWidth, vh = window.innerHeight;
-      let left = rect.left;
-      let top = rect.bottom + 6;
-      if (left + pw > vw - 8) left = Math.max(8, vw - pw - 8);
-      if (top + ph > vh - 8) top = Math.max(8, rect.top - ph - 6);
-      popover.style.left = left + "px";
-      popover.style.top = top + "px";
-    }
-    function showPopover(contentBuilder, anchorNode) {
-      clear(popover);
-      popover.appendChild(contentBuilder());
-      popover.classList.add("open");
-      if (anchorNode && anchorNode.getBoundingClientRect) {
-        positionPopoverNear(anchorNode.getBoundingClientRect());
-      } else {
-        popover.style.left = "auto";
-        popover.style.top = "auto";
-        popover.style.right = "16px";
-        popover.style.bottom = "56px";
-      }
-    }
-    function closePopover() {
-      popover.classList.remove("open");
-      clear(popover);
-    }
-    // Popover has its own × via event delegation
-    popover.addEventListener("click", (e) => {
-      if (e.target && e.target.dataset && e.target.dataset.role === "close-popover") closePopover();
-    });
-
-    // ── Signals ──────────────────────────────────────────────────────────
-    function markAllSignalsRead() {
+    function markSignalsRead() {
       for (const s of signalMap.values()) s.unread = false;
       renderBadge();
-    }
-    function pushToast(sig) {
-      const toast = el("div", { class: `toast ${sig.severity || "info"}` },
-        el("span", { class: "toast-kind" }, sig.kind),
-        el("span", { class: "toast-msg" }, formatSignalMessage(sig)),
-      );
-      toast.addEventListener("click", () => {
-        openSignalDetail(sig);
-        toast.remove();
-      });
-      toasts.appendChild(toast);
-      setTimeout(() => toast.remove(), TOAST_LIFETIME_MS);
     }
     function formatSignalMessage(sig) {
       const p = sig.payload || {};
       switch (sig.kind) {
-        case "thrash":      return `${fmtPath(p.path)} × ${p.count}`;
-        case "long-effect": return `${p.expr || "?"} took ${fmtMs(p.durationMs)}`;
+        case "thrash":       return `${fmtPath(p.path)} × ${p.count}`;
+        case "long-effect":  return `${p.expr || "?"} took ${(p.durationMs || 0).toFixed(1)}ms`;
         case "orphan-spike": return `${p.count} orphaned effects in ${p.windowMs}ms`;
-        case "warn":        return `[${p.code}] ${p.message}`;
-        default:            return sig.kind;
+        case "warn":         return `[${p.code}] ${p.message}`;
+        default:             return sig.kind;
       }
-    }
-
-    // One-line and three-line explanations per signal kind. UI reads these
-    // from the signal; keeps copy out of the signal payload.
-    const SIGNAL_EXPLAINERS = {
-      thrash: {
-        headline: "A single value is being written many times per frame.",
-        what: "The path shown mutated more than 32 times in a single animation frame. Usually a feedback loop (an effect that writes something that re-triggers itself) or an unbatched write-loop that should be wrapped in `batch()`.",
-        why:  "Each mutation re-triggers every effect bound to it, so repeated writes multiply work. 32×/frame is cheap to detect but the real cost is at 100× or 1000×.",
-        action: "Open hotspots — the mutating path will show up as a top driver. Click into the expression firing on it, read the recent-runs trace, and either batch the writes or fix the feedback loop.",
-        drill: (sig) => el("button", { class: "btn primary", onclick: () => openHotspots() }, "open hotspots"),
-      },
-      "long-effect": {
-        headline: "A single effect run took longer than one frame.",
-        what: "This expression ran once and took the time shown. Over 16ms means the UI dropped a frame while this ran.",
-        why:  "Long single-run cost shows up as jank: scroll stutters, input lag, animation hitches. Rare long runs are tolerable; recurring ones are not.",
-        action: "Open the effect's trace to see what state paths it reads and when it recently ran. Common fixes: narrow dependencies, defer the work (idle/async), or avoid DOM reads inside the expression.",
-        drill: (sig) => {
-          const eff = sig.payload?.effect?.deref ? sig.payload.effect.deref() : sig.payload?.effect;
-          return eff
-            ? el("button", { class: "btn primary", onclick: () => openExplainEffect(eff) }, "explain this effect")
-            : null;
-        },
-      },
-      "orphan-spike": {
-        headline: "Effects are firing on nodes that aren't in the document.",
-        what: "In the window shown, more than 10 effects ran against DOM nodes that are no longer attached to the page.",
-        why:  "An orphaned effect holds a reference to a dead node (preventing GC) and does wasted work every time its deps change. The root cause is almost always a missing cleanup — DOM was removed outside Velin's own teardown path.",
-        action: "Run a leak scan. The 'detached effects' section lists which expressions are firing on dead nodes and where they were registered.",
-        drill: () => el("button", { class: "btn primary", onclick: () => openLeaks() }, "run leak scan"),
-      },
-      warn: {
-        headline: "Internal warning from Velin core.",
-        what: "Velin's internals emitted a warn-level event. The code identifies the condition (see Velin docs for codes), and the message describes what happened.",
-        why:  "Warns surface things that aren't fatal but usually indicate a bug or misconfiguration — detached effects, failed cleanups, suspicious state transitions.",
-        action: "If the warn carries a node reference, pick-mode the node and inspect its provenance. If it carries a path, run dependents on it.",
-        drill: null,
-      },
-    };
-
-    function openSignalDetail(sig) {
-      const p = sig.payload || {};
-      const ex = SIGNAL_EXPLAINERS[sig.kind] || SIGNAL_EXPLAINERS.warn;
-      const body = el("div", { class: "sigdetail" });
-      body.appendChild(el("div", { class: "code big" }, formatSignalMessage(sig)));
-      body.appendChild(el("div", { class: "section-help" }, ex.headline));
-      const dl = el("dl", { class: "explainer" },
-        el("dt", null, "What happened"),  el("dd", null, ex.what),
-        el("dt", null, "Why it matters"), el("dd", null, ex.why),
-        el("dt", null, "What to do"),     el("dd", null, ex.action),
-      );
-      body.appendChild(dl);
-      const drill = ex.drill && ex.drill(sig);
-      if (drill) body.appendChild(el("div", { class: "row", style: "margin-top:10px" }, drill));
-      // Mark it read since the user is now looking at it.
-      const key = sig.dismissKey || null;
-      if (key) {
-        const entry = signalMap.get(key);
-        if (entry) { entry.unread = false; renderBadge(); }
-      }
-      openModalWith("Signal: " + sig.kind, body, "signal");
-    }
-
-    function openSignalsInbox() {
-      state.cmdbarOpen = false;
-      cmdbar.classList.remove("open");
-      const body = el("div", { class: "sig-inbox" });
-      body.appendChild(el("div", { class: "section-help" },
-        "Signals the hook has emitted this session. Click one to see what happened and what to do about it. The hook also fires toasts for new signals, but those auto-dismiss — this list persists."));
-      const list = el("div", { class: "sig-list" });
-      const render = () => {
-        clear(list);
-        if (!signalMap.size) {
-          list.appendChild(el("div", { class: "empty" }, "no signals recorded yet"));
-          return;
-        }
-        // Newest last in signalOrder; render reversed.
-        for (let i = signalOrder.length - 1; i >= 0; i--) {
-          const key = signalOrder[i];
-          const entry = signalMap.get(key);
-          if (!entry) continue;
-          const sev = entry.sig.severity === "warn" ? "warn" : "info";
-          const row = el("div", { class: `sig-item ${sev}${entry.unread ? " unread" : ""}` },
-            el("span", { class: "sig-kind" }, entry.sig.kind),
-            el("span", { class: "sig-msg" }, formatSignalMessage(entry.sig)),
-            entry.count > 1 ? el("span", { class: "sig-count-chip" }, "×" + entry.count) : null,
-            el("span", { class: "sig-when" }, fmtAgo(entry.sig.t || hook.ø__now())),
-          );
-          row.addEventListener("click", () => openSignalDetail(entry.sig));
-          list.appendChild(row);
-        }
-      };
-      render();
-      body.appendChild(list);
-      body.appendChild(el("div", { class: "row", style: "margin-top:10px" },
-        el("button", { class: "btn", onclick: () => { signalMap.clear(); signalOrder.length = 0; renderBadge(); renderSigCount(); render(); } }, "clear all"),
-      ));
-      openModalWith("Signals", body, "signals");
     }
 
     hook.onSignal((sig) => {
@@ -411,25 +231,24 @@
       }
       entry.count++;
       renderBadge();
-      renderSigCount();
-      pushToast(sig);
+      // If the drawer is open on Signals, re-render.
+      const top = stack[stack.length - 1];
+      if (open && top && top.surface === "signals") renderFrame();
     });
 
-    // ── Pick mode ────────────────────────────────────────────────────────
-    // We attach capture-phase listeners on the document. On mousemove we
-    // outline the hovered element; on click we freeze it and show the
-    // provenance popover. Clicks on our own shadow host escape the capture.
+    // ── Surface: Inspect (pick + provenance) ───────────────────────────
+    let pickMode = false;
+    let pickHighlight = null;
+
     function startPickMode() {
-      state.pickMode = true;
-      state.cmdbarOpen = false;
-      cmdbar.classList.remove("open");
+      pickMode = true;
       badge.classList.add("picking");
       document.addEventListener("mousemove", onPickMove, true);
       document.addEventListener("click", onPickClick, true);
       document.addEventListener("keydown", onPickKey, true);
     }
     function cancelPickMode() {
-      state.pickMode = false;
+      pickMode = false;
       badge.classList.remove("picking");
       document.removeEventListener("mousemove", onPickMove, true);
       document.removeEventListener("click", onPickClick, true);
@@ -437,534 +256,276 @@
       clearPickHighlight();
     }
     function clearPickHighlight() {
-      if (pickHighlight) {
-        pickHighlight.style.outline = pickHighlight.__vlnPrevOutline || "";
-        pickHighlight.style.outlineOffset = pickHighlight.__vlnPrevOffset || "";
-        delete pickHighlight.__vlnPrevOutline;
-        delete pickHighlight.__vlnPrevOffset;
-        pickHighlight = null;
-      }
+      if (!pickHighlight) return;
+      pickHighlight.style.outline = pickHighlight.__vlnPrevOutline || "";
+      pickHighlight.style.outlineOffset = pickHighlight.__vlnPrevOffset || "";
+      delete pickHighlight.__vlnPrevOutline;
+      delete pickHighlight.__vlnPrevOffset;
+      pickHighlight = null;
     }
-    function isOurShadow(target) {
-      const path = (typeof target?.getRootNode === "function") ? target.getRootNode() : null;
-      return path === shadow || (target && target.closest && target.closest && host.contains(target));
+    function isOurShadow(t) {
+      const r = typeof t?.getRootNode === "function" ? t.getRootNode() : null;
+      return r === shadow || (t && host.contains(t));
     }
     function onPickMove(e) {
       const t = e.target;
-      if (!t || !(t instanceof Element)) return;
-      if (isOurShadow(t)) { clearPickHighlight(); return; }
-      if (t === pickHighlight) return;
+      if (!(t instanceof Element) || isOurShadow(t) || t === pickHighlight) {
+        if (!(t instanceof Element) || isOurShadow(t)) clearPickHighlight();
+        return;
+      }
       clearPickHighlight();
       pickHighlight = t;
       t.__vlnPrevOutline = t.style.outline || "";
       t.__vlnPrevOffset = t.style.outlineOffset || "";
-      t.style.outline = "2px solid #7cf";
+      t.style.outline = "2px solid var(--v-cyan, #7cf)";
       t.style.outlineOffset = "-2px";
     }
     function onPickClick(e) {
       const t = e.target;
-      if (isOurShadow(t)) return; // let our own UI handle it
+      if (isOurShadow(t)) return;
       if (!(t instanceof Element)) return;
-      e.preventDefault(); e.stopPropagation();
+      e.preventDefault();
+      e.stopPropagation();
       const node = pickHighlight || t;
       cancelPickMode();
-      openProvenance(node);
+      // Replace Inspect's frame data with the picked node + re-render.
+      navigateReplace({ surface: "inspect", label: `Inspect ${nodeLabel(node)}`, data: node, build: buildInspect });
     }
     function onPickKey(e) {
       if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); cancelPickMode(); }
     }
-
-    // ── Provenance popover (Q1) ──────────────────────────────────────────
-    function openProvenance(node) {
-      state.pickedNode = node;
-      const info = hook.explainNode(node);
-      showPopover(() => buildProvenanceView(node, info), node);
+    function highlightExternal(node, on) {
+      if (!(node instanceof Element)) return;
+      if (on) {
+        node.__vlnFlashPrev = node.style.outline || "";
+        node.style.outline = "2px dashed var(--v-amber, #fa7)";
+      } else {
+        node.style.outline = node.__vlnFlashPrev || "";
+        delete node.__vlnFlashPrev;
+      }
     }
-    function buildProvenanceView(node, info) {
-      const root = el("div", { class: "prov" });
-      root.appendChild(el("div", { class: "prov-header" },
-        el("span", { class: "prov-node" }, nodeLabel(node)),
-        el("span", { class: "flex-spacer" }),
-        el("button", { class: "iconbtn", "data-role": "close-popover", title: "Close" }, "×"),
+
+    function buildInspect(node) {
+      if (!node) {
+        return el("div", { class: "surface" },
+          el("div", { class: "surface-head" },
+            el("h3", null, "Inspect"),
+            el("button", { class: "btn primary", onclick: startPickMode }, "Pick an element"),
+          ),
+          el("p", { class: "muted" },
+            "Click an element in the page to see which states own it, which directives are bound, what each expression reads, and what mutated it last.",
+          ),
+          el("p", { class: "hint" }, "Shortcut: Ctrl+Shift+P"),
+        );
+      }
+      const info = hook.explainNode(node);
+      const root = el("div", { class: "surface" });
+
+      root.appendChild(el("div", { class: "surface-head" },
+        el("h3", null, nodeLabel(node)),
+        el("button", { class: "btn", onclick: startPickMode }, "Pick another"),
       ));
-      // States chain
+
       if (info.states.length) {
-        root.appendChild(el("div", { class: "prov-section-title" }, "states"));
-        const chain = el("div", { class: "prov-states" });
+        root.appendChild(el("div", { class: "section-title" }, "states"));
+        const chain = el("div", { class: "chain" });
         info.states.forEach((s, i) => {
           const sNode = hook.nodeFor(s);
           const label = el("span", {
-            class: "prov-state",
+            class: "chain-item",
             title: sNode ? nodeLabel(sNode) : "",
             onmouseenter: () => sNode && highlightExternal(sNode, true),
             onmouseleave: () => sNode && highlightExternal(sNode, false),
           }, sNode ? nodeLabel(sNode) : `state#${i}`);
-          const wrap = el("span", { class: "prov-state-wrap" }, label, stashBtn(() => s.state ?? s, "the state proxy"));
-          chain.appendChild(wrap);
-          if (i < info.states.length - 1) chain.appendChild(el("span", { class: "prov-arrow" }, " › "));
+          chain.appendChild(label);
+          if (i < info.states.length - 1) chain.appendChild(el("span", { class: "chain-sep" }, "›"));
         });
         root.appendChild(chain);
       }
+
       if (!info.bindings.length) {
         root.appendChild(el("div", { class: "empty" }, "no Velin bindings on this node"));
         return root;
       }
-      root.appendChild(el("div", { class: "prov-section-title" }, "bindings"));
+
+      root.appendChild(el("div", { class: "section-title" }, "bindings"));
       for (const b of info.bindings) {
-        const box = el("div", { class: "prov-binding" });
-        box.appendChild(el("div", { class: "prov-binding-head" },
-          el("span", { class: "prov-directive" }, b.directive),
-          el("span", { class: "prov-expr" }, b.expr),
+        const box = el("div", { class: "binding" });
+        box.appendChild(el("div", { class: "binding-head" },
+          el("span", { class: "directive" }, b.directive),
+          el("code", { class: "expr" }, b.expr),
         ));
-        box.appendChild(el("div", { class: "prov-row" },
-          el("span", { class: "prov-label" }, "current"),
-          el("span", { class: "prov-val" }, shortValue(b.currentValue)),
-          stashBtn(() => b.currentValue, "the current evaluated value"),
-        ));
+        box.appendChild(row("current", el("span", { class: "val" }, shortValue(b.currentValue))));
+
         if (b.reads && b.reads.length) {
-          const readsRow = el("div", { class: "prov-row" }, el("span", { class: "prov-label" }, "reads"));
-          const readsChips = el("span", { class: "prov-reads" });
+          const chips = el("div", { class: "chips" });
           for (const r of b.reads) {
-            readsChips.appendChild(el("button", {
+            chips.appendChild(el("button", {
               class: "chip",
-              title: "Show dependents",
-              onclick: () => openDependents(r.state, r.path),
+              title: "Query dependents of this path",
+              onclick: () => {
+                // Query surface not ported yet in iteration 1.
+                navigate({
+                  surface: "query",
+                  label: `Query ${fmtPath(r.path)}`,
+                  data: { state: r.state, path: r.path },
+                  build: buildPlaceholder("Query"),
+                });
+              },
             }, fmtPath(r.path)));
           }
-          readsRow.appendChild(readsChips);
-          box.appendChild(readsRow);
+          box.appendChild(row("reads", chips));
         }
         if (b.lastMutation) {
           const m = b.lastMutation;
-          box.appendChild(el("div", { class: "prov-row" },
-            el("span", { class: "prov-label" }, "last mut"),
-            el("span", { class: "prov-val" },
-              `${fmtPath(m.path)} ${m.op || ""}${m.method ? " " + m.method : ""} → ${shortValue(m.to)} (${fmtAgo(m.t)})`),
-            stashBtn(() => m.to, "the value just written"),
+          box.appendChild(row("last mut",
+            el("span", { class: "val" },
+              `${fmtPath(m.path)} → ${shortValue(m.to)}  `,
+              el("span", { class: "dim" }, fmtAgo(m.t)),
+            ),
           ));
         }
         root.appendChild(box);
       }
       return root;
     }
-
-    // ── Dependents (Q2) ──────────────────────────────────────────────────
-    function openDependentsPrompt() {
-      state.openModal = "dependents";
-      const body = el("div", { class: "dep" });
-      body.appendChild(el("div", { class: "muted" }, "Enter a path (e.g. count or user.name) — pick a bound root state first, if there are multiple."));
-      const rootStates = [...hook.states].filter((s) => !hook.parentOf(s));
-      const select = el("select", { class: "field" });
-      rootStates.forEach((s, i) => {
-        const n = hook.nodeFor(s);
-        select.appendChild(el("option", { value: String(i) }, n ? nodeLabel(n) : `state#${i}`));
-      });
-      const input = el("input", { class: "field", type: "text", placeholder: "count" });
-      const scopeToggle = el("select", { class: "field" },
-        el("option", { value: "narrow" }, "narrow"),
-        el("option", { value: "wide" }, "wide"),
+    function row(label, ...kids) {
+      return el("div", { class: "row" },
+        el("span", { class: "row-label" }, label),
+        el("span", { class: "row-val" }, ...kids),
       );
-      const runBtn = el("button", { class: "btn primary" }, "query");
-      const out = el("div", { class: "dep-results" });
-      runBtn.addEventListener("click", () => {
-        const s = rootStates[+select.value];
-        const path = toInternalPath(input.value.trim());
-        state.dependentsScope = scopeToggle.value;
-        if (!s || !path) return;
-        renderDependentsInto(out, s, path, scopeToggle.value);
-      });
-      body.appendChild(el("div", { class: "row" }, select, input, scopeToggle, runBtn));
-      body.appendChild(out);
-      openModalWith("Dependents", body, "dependents");
-    }
-    function openDependents(rs, path) {
-      // Called from provenance popover.
-      state.dependentsState = rs;
-      state.dependentsPath = path;
-      const body = el("div", { class: "dep" });
-      body.appendChild(el("div", { class: "dep-head" },
-        el("span", { class: "muted" }, "path"),
-        el("code", { class: "code" }, fmtPath(path)),
-      ));
-      const scopeToggle = el("div", { class: "row" },
-        scopeBtn("narrow"),
-        scopeBtn("wide"),
-      );
-      body.appendChild(scopeToggle);
-      const out = el("div", { class: "dep-results" });
-      body.appendChild(out);
-      renderDependentsInto(out, rs, path, state.dependentsScope);
-      openModalWith("Dependents of " + path, body, "dependents");
-
-      function scopeBtn(k) {
-        const b = el("button", { class: "btn" + (state.dependentsScope === k ? " active" : "") }, k);
-        b.addEventListener("click", () => {
-          state.dependentsScope = k;
-          scopeToggle.querySelectorAll("button").forEach((btn) => btn.classList.toggle("active", btn.textContent === k));
-          renderDependentsInto(out, rs, path, k);
-        });
-        return b;
-      }
-    }
-    function renderDependentsInto(container, rs, path, scope) {
-      clear(container);
-      const rows = hook.dependentsOf(rs, path, { scope });
-      if (!rows.length) {
-        container.appendChild(el("div", { class: "empty" }, "no dependents — nobody watches this path"));
-        return;
-      }
-      const table = el("table", { class: "grid" });
-      table.appendChild(el("tr", null,
-        el("th", null, "Node"),
-        el("th", null, "Expressions"),
-        el("th", { class: "num" }, "≈ ms"),
-        el("th", null, ""),
-      ));
-      for (const r of rows) {
-        const exprs = r.effects.map((e) => e.expr).filter(Boolean).join(", ") || "—";
-        const nodeCell = el("td", null,
-          el("span", { class: "node-label" + (r.isDetached ? " detached" : "") }, nodeLabel(r.node)),
-          r.isDetached ? el("span", { class: "badge-warn" }, "detached") : null,
-        );
-        const tr = el("tr", { class: "clickable" },
-          nodeCell,
-          el("td", { class: "expr" }, exprs),
-          el("td", { class: "num" }, fmtMs(r.estimatedCostMs)),
-          el("td", null,
-            r.effects[0] ? el("button", {
-              class: "iconbtn", title: "Explain effect",
-              onclick: (e) => { e.stopPropagation(); openExplainEffect(r.effects[0].effect); },
-            }, "?") : null,
-          ),
-        );
-        tr.addEventListener("mouseenter", () => r.node && highlightExternal(r.node, true));
-        tr.addEventListener("mouseleave", () => r.node && highlightExternal(r.node, false));
-        tr.addEventListener("click", () => r.node && flashExternal(r.node));
-        table.appendChild(tr);
-      }
-      container.appendChild(table);
     }
 
-    // ── Hotspots (Q3) — persistent panel, polls only while open ──────────
-    // Hotspots: record/stop model. While recording we subscribe to the
-    // hook's effect-emit stream and accumulate durations per expression
-    // (and per driving path, via mutationSeq correlation). On stop we
-    // render the aggregate frozen for that session. No decay, no polling.
-    /** @type {null | { started: number; buffer: Map<string, {calls:number,totalMs:number,maxMs:number,drivers:Map<string,number>,sampleEffect:any}>; mutations: Map<number,string>; unsubscribe: () => void }} */
-    let recording = null;
-
-    function openHotspots() {
-      state.cmdbarOpen = false;
-      cmdbar.classList.remove("open");
-      const body = el("div", { class: "hot" });
-      body.appendChild(el("div", { class: "section-help" },
-        "Record a performance session: press Record, interact with the page, press Stop. The table shows every expression that ran during the capture, how often, and how long. Nothing is sampled or decayed — the recording is a complete capture."));
-      const recBtn = el("button", { class: "btn primary" }, "● Record");
-      const timer = el("span", { class: "muted" }, "");
-      const out = el("div", { class: "hot-results" });
-
-      let timerId = null;
-      const updateTimer = () => {
-        if (!recording) return;
-        const dt = hook.ø__now() - recording.started;
-        timer.textContent = `recording · ${(dt / 1000).toFixed(1)}s`;
-      };
-      const stop = () => {
-        if (!recording) return;
-        recording.unsubscribe();
-        clearInterval(timerId); timerId = null;
-        const elapsed = hook.ø__now() - recording.started;
-        const rows = flattenRecording(recording.buffer);
-        renderCapture(out, rows, elapsed);
-        recording = null;
-        recBtn.textContent = "● Record";
-        recBtn.classList.remove("recording");
-        timer.textContent = `captured · ${(elapsed / 1000).toFixed(1)}s · ${rows.length} expressions`;
-      };
-      const start = () => {
-        if (recording) return;
-        clear(out);
-        out.appendChild(el("div", { class: "empty small" }, "capturing… interact with the page, then press Stop."));
-        recording = {
-          started: hook.ø__now(),
-          buffer: new Map(),
-          mutations: new Map(),
-          unsubscribe: hook.subscribe((ev) => {
-            if (!recording) return;
-            if (ev.kind === "mutate") {
-              recording.mutations.set(ev.mutationSeq, ev.path);
-            } else if (ev.kind === "effect") {
-              const expr = ev.expr || "(no expr)";
-              let b = recording.buffer.get(expr);
-              if (!b) {
-                // Weakly held: a long recording must not keep torn-down
-                // effects alive. deref at render time; drop if GC'd.
-                b = { calls: 0, totalMs: 0, maxMs: 0, drivers: new Map(), sampleEffect: ev.effect ? new WeakRef(ev.effect) : null };
-                recording.buffer.set(expr, b);
-              }
-              b.calls++;
-              const dt = ev.durationMs || 0;
-              b.totalMs += dt;
-              if (dt > b.maxMs) b.maxMs = dt;
-              const driver = recording.mutations.get(ev.mutationSeq);
-              if (driver) b.drivers.set(driver, (b.drivers.get(driver) || 0) + 1);
-            }
-          }),
-        };
-        recBtn.textContent = "■ Stop";
-        recBtn.classList.add("recording");
-        timerId = setInterval(updateTimer, 100);
-        updateTimer();
-      };
-      recBtn.addEventListener("click", () => recording ? stop() : start());
-
-      body.appendChild(el("div", { class: "row" }, recBtn, timer, el("span", { class: "flex-spacer" })));
-      body.appendChild(el("div", { class: "muted", style: "font-size:11px;margin:0 0 8px" },
-        "total: cumulative time in this expression during the capture · max: slowest single run · driven by: mutations that triggered it, with counts"));
-      body.appendChild(out);
-
-      // Modal cleanup — stop any active recording on close.
-      const prevCloseModal = closeModal;
-      modal.querySelector(".modal-close").onclick = () => {
-        if (recording) { recording.unsubscribe(); clearInterval(timerId); recording = null; }
-        prevCloseModal();
-        modal.querySelector(".modal-close").onclick = () => closeModal();
-      };
-      openModalWith("Hotspots", body, "hotspots");
-    }
-    function flattenRecording(buffer) {
-      const rows = [];
-      for (const [expr, b] of buffer) {
-        rows.push({
-          expr, calls: b.calls, totalMs: b.totalMs, maxMs: b.maxMs,
-          drivers: [...b.drivers.entries()].map(([path, count]) => ({ path, count }))
-                     .sort((a, b) => b.count - a.count),
-          sampleEffect: b.sampleEffect,
-        });
-      }
-      rows.sort((a, b) => b.totalMs - a.totalMs);
-      return rows;
-    }
-    function renderCapture(container, rows, elapsedMs) {
-      clear(container);
-      if (!rows.length) {
-        container.appendChild(el("div", { class: "empty" },
-          `no expressions ran during the ${(elapsedMs / 1000).toFixed(1)}s capture`));
-        return;
-      }
-      const table = el("table", { class: "grid" });
-      table.appendChild(el("tr", null,
-        el("th", null, "Expression"),
-        el("th", { class: "num" }, "total"),
-        el("th", { class: "num" }, "calls"),
-        el("th", { class: "num" }, "max"),
-        el("th", null, "driven by"),
-      ));
-      for (const r of rows) {
-        const drivers = r.drivers.slice(0, 3).map((d) => `${fmtPath(d.path)}×${d.count}`).join(", ") || "—";
-        const tr = el("tr", { class: "clickable" },
-          el("td", { class: "expr" }, r.expr),
-          el("td", { class: "num" }, fmtMs(r.totalMs)),
-          el("td", { class: "num" }, String(r.calls)),
-          el("td", { class: "num" }, fmtMs(r.maxMs)),
-          el("td", { class: "dim" }, drivers),
-        );
-        tr.addEventListener("click", () => {
-          const eff = r.sampleEffect?.deref?.();
-          if (eff) openExplainEffect(eff);
-        });
-        table.appendChild(tr);
-      }
-      container.appendChild(table);
-    }
-
-    // ── Leaks (Q4) — on-demand ───────────────────────────────────────────
-    function openLeaks() {
-      state.cmdbarOpen = false;
-      cmdbar.classList.remove("open");
-      const body = el("div", { class: "leaks" });
-      body.appendChild(el("div", { class: "section-help" },
-        "A leak scan walks every live effect and compares it to the current DOM. It won't tell you whether something IS a leak — only what's suspicious. A growing count across normal interactions is the real signal."));
-      const runBtn = el("button", { class: "btn primary" }, "run scan");
-      const out = el("div");
-      body.appendChild(el("div", { class: "row" }, runBtn, el("span", { class: "muted" }, "scan is on-demand; it is cheap but not free")));
-      body.appendChild(out);
-      runBtn.addEventListener("click", () => renderLeaksInto(out));
-      openModalWith("Leaks", body, "leaks");
-      renderLeaksInto(out); // initial scan
-    }
-    const LEAK_SECTIONS = {
-      detachedEffects: {
-        title: "Detached effects",
-        blurb: "Effects still bound to DOM nodes that have been removed from the document. Each one holds a reference to a dead node and prevents it from being garbage-collected. Not always a bug — some teardowns are deferred — but a count that keeps growing is a smell.",
+    // ── Surface: Signals ───────────────────────────────────────────────
+    const SIGNAL_EXPLAINERS = {
+      thrash: {
+        what: "The path shown mutated more than 32× in a single animation frame. Usually a feedback loop or an unbatched write-loop.",
+        why:  "Each mutation re-triggers every effect bound to it. Repeated writes multiply work.",
+        action: "Open Record, reproduce the write. The driving path will show up in the top row. Fix the feedback loop or wrap the writes in a batch.",
       },
-      detachedStates: {
-        title: "Detached state roots",
-        blurb: "ReactiveStates whose root element is gone but still hold live bindings. Usually means an app wasn't cleaned up when its container was removed.",
+      "long-effect": {
+        what: "This expression ran once and took longer than one frame (16ms).",
+        why:  "Long single-run cost shows up as jank — scroll stutters, input lag, animation hitches.",
+        action: "Open the effect from its row to see its reads, recent runs, and triggering path. Common fixes: narrow deps, defer the work.",
       },
-      orphanedSubs: {
-        title: "Live hook subscribers",
-        blurb: "Code that called `hook.subscribe()` but never released. Every subscriber receives every event — too many hurts perf. Expand to see where each was registered.",
+      "orphan-spike": {
+        what: "Effects are firing on DOM nodes that are no longer in the document.",
+        why:  "Orphan effects hold references to dead nodes, prevent GC, and do wasted work.",
+        action: "Open Leaks — the detached effects section lists what's firing and where it was registered.",
       },
-      suspiciousGrowth: {
-        title: "Suspicious growth",
-        blurb: "Internal buffers (log ring, aggregator maps, etc.) that at least doubled in size since the previous scan. Baseline is captured on first scan.",
+      warn: {
+        what: "Internal warning from Velin core.",
+        why:  "Warns are usually not fatal, but indicate a bug or misconfiguration (detached effects, failed cleanups, suspicious state).",
+        action: "Inspect the node (if the warn carries one) or Query the path (if it carries one).",
       },
     };
-    function renderLeaksInto(container) {
-      clear(container);
-      const r = hook.leaks();
-      const sect = (key, items, formatter) => {
-        const meta = LEAK_SECTIONS[key];
-        const s = el("details", { class: "leak-section" });
-        const summaryEl = el("summary", null, `${meta.title}  (${items.length})`);
-        if (!items.length) summaryEl.appendChild(el("span", { class: "muted", style: "margin-left:6px" }, "✓ none"));
-        s.appendChild(summaryEl);
-        s.appendChild(el("div", { class: "section-help", style: "margin:4px 0 8px" }, meta.blurb));
-        if (!items.length) {
-          s.appendChild(el("div", { class: "empty small" }, "nothing to report"));
-        } else {
-          for (const it of items) s.appendChild(formatter(it));
-        }
-        if (items.length) s.open = true;
-        return s;
-      };
-      container.appendChild(sect("detachedEffects", r.detachedEffects, (e) => {
-        const row = el("div", { class: "leak-row clickable" },
-          el("code", { class: "code" }, fmtPath(e.path)),
-          el("span", { class: "dim" }, " · "),
-          el("span", { class: "expr" }, e.expr),
-          stashBtn(() => e.effect, "the detached effect fn"),
+
+    function buildSignals() {
+      const root = el("div", { class: "surface" });
+      root.appendChild(el("div", { class: "surface-head" },
+        el("h3", null, "Signals"),
+        signalMap.size ? el("button", { class: "btn", onclick: () => {
+          signalMap.clear(); signalOrder.length = 0; renderBadge(); renderFrame();
+        } }, "Clear all") : null,
+      ));
+      root.appendChild(el("p", { class: "muted" },
+        "The hook emits a signal when something crosses a threshold (thrash, long effect, orphan spike, warn). Entries persist for the session.",
+      ));
+      if (!signalMap.size) {
+        root.appendChild(el("div", { class: "empty" }, "no signals recorded yet"));
+        return root;
+      }
+      const list = el("div", { class: "sig-list" });
+      for (let i = signalOrder.length - 1; i >= 0; i--) {
+        const entry = signalMap.get(signalOrder[i]);
+        if (!entry) continue;
+        const sev = entry.sig.severity === "warn" ? "warn" : "info";
+        const item = el("button", { class: `sig-item ${sev}` },
+          el("div", { class: "sig-top" },
+            el("span", { class: "sig-kind" }, entry.sig.kind),
+            el("span", { class: "sig-msg" }, formatSignalMessage(entry.sig)),
+            entry.count > 1 ? el("span", { class: "sig-count-chip" }, "×" + entry.count) : null,
+            el("span", { class: "sig-when" }, fmtAgo(entry.sig.t || hook.ø__now())),
+          ),
         );
-        row.addEventListener("click", () => openExplainEffect(e.effect));
-        return row;
-      }));
-      container.appendChild(sect("detachedStates", r.detachedStates, (s) =>
-        el("div", { class: "leak-row" }, nodeLabel(s.rootNode))
-      ));
-      container.appendChild(sect("orphanedSubs", r.orphanedSubs, (s) =>
-        el("details", { class: "sub-row" },
-          el("summary", null, `subscriber added ${fmtAgo(s.addedAt)}`),
-          el("pre", { class: "raw" }, s.stackAt || "(no stack)"),
-        )
-      ));
-      container.appendChild(sect("suspiciousGrowth", r.suspiciousGrowth, (g) =>
-        el("div", { class: "leak-row" }, `${g.what}: ${g.size}  (+${g.delta})`)
-      ));
-    }
-
-    // ── Explain effect (Q6) — modal ──────────────────────────────────────
-    function openExplainEffect(effect) {
-      if (!effect) return;
-      const info = hook.explainEffect(effect);
-      if (!info) return;
-      const body = el("div", { class: "eff" });
-      body.appendChild(el("div", { class: "row" },
-        el("code", { class: "code big" }, info.expr || "(no expr)"),
-        stashBtn(() => effect, "the effect fn"),
-        info.node ? stashBtn(() => info.node, "the bound DOM node") : null,
-      ));
-      body.appendChild(el("div", { class: "muted" },
-        `${info.pluginName || "?"}${info.subkey ? ":" + info.subkey : ""}   on ${nodeLabel(info.node)}`));
-      body.appendChild(el("div", { class: "prov-section-title" }, "reads"));
-      const readsRow = el("div", { class: "prov-reads" });
-      for (const r of info.reads) {
-        readsRow.appendChild(el("button", {
-          class: "chip",
-          onclick: () => openDependents(r.state, r.path),
-        }, fmtPath(r.path)));
-      }
-      body.appendChild(readsRow);
-      body.appendChild(el("div", { class: "prov-section-title" }, "recent runs"));
-      if (!info.recentRuns.length) {
-        body.appendChild(el("div", { class: "empty small" }, "no runs recorded yet"));
-      } else {
-        const table = el("table", { class: "grid" });
-        table.appendChild(el("tr", null,
-          el("th", { class: "num" }, "#"),
-          el("th", null, "when"),
-          el("th", null, "trigger path"),
-          el("th", { class: "num" }, "mutSeq"),
-          el("th", { class: "num" }, "ms"),
-        ));
-        info.recentRuns.forEach((r, i) => {
-          table.appendChild(el("tr", null,
-            el("td", { class: "num" }, String(i + 1)),
-            el("td", { class: "dim" }, fmtAgo(r.t)),
-            el("td", { class: "expr" }, fmtPath(r.path) || "—"),
-            el("td", { class: "num" }, r.mutationSeq ? String(r.mutationSeq) : "—"),
-            el("td", { class: "num" }, fmtMs(r.durationMs)),
-          ));
+        item.addEventListener("click", () => {
+          navigate({
+            surface: "signals",
+            label: entry.sig.kind,
+            data: entry.sig,
+            build: buildSignalDetail,
+          });
         });
-        body.appendChild(table);
+        list.appendChild(item);
       }
-      body.appendChild(el("div", { class: "prov-section-title" }, "why did this run"));
-      body.appendChild(el("div", { class: "wdtr" }, info.whyDidThisRun.length
-        ? info.whyDidThisRun.map((p) => el("code", { class: "chip static" }, fmtPath(p)))
-        : [el("span", { class: "empty small" }, "no recorded trigger paths yet")]));
-      openModalWith("Effect: " + (info.expr || "?"), body, "explain-effect");
+      root.appendChild(list);
+      return root;
     }
 
-    // ── External DOM helpers (on host page, not shadow) ──────────────────
-    function highlightExternal(node, on) {
-      if (!(node instanceof Element)) return;
-      if (on) {
-        node.__vlnPrevOutline2 = node.style.outline || "";
-        node.__vlnPrevOffset2 = node.style.outlineOffset || "";
-        node.style.outline = "2px dashed #fa7";
-        node.style.outlineOffset = "-2px";
-      } else {
-        node.style.outline = node.__vlnPrevOutline2 || "";
-        node.style.outlineOffset = node.__vlnPrevOffset2 || "";
-        delete node.__vlnPrevOutline2;
-        delete node.__vlnPrevOffset2;
-      }
+    function buildSignalDetail(sig) {
+      const ex = SIGNAL_EXPLAINERS[sig.kind] || SIGNAL_EXPLAINERS.warn;
+      const root = el("div", { class: "surface" });
+      root.appendChild(el("div", { class: "surface-head" },
+        el("h3", null, "Signal: " + sig.kind),
+      ));
+      root.appendChild(el("div", { class: "detail-headline" }, formatSignalMessage(sig)));
+      root.appendChild(section("What happened", ex.what));
+      root.appendChild(section("Why it matters", ex.why));
+      root.appendChild(section("What to do",   ex.action));
+      return root;
     }
-    function flashExternal(node) {
-      if (!(node instanceof Element)) return;
-      const prev = node.style.outline;
-      const prevT = node.style.transition;
-      node.style.transition = "outline 0.4s";
-      node.style.outline = "2px solid #7cf";
-      setTimeout(() => { node.style.outline = prev; node.style.transition = prevT; }, 400);
+    function section(title, body) {
+      return el("div", { class: "detail-section" },
+        el("div", { class: "detail-section-title" }, title),
+        el("div", { class: "detail-section-body" }, body),
+      );
     }
 
-    // Escape close on modal
-    document.addEventListener("keydown", (e) => {
-      if (e.key !== "Escape") return;
-      if (state.pickMode) return; // handled in pick keydown
-      if (state.openModal) { e.preventDefault(); closeModal(); return; }
-      if (popover.classList.contains("open")) { e.preventDefault(); closePopover(); return; }
-      if (state.cmdbarOpen) { e.preventDefault(); state.cmdbarOpen = false; cmdbar.classList.remove("open"); }
+    // ── Placeholder surfaces (iteration 2+) ────────────────────────────
+    function buildPlaceholder(name) {
+      return () => el("div", { class: "surface" },
+        el("div", { class: "surface-head" }, el("h3", null, name)),
+        el("div", { class: "empty" },
+          name + " moves into the drawer in the next iteration. For now, open the previous panel version to use it.",
+        ),
+      );
+    }
+
+    // ── Wiring ─────────────────────────────────────────────────────────
+    badge.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (open) closeDrawer(); else openDrawer();
     });
 
-    // Global hotkeys
+    $(".drawer-close").addEventListener("click", closeDrawer);
+    $(".crumbs-back").addEventListener("click", navigateUp);
+
     document.addEventListener("keydown", (e) => {
-      if (!e.ctrlKey || !e.shiftKey) return;
+      if (!e.ctrlKey || !e.shiftKey) {
+        if (e.key === "Escape" && open) {
+          if (pickMode) return; // pickKey handles it
+          if (stack.length > 1) { e.preventDefault(); navigateUp(); return; }
+          e.preventDefault();
+          closeDrawer();
+        }
+        return;
+      }
       if (e.key === "V" || e.key === "v") {
         e.preventDefault();
-        state.cmdbarOpen = !state.cmdbarOpen;
-        cmdbar.classList.toggle("open", state.cmdbarOpen);
-        if (state.cmdbarOpen) markAllSignalsRead();
+        if (open) closeDrawer(); else openDrawer();
       } else if (e.key === "P" || e.key === "p") {
         e.preventDefault();
-        if (!state.pickMode) startPickMode(); else cancelPickMode();
+        if (!open) openDrawer(entries.inspect());
+        if (!pickMode) startPickMode();
+        else cancelPickMode();
       }
     });
-
-    // Register the panel's shadow-host state as ignored so devtools' own
-    // click/hover DOM (if any of it turned reactive) never pollutes the log.
-    // The panel is plain DOM so no reactive state exists — but if a future
-    // change wires anything to Velin.bind on the shadow root, this line
-    // keeps it from feeding back.
-    // (Nothing to ignore right now — sentinel comment for future me.)
 
     renderBadge();
 
     window.__VELIN_DEVTOOLS_COMPANION__ = {
       version: VERSION,
       dispose() {
-        if (recording) { recording.unsubscribe(); recording = null; }
         cancelPickMode();
         host.remove();
         delete window.__VELIN_DEVTOOLS_COMPANION__;
@@ -972,195 +533,257 @@
     };
   }
 
-  function safeReplacer(_k, v) {
-    if (v instanceof Node) return `<${(v.nodeName || "node").toLowerCase()}>`;
-    if (typeof v === "function") return "[fn]";
-    return v;
+  // ── Template ─────────────────────────────────────────────────────────
+  const TEMPLATE = `
+<style>
+  :host {
+    all: initial;
+    --v-bg: #0f1115;
+    --v-bg-2: #171a21;
+    --v-bg-3: #1e222b;
+    --v-fg: #e5e7eb;
+    --v-fg-dim: #9ca3af;
+    --v-fg-mute: #6b7280;
+    --v-border: #2a2f3a;
+    --v-cyan: #7cf;
+    --v-green: #ad9;
+    --v-amber: #fa7;
+    --v-red: #f66;
+    --v-radius: 6px;
+    --v-space: 10px;
+    font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: var(--v-fg);
+  }
+  * { box-sizing: border-box; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+
+  /* Badge */
+  .badge {
+    position: fixed; right: 14px; bottom: 14px;
+    pointer-events: auto;
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--v-bg); color: var(--v-cyan);
+    border: 1px solid var(--v-border);
+    border-radius: 999px; padding: 5px 11px;
+    cursor: pointer; user-select: none; font-weight: bold;
+    box-shadow: 0 4px 16px #000a;
+    transition: border-color .15s, transform .15s;
+  }
+  .badge:hover { border-color: var(--v-cyan); transform: translateY(-1px); }
+  .badge.picking { border-color: var(--v-amber); color: var(--v-amber); }
+  .badge.has-warn { border-color: var(--v-amber); }
+  .badge.has-info { border-color: var(--v-green); }
+  .badge .count {
+    display: none; background: var(--v-red); color: #fff;
+    padding: 0 5px; border-radius: 999px; min-width: 16px;
+    text-align: center; font-size: 10px;
   }
 
-  const TEMPLATE_HTML = `
-<style>
-  :host { all: initial; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: #ddd; }
-  * { box-sizing: border-box; }
-  .badge { position: fixed; right: 12px; bottom: 12px; z-index: 1; pointer-events: auto;
-           display: inline-flex; align-items: center; gap: 6px;
-           background: #111d; color: #7cf; border: 1px solid #444;
-           border-radius: 999px; padding: 4px 10px; cursor: pointer;
-           box-shadow: 0 4px 16px #000a; user-select: none; font-weight: bold;
-           transition: box-shadow 0.15s, border-color 0.15s; }
-  .badge:hover { border-color: #7cf; }
-  .badge.picking { border-color: #fa7; color: #fa7; box-shadow: 0 0 0 2px #fa7 inset; }
-  .badge.has-warn { border-color: #fa7; }
-  .badge.has-info { border-color: #ad9; }
-  .badge .count { display: none; background: #f66; color: #fff; padding: 0 5px;
-                  border-radius: 999px; min-width: 16px; text-align: center; font-size: 10px; }
+  /* Drawer */
+  .drawer {
+    position: fixed; right: 0; top: 0; bottom: 0;
+    width: 460px; max-width: 100vw;
+    pointer-events: auto;
+    background: var(--v-bg);
+    border-left: 1px solid var(--v-border);
+    display: grid;
+    grid-template-columns: 44px 1fr;
+    grid-template-rows: auto 1fr;
+    grid-template-areas: "rail head" "rail body";
+    transform: translateX(100%);
+    transition: transform .18s ease-out;
+    box-shadow: -8px 0 32px #0008;
+  }
+  .drawer.open { transform: translateX(0); }
 
-  .cmdbar { position: fixed; right: 12px; bottom: 46px; z-index: 1;
-            pointer-events: auto; display: none; background: #111d;
-            border: 1px solid #444; border-radius: 6px; padding: 6px;
-            box-shadow: 0 6px 24px #000a; }
-  .cmdbar.open { display: flex; gap: 4px; align-items: center; }
-  .cmdbar button { font: inherit; background: #222; color: #ddd;
-                   border: 1px solid #555; border-radius: 3px;
-                   padding: 3px 8px; cursor: pointer; }
-  .cmdbar button:hover { background: #333; border-color: #7cf; color: #7cf; }
-  .cmdbar .title { color: #7cf; font-weight: bold; padding: 0 6px; }
+  /* Rail */
+  .rail {
+    grid-area: rail;
+    background: var(--v-bg-2);
+    border-right: 1px solid var(--v-border);
+    display: flex; flex-direction: column; align-items: stretch;
+    padding: 6px 0;
+    gap: 2px;
+  }
+  .rail button {
+    background: transparent;
+    border: 0; border-left: 2px solid transparent;
+    color: var(--v-fg-mute);
+    padding: 10px 0;
+    display: flex; align-items: center; justify-content: center;
+    transition: color .1s, background .1s, border-color .1s;
+    position: relative;
+  }
+  .rail button:hover { color: var(--v-fg); background: var(--v-bg-3); }
+  .rail button.active {
+    color: var(--v-cyan);
+    border-left-color: var(--v-cyan);
+    background: var(--v-bg-3);
+  }
+  .rail .rail-icon { font-size: 16px; line-height: 1; }
+  .rail button::after {
+    content: attr(data-label);
+    position: absolute; left: 100%; margin-left: 6px;
+    background: var(--v-bg-3); color: var(--v-fg);
+    padding: 2px 8px; border-radius: 3px;
+    white-space: nowrap; font-size: 11px;
+    opacity: 0; pointer-events: none;
+    transition: opacity .1s;
+    border: 1px solid var(--v-border);
+    z-index: 1;
+  }
+  .rail button:hover::after { opacity: 1; }
 
-  .popover { position: fixed; z-index: 2; pointer-events: auto;
-             width: 380px; max-height: 60vh; overflow: auto;
-             background: #111f; border: 1px solid #7cf; border-radius: 6px;
-             padding: 8px 10px; box-shadow: 0 6px 24px #000a;
-             display: none; }
-  .popover.open { display: block; }
+  /* Head: breadcrumbs + close */
+  .drawer-head {
+    grid-area: head;
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--v-border);
+    background: var(--v-bg-2);
+  }
+  .crumbs-back {
+    background: transparent; border: 0; color: var(--v-fg-mute);
+    padding: 2px 4px; border-radius: 3px;
+  }
+  .crumbs-back:hover { color: var(--v-fg); background: var(--v-bg-3); }
+  .crumbs {
+    display: flex; align-items: center; gap: 4px; flex: 1;
+    overflow: hidden;
+  }
+  .crumb {
+    background: transparent; border: 0; color: var(--v-fg-mute);
+    padding: 2px 4px; border-radius: 3px;
+    max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .crumb:hover { color: var(--v-fg); }
+  .crumb.current { color: var(--v-fg); font-weight: bold; }
+  .crumb-sep { color: var(--v-fg-mute); }
+  .drawer-close {
+    background: transparent; border: 0; color: var(--v-fg-mute);
+    font-size: 18px; padding: 0 4px;
+  }
+  .drawer-close:hover { color: var(--v-red); }
 
-  .modal { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
-           z-index: 2; pointer-events: auto;
-           width: min(720px, 90vw); max-height: 80vh;
-           background: #111f; border: 1px solid #444; border-radius: 8px;
-           display: none; flex-direction: column;
-           box-shadow: 0 12px 48px #000c; }
-  .modal.open { display: flex; }
-  .modal-header { display: flex; align-items: center; gap: 6px;
-                  padding: 6px 10px; background: #1a1a1a; border-bottom: 1px solid #333;
-                  border-radius: 8px 8px 0 0; }
-  .modal-title { color: #7cf; font-weight: bold; flex: 1; }
-  .modal-close { font: inherit; background: transparent; color: #ddd;
-                 border: 0; cursor: pointer; font-size: 16px; padding: 0 4px; }
-  .modal-close:hover { color: #f66; }
-  .modal-body { padding: 10px 12px; overflow: auto; }
+  /* Body */
+  .body {
+    grid-area: body;
+    overflow: auto;
+    padding: 12px 14px;
+  }
 
-  .toasts { position: fixed; right: 12px; bottom: 56px; z-index: 3;
-            pointer-events: none; display: flex; flex-direction: column-reverse;
-            gap: 4px; max-width: 320px; }
-  .toast { pointer-events: auto; background: #222; border: 1px solid #444;
-           border-left: 3px solid #7cf; border-radius: 4px;
-           padding: 4px 8px; cursor: pointer;
-           animation: slidein 0.2s ease-out; }
-  .toast.warn { border-left-color: #fa7; }
-  .toast .toast-kind { color: #7cf; font-weight: bold; margin-right: 6px; }
-  .toast.warn .toast-kind { color: #fa7; }
-  .toast .toast-msg { color: #ddd; }
-  @keyframes slidein { from { transform: translateX(20px); opacity: 0; } }
+  /* Surface primitives */
+  .surface { display: flex; flex-direction: column; gap: 10px; }
+  .surface-head {
+    display: flex; align-items: center; gap: 8px;
+    padding-bottom: 6px; border-bottom: 1px solid var(--v-border);
+  }
+  .surface-head h3 { margin: 0; font-size: 13px; color: var(--v-cyan); font-weight: bold; flex: 1; }
+  .section-title {
+    color: var(--v-fg-mute); text-transform: uppercase;
+    font-size: 10px; letter-spacing: 0.5px;
+    margin-top: 4px;
+  }
+  .muted { color: var(--v-fg-dim); margin: 0; }
+  .hint { color: var(--v-fg-mute); margin: 0; font-size: 11px; }
+  .empty { color: var(--v-fg-mute); text-align: center; padding: 20px 10px; font-style: italic; }
+  .dim { color: var(--v-fg-mute); }
+  .val { color: var(--v-fg); word-break: break-word; }
+  .expr { color: var(--v-green); background: var(--v-bg-2); padding: 1px 4px; border-radius: 3px; }
 
-  .row { display: flex; gap: 6px; align-items: center; margin: 4px 0; }
-  .flex-spacer { flex: 1; }
-  .muted, .dim { color: #888; }
-  .empty { color: #888; text-align: center; padding: 12px; }
-  .empty.small { padding: 4px; font-style: italic; }
-  .code { font: inherit; background: #0a0a0a; padding: 1px 4px; border-radius: 3px; color: #eda; }
-  .code.big { font-size: 13px; }
-  .btn { font: inherit; background: #222; color: #ddd; border: 1px solid #555;
-         border-radius: 3px; padding: 3px 8px; cursor: pointer; }
-  .btn:hover { border-color: #7cf; }
-  .btn.active { background: #234; color: #7cf; border-color: #7cf; }
-  .btn.primary { background: #234; color: #7cf; border-color: #7cf; }
-  .btn.primary:hover { background: #345; }
-  .iconbtn { font: inherit; background: transparent; color: #888; border: 0;
-             cursor: pointer; padding: 0 4px; }
-  .iconbtn:hover { color: #7cf; }
-  .iconbtn.stash { font-size: 10px; opacity: 0.35; margin-left: 4px;
-                   font-family: ui-monospace, monospace; }
-  .iconbtn.stash:hover { opacity: 1; color: #ad9; }
-  .field { font: inherit; background: #0a0a0a; color: #ddd; border: 1px solid #555;
-           border-radius: 3px; padding: 3px 6px; }
+  .btn {
+    background: var(--v-bg-2); color: var(--v-fg);
+    border: 1px solid var(--v-border);
+    border-radius: 3px; padding: 4px 10px;
+  }
+  .btn:hover { border-color: var(--v-cyan); color: var(--v-cyan); }
+  .btn.primary { background: var(--v-bg-3); color: var(--v-cyan); border-color: var(--v-cyan); }
+  .btn.primary:hover { background: var(--v-bg-2); }
 
-  .grid { width: 100%; border-collapse: collapse; margin: 6px 0; }
-  .grid th, .grid td { text-align: left; padding: 3px 6px;
-                       border-bottom: 1px solid #333; vertical-align: top; }
-  .grid th { color: #7cf; position: sticky; top: 0; background: #1a1a1a;
-             font-weight: normal; text-transform: uppercase; font-size: 10px; }
-  .grid td.num, .grid th.num { text-align: right; font-variant-numeric: tabular-nums; }
-  .grid td.expr { color: #eda; font-family: ui-monospace, monospace; }
-  .grid tr.clickable { cursor: pointer; }
-  .grid tr.clickable:hover { background: #1e1e1e; }
-  .node-label { color: #7cf; }
-  .node-label.detached { color: #f66; text-decoration: line-through; }
-  .badge-warn { display: inline-block; margin-left: 6px; padding: 0 4px;
-                background: #a33; color: #fff; border-radius: 3px;
-                font-size: 10px; }
+  .row { display: flex; gap: 8px; align-items: baseline; margin: 2px 0; }
+  .row-label {
+    color: var(--v-fg-mute); min-width: 70px;
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.3px;
+  }
+  .row-val { color: var(--v-fg); flex: 1; }
 
-  .prov-header { display: flex; align-items: center; gap: 6px;
-                 padding-bottom: 4px; border-bottom: 1px solid #333; }
-  .prov-node { color: #7cf; font-weight: bold; }
-  .prov-section-title { color: #888; text-transform: uppercase; font-size: 10px;
-                        margin: 8px 0 4px; letter-spacing: 0.5px; }
-  .prov-states { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; }
-  .prov-state { color: #ad9; cursor: pointer; padding: 1px 4px;
-                border-radius: 3px; background: #1a1a1a; }
-  .prov-state:hover { background: #233; }
-  .prov-arrow { color: #555; }
-  .prov-binding { margin: 6px 0; padding: 6px 8px; background: #161616;
-                  border-left: 2px solid #345; border-radius: 3px; }
-  .prov-binding-head { display: flex; gap: 8px; margin-bottom: 3px; }
-  .prov-directive { color: #7cf; font-weight: bold; }
-  .prov-expr { color: #eda; }
-  .prov-row { display: flex; gap: 8px; margin: 2px 0; align-items: baseline; }
-  .prov-label { color: #888; min-width: 60px; font-size: 10px;
-                text-transform: uppercase; }
-  .prov-val { color: #ddd; word-break: break-word; flex: 1; }
-  .prov-reads { display: inline-flex; flex-wrap: wrap; gap: 3px; }
-  .chip { font: inherit; background: #223; color: #7cf; border: 1px solid #345;
-          border-radius: 3px; padding: 1px 5px; cursor: pointer; }
-  .chip:hover { background: #345; }
-  .chip.static { cursor: default; }
+  .chain { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+  .chain-item {
+    color: var(--v-green); background: var(--v-bg-2);
+    padding: 2px 6px; border-radius: 3px; cursor: default;
+  }
+  .chain-item:hover { background: var(--v-bg-3); }
+  .chain-sep { color: var(--v-fg-mute); }
 
-  .dep-head { display: flex; gap: 6px; margin-bottom: 6px; align-items: baseline; }
+  .binding {
+    background: var(--v-bg-2);
+    border-left: 2px solid var(--v-border);
+    border-radius: 3px;
+    padding: 8px 10px;
+  }
+  .binding-head { display: flex; gap: 8px; margin-bottom: 4px; align-items: center; }
+  .directive { color: var(--v-cyan); font-weight: bold; }
 
-  .leak-section { margin: 8px 0; padding: 4px 0; }
-  .leak-section > summary { cursor: pointer; color: #ddd; padding: 3px 0;
-                            border-bottom: 1px solid #333; }
-  .leak-row { padding: 3px 6px; }
-  .leak-row.clickable { cursor: pointer; }
-  .leak-row.clickable:hover { background: #1e1e1e; }
-  .sub-row { padding: 3px 0; }
-  .sub-row > summary { cursor: pointer; color: #ad9; }
-  .raw { margin: 4px 0 4px 12px; padding: 6px 8px; background: #0a0a0a;
-         border-left: 2px solid #333; color: #aaa; white-space: pre-wrap;
-         font-size: 11px; overflow: auto; max-height: 200px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 3px; }
+  .chip {
+    background: var(--v-bg-3); color: var(--v-cyan);
+    border: 1px solid var(--v-border); border-radius: 3px;
+    padding: 1px 6px;
+  }
+  .chip:hover { background: var(--v-bg-2); border-color: var(--v-cyan); }
 
-  .wdtr { display: flex; flex-wrap: wrap; gap: 3px; }
-  .btn.recording { background: #432; color: #fa7; border-color: #fa7; }
-  .btn.recording::before { content: "● "; color: #f66; animation: pulse 1s infinite; }
-  @keyframes pulse { 50% { opacity: 0.3; } }
-  .section-help { color: #aaa; font-size: 11px; margin: 0 0 6px; line-height: 1.4; }
-  .explainer { margin: 8px 0 4px; }
-  .explainer dt { color: #7cf; font-weight: bold; margin-top: 6px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; }
-  .explainer dd { margin: 2px 0 0; color: #ddd; }
-  .sig-count { display: none; background: #f66; color: #fff; padding: 0 4px;
-               border-radius: 999px; min-width: 14px; margin-left: 4px;
-               text-align: center; font-size: 10px; }
+  /* Signals */
   .sig-list { display: flex; flex-direction: column; gap: 2px; }
-  .sig-item { padding: 6px 8px; background: #161616; border-left: 2px solid #345;
-              border-radius: 3px; cursor: pointer; display: flex; align-items: baseline; gap: 6px; }
-  .sig-item.warn { border-left-color: #fa7; }
-  .sig-item:hover { background: #1e1e1e; }
-  .sig-item.unread { background: #1a1a1f; }
-  .sig-kind { color: #7cf; font-weight: bold; min-width: 90px; }
-  .sig-item.warn .sig-kind { color: #fa7; }
-  .sig-when { color: #666; font-size: 10px; margin-left: auto; }
-  .sig-count-chip { background: #333; color: #ddd; padding: 0 5px; border-radius: 999px; font-size: 10px; }
+  .sig-item {
+    background: var(--v-bg-2); border: 1px solid var(--v-border);
+    border-left: 2px solid var(--v-cyan);
+    border-radius: 3px;
+    padding: 8px 10px;
+    text-align: left;
+  }
+  .sig-item.warn { border-left-color: var(--v-amber); }
+  .sig-item:hover { background: var(--v-bg-3); }
+  .sig-top { display: flex; align-items: center; gap: 8px; }
+  .sig-kind { color: var(--v-cyan); font-weight: bold; min-width: 90px; }
+  .sig-item.warn .sig-kind { color: var(--v-amber); }
+  .sig-msg { color: var(--v-fg); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sig-count-chip {
+    background: var(--v-bg-3); color: var(--v-fg-dim);
+    padding: 0 5px; border-radius: 999px; font-size: 10px;
+  }
+  .sig-when { color: var(--v-fg-mute); font-size: 10px; }
+
+  .detail-headline {
+    color: var(--v-fg); font-size: 13px;
+    padding: 8px 10px; background: var(--v-bg-2);
+    border-radius: 3px; border-left: 2px solid var(--v-cyan);
+  }
+  .detail-section { margin-top: 10px; }
+  .detail-section-title {
+    color: var(--v-cyan); text-transform: uppercase;
+    font-size: 10px; letter-spacing: 0.5px; font-weight: bold;
+    margin-bottom: 3px;
+  }
+  .detail-section-body { color: var(--v-fg); line-height: 1.55; }
 </style>
-<div class="badge" title="Velin devtools — click to open, Ctrl+Shift+V">
+<div class="badge" title="Velin devtools — click to open · Ctrl+Shift+V">
   ⓥ<span class="count"></span>
 </div>
-<div class="cmdbar">
-  <span class="title">Velin devtools</span>
-  <button data-cmd="pick" title="Pick an element (Ctrl+Shift+P)">pick</button>
-  <button data-cmd="hotspots" title="Record a perf session">hotspots</button>
-  <button data-cmd="dependents" title="Dependents of a path">dependents</button>
-  <button data-cmd="leaks" title="Scan for leaks">leaks</button>
-  <button data-cmd="signals" title="Recent notifications">signals<span class="sig-count"></span></button>
-  <button data-cmd="close" title="Close">×</button>
-</div>
-<div class="popover"></div>
-<div class="modal">
-  <div class="modal-header">
-    <span class="modal-title"></span>
-    <button class="modal-close" title="Close">×</button>
+<div class="drawer">
+  <div class="rail">
+    <button data-surface="inspect" data-label="Inspect"><span class="rail-icon">⌖</span></button>
+    <button data-surface="record"  data-label="Record"><span class="rail-icon">●</span></button>
+    <button data-surface="leaks"   data-label="Leaks"><span class="rail-icon">⚠</span></button>
+    <button data-surface="signals" data-label="Signals"><span class="rail-icon">◉</span></button>
+    <button data-surface="query"   data-label="Query"><span class="rail-icon">?</span></button>
   </div>
-  <div class="modal-body"></div>
+  <div class="drawer-head">
+    <button class="crumbs-back" title="Back (Esc)">‹</button>
+    <div class="crumbs"></div>
+    <button class="drawer-close" title="Close (Esc)">×</button>
+  </div>
+  <div class="body"></div>
 </div>
-<div class="toasts"></div>
 `;
 
   whenHook(attach);
