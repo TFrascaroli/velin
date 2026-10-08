@@ -20,18 +20,21 @@ describe("Devtools hook (D1)", () => {
     expect(hook).toBeDefined();
     expect(typeof hook.subscribe).toBe("function");
     expect(typeof hook.peek).toBe("function");
-    expect(typeof hook.whyDidThisRun).toBe("function");
     // Phase-1 rebuild: enumerateBindings is gone. Regression guard so a
     // future refactor doesn't sneak it back in.
     expect(hook.enumerateBindings).toBeUndefined();
+    // Fat-loss: these were cut as vanity / zero-caller surface.
+    expect(hook.whyDidThisRun).toBeUndefined();
+    expect(hook.topBindings).toBeUndefined();
+    expect(hook.topMutations).toBeUndefined();
+    expect(hook.refreshStats).toBeUndefined();
     expect(hook.log).toBeInstanceOf(Array);
     expect(hook.states[Symbol.iterator]).toBeDefined();
     expect(hook.plugins instanceof Map).toBe(true);
-    // Phase-1 APIs present.
     for (const fn of [
       "explainNode", "resolvePath", "substatesUnder", "dependentsOf",
-      "hotspots", "explainEffect", "leaks", "topMutations",
-      "currentFrameMutations", "onSignal", "topBindings",
+      "hotspots", "explainEffect", "leaks",
+      "currentFrameMutations", "onSignal",
     ]) {
       expect(typeof hook[fn], fn).toBe("function");
     }
@@ -89,19 +92,6 @@ describe("Devtools hook (D1)", () => {
     const val = getHook().peek(rs, ["a", "b"]);
     expect(val).toBe(1);
     expect(rs.bindings.size).toBe(sizeBefore);
-  });
-
-  it("whyDidThisRun returns triggering paths newest-first", () => {
-    const div = document.createElement("div");
-    div.innerHTML = '<div vln-text="a + b"></div>';
-    const state = Velin.bind(div, { a: 1, b: 2 });
-    const rs = (Velin as any).ø__internal.getWrapper(state);
-    const effect = [...rs.bindings.get("root.a")][0];
-    state.a = 3;
-    state.b = 4;
-    const paths = getHook().whyDidThisRun(effect, 4);
-    expect(paths[0]).toBe("root.b");
-    expect(paths[1]).toBe("root.a");
   });
 
   it("throwing subscriber does not break reactivity", async () => {
@@ -224,36 +214,6 @@ describe("Devtools hook (D1)", () => {
       // gate leaked, listenerCalls would grow super-linearly (or overflow).
       expect(listenerCalls).toBe(100);
       expect(state.warns.length).toBe(100);
-    });
-
-    it("does not advance emitSeq for events from an ignored state", () => {
-      // Regression: devtools' poller uses hook.emitSeq as a "host has
-      // changed" signal. If the poller's own reactive writes fed back into
-      // emitSeq, every poll would find seq changed → snapshot again →
-      // fire own effects → advance seq → infinite feedback.
-      const div = document.createElement("div");
-      div.innerHTML = '<div vln-text="count"></div>';
-      const state = Velin.bind(div, { count: 0 });
-      const wrapper = Velin.ø__internal.getWrapper(state)!;
-      getHook().ø__ignoreState(wrapper);
-
-      const seqBefore = getHook().emitSeq;
-      state.count = 1; // mutate + trigger + effect + (potentially) evaluate
-      state.count = 2;
-      state.count = 3;
-      const seqAfter = getHook().emitSeq;
-
-      expect(seqAfter).toBe(seqBefore); // no host activity → no advance
-    });
-
-    it("advances emitSeq for events from a non-ignored root", () => {
-      const div = document.createElement("div");
-      div.innerHTML = '<div vln-text="count"></div>';
-      const state = Velin.bind(div, { count: 0 });
-
-      const seqBefore = getHook().emitSeq;
-      state.count = 1;
-      expect(getHook().emitSeq).toBeGreaterThan(seqBefore);
     });
 
     it("still emits for a sibling (non-ignored) root", () => {
@@ -702,36 +662,12 @@ describe("Devtools hook — leaks", () => {
   });
 });
 
-// ─── Phase 1: topMutations / currentFrameMutations ─────────────────────────
+// ─── Phase 1: currentFrameMutations ────────────────────────────────────────
 
-describe("Devtools hook — topMutations / currentFrameMutations", () => {
+describe("Devtools hook — currentFrameMutations", () => {
   beforeEach(() => getHook().ø__resetAggregators());
 
-  it("topMutations ranks paths by count within the window", () => {
-    const div = document.createElement("div");
-    div.innerHTML = '<span vln-text="a"></span><span vln-text="b"></span>';
-    const state = Velin.bind(div, { a: 1, b: 2 });
-    for (let i = 0; i < 5; i++) state.a = i;
-    state.b = 99;
-    const tm = getHook().topMutations({ windowMs: 5000 });
-    expect(tm[0].path).toBe("root.a");
-    expect(tm[0].count).toBe(5);
-    const b = tm.find((r: any) => r.path === "root.b");
-    expect(b.count).toBe(1);
-  });
-
-  it("avgFanout reflects triggered effect count", () => {
-    const div = document.createElement("div");
-    div.innerHTML = '<span vln-text="x"></span><span vln-text="x"></span><em vln-text="x"></em>';
-    const state = Velin.bind(div, { x: 1 });
-    state.x = 2;
-    const tm = getHook().topMutations({ windowMs: 5000 });
-    const row = tm.find((r: any) => r.path === "root.x");
-    expect(row).toBeTruthy();
-    expect(row.avgFanout).toBe(3);
-  });
-
-  it("currentFrameMutations returns a snapshot copy of live frame counts", () => {
+  it("returns a snapshot copy of live frame counts", () => {
     const div = document.createElement("div");
     div.innerHTML = '<span vln-text="a"></span>';
     const state = Velin.bind(div, { a: 0 });
