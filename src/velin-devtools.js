@@ -167,8 +167,8 @@
     // ── Rail entries ───────────────────────────────────────────────────
     const entries = {
       inspect: () => ({ surface: "inspect", label: "Inspect", data: null, build: buildInspect }),
-      record:  () => ({ surface: "record",  label: "Record",  data: null, build: buildPlaceholder("Record") }),
-      leaks:   () => ({ surface: "leaks",   label: "Leaks",   data: null, build: buildPlaceholder("Leaks") }),
+      record:  () => ({ surface: "record",  label: "Record",  data: null, build: buildRecord }),
+      leaks:   () => ({ surface: "leaks",   label: "Leaks",   data: null, build: buildLeaks }),
       signals: () => ({ surface: "signals", label: "Signals", data: null, build: buildSignals }),
       query:   () => ({ surface: "query",   label: "Query",   data: null, build: buildPlaceholder("Query") }),
     };
@@ -481,13 +481,332 @@
       );
     }
 
-    // ── Placeholder surfaces (iteration 2+) ────────────────────────────
+    // ── Surface: Record (hotspots) ─────────────────────────────────────
+    // Session-based capture: subscribe during Record, aggregate per expr,
+    // render frozen on Stop. No decay, no polling.
+    /** @type {null | { started: number; buffer: Map<string, any>; mutations: Map<number,string>; unsubscribe: () => void; timerId: any }} */
+    let recording = null;
+
+    function buildRecord() {
+      const root = el("div", { class: "surface" });
+      const head = el("div", { class: "surface-head" }, el("h3", null, "Record"));
+      const recBtn = el("button", {
+        class: "btn " + (recording ? "recording" : "primary"),
+      }, recording ? "■ Stop" : "● Record");
+      const timer = el("span", { class: "dim" }, "");
+      head.appendChild(recBtn);
+      head.appendChild(timer);
+      root.appendChild(head);
+      root.appendChild(el("p", { class: "muted" },
+        "Record a session, interact with the page, press Stop. The table lists every expression that ran during capture — how often, how long, and the mutations that drove it. No decay, no polling.",
+      ));
+
+      const out = el("div");
+      root.appendChild(out);
+
+      const renderBuffer = () => {
+        clear(out);
+        if (!recording && lastCapture) {
+          renderCapture(out, lastCapture.rows, lastCapture.elapsed);
+        } else if (recording) {
+          out.appendChild(el("div", { class: "empty" }, "capturing… interact with the page, then press Stop."));
+        } else {
+          out.appendChild(el("div", { class: "empty" }, "no capture yet. Press Record to start."));
+        }
+      };
+
+      const tick = () => {
+        if (!recording) return;
+        const dt = hook.ø__now() - recording.started;
+        timer.textContent = `recording · ${(dt / 1000).toFixed(1)}s`;
+      };
+
+      recBtn.addEventListener("click", () => {
+        if (recording) {
+          const r = recording;
+          r.unsubscribe();
+          clearInterval(r.timerId);
+          const elapsed = hook.ø__now() - r.started;
+          const rows = flattenRecording(r.buffer);
+          lastCapture = { rows, elapsed };
+          recording = null;
+          recBtn.textContent = "● Record";
+          recBtn.classList.remove("recording");
+          recBtn.classList.add("primary");
+          timer.textContent = `captured · ${(elapsed / 1000).toFixed(1)}s · ${rows.length} expressions`;
+          renderBuffer();
+        } else {
+          recording = {
+            started: hook.ø__now(),
+            buffer: new Map(),
+            mutations: new Map(),
+            timerId: null,
+            unsubscribe: hook.subscribe((ev) => {
+              if (!recording) return;
+              if (ev.kind === "mutate") {
+                recording.mutations.set(ev.mutationSeq, ev.path);
+              } else if (ev.kind === "effect") {
+                const expr = ev.expr || "(no expr)";
+                let b = recording.buffer.get(expr);
+                if (!b) {
+                  b = { calls: 0, totalMs: 0, maxMs: 0, drivers: new Map(), sampleEffect: ev.effect ? new WeakRef(ev.effect) : null };
+                  recording.buffer.set(expr, b);
+                }
+                b.calls++;
+                const dt = ev.durationMs || 0;
+                b.totalMs += dt;
+                if (dt > b.maxMs) b.maxMs = dt;
+                const driver = recording.mutations.get(ev.mutationSeq);
+                if (driver) b.drivers.set(driver, (b.drivers.get(driver) || 0) + 1);
+              }
+            }),
+          };
+          recording.timerId = setInterval(tick, 100);
+          recBtn.textContent = "■ Stop";
+          recBtn.classList.remove("primary");
+          recBtn.classList.add("recording");
+          renderBuffer();
+          tick();
+        }
+      });
+
+      renderBuffer();
+      return root;
+    }
+
+    /** @type {null | {rows: any[], elapsed: number}} */
+    let lastCapture = null;
+
+    function flattenRecording(buffer) {
+      const rows = [];
+      for (const [expr, b] of buffer) {
+        rows.push({
+          expr, calls: b.calls, totalMs: b.totalMs, maxMs: b.maxMs,
+          drivers: [...b.drivers.entries()].map(([path, count]) => ({ path, count }))
+                     .sort((a, b) => b.count - a.count),
+          sampleEffect: b.sampleEffect,
+        });
+      }
+      rows.sort((a, b) => b.totalMs - a.totalMs);
+      return rows;
+    }
+
+    function renderCapture(container, rows, elapsedMs) {
+      clear(container);
+      if (!rows.length) {
+        container.appendChild(el("div", { class: "empty" },
+          `no expressions ran during the ${(elapsedMs / 1000).toFixed(1)}s capture`));
+        return;
+      }
+      container.appendChild(el("div", { class: "hint" },
+        "total: cumulative time in this expression · max: slowest single run · drivers: mutations that triggered it",
+      ));
+      const table = el("table", { class: "grid" });
+      table.appendChild(el("tr", null,
+        el("th", null, "Expression"),
+        el("th", { class: "num" }, "total"),
+        el("th", { class: "num" }, "calls"),
+        el("th", { class: "num" }, "max"),
+        el("th", null, "driven by"),
+      ));
+      for (const r of rows) {
+        const slow = r.maxMs > 16;
+        const drivers = r.drivers.slice(0, 3).map((d) => `${fmtPath(d.path)}×${d.count}`).join(", ") || "—";
+        const tr = el("tr", { class: "clickable" + (slow ? " slow" : "") },
+          el("td", { class: "expr-cell" }, r.expr),
+          el("td", { class: "num" }, r.totalMs.toFixed(2) + "ms"),
+          el("td", { class: "num" }, String(r.calls)),
+          el("td", { class: "num" + (slow ? " warn" : "") }, r.maxMs.toFixed(2) + "ms"),
+          el("td", { class: "dim" }, drivers),
+        );
+        tr.addEventListener("click", () => {
+          const eff = r.sampleEffect?.deref?.();
+          if (eff) navigate({
+            surface: "explain", label: `Effect: ${r.expr.slice(0, 32)}`,
+            data: eff, build: buildExplain,
+          });
+        });
+        table.appendChild(tr);
+      }
+      container.appendChild(table);
+    }
+
+    // ── Surface: Leaks ─────────────────────────────────────────────────
+    const LEAK_SECTIONS = {
+      detachedEffects: {
+        title: "Detached effects",
+        blurb: "Effects still bound to DOM nodes that have been removed from the document. Each one holds a reference to a dead node and prevents GC. Growing counts across normal interactions are a smell.",
+      },
+      detachedStates: {
+        title: "Detached state roots",
+        blurb: "ReactiveStates whose root element is gone but still hold live bindings. Usually means an app wasn't cleaned up when its container was removed.",
+      },
+      orphanedSubs: {
+        title: "Live hook subscribers",
+        blurb: "Code that called hook.subscribe() but never released. Every subscriber receives every event — too many hurts perf.",
+      },
+      suspiciousGrowth: {
+        title: "Suspicious growth",
+        blurb: "Internal buffers that at least doubled in size since the previous scan. Baseline captured on first scan.",
+      },
+    };
+
+    function buildLeaks() {
+      const root = el("div", { class: "surface" });
+      const head = el("div", { class: "surface-head" }, el("h3", null, "Leaks"));
+      const runBtn = el("button", { class: "btn primary" }, "Run scan");
+      head.appendChild(runBtn);
+      root.appendChild(head);
+      root.appendChild(el("p", { class: "muted" },
+        "On-demand scan. Compares every live effect against the current DOM. The scan doesn't say what IS a leak — only what's suspicious. A count that keeps growing across interactions is the real signal.",
+      ));
+      const out = el("div");
+      root.appendChild(out);
+      const run = () => renderLeaks(out);
+      runBtn.addEventListener("click", run);
+      run();
+      return root;
+    }
+
+    function renderLeaks(container) {
+      clear(container);
+      const r = hook.leaks();
+      const sect = (key, items, renderItem) => {
+        const meta = LEAK_SECTIONS[key];
+        const group = el("div", { class: "group" });
+        const header = el("button", { class: "group-head" },
+          el("span", { class: "group-caret" }, items.length ? "▾" : "▸"),
+          el("span", { class: "group-title" }, meta.title),
+          el("span", { class: "group-count" + (items.length ? " warn" : " ok") }, String(items.length)),
+        );
+        const body = el("div", { class: "group-body" });
+        body.appendChild(el("div", { class: "muted small" }, meta.blurb));
+        if (!items.length) {
+          body.appendChild(el("div", { class: "ok" }, "✓ none"));
+        } else {
+          for (const it of items) body.appendChild(renderItem(it));
+        }
+        if (!items.length) body.style.display = "none";
+        header.addEventListener("click", () => {
+          const expanded = body.style.display !== "none";
+          body.style.display = expanded ? "none" : "";
+          header.querySelector(".group-caret").textContent = expanded ? "▸" : "▾";
+        });
+        group.appendChild(header);
+        group.appendChild(body);
+        return group;
+      };
+
+      container.appendChild(sect("detachedEffects", r.detachedEffects, (e) => {
+        const row = el("button", { class: "leak-row clickable" },
+          el("code", { class: "code" }, fmtPath(e.path)),
+          el("span", { class: "dim" }, " · "),
+          el("code", { class: "expr" }, e.expr),
+        );
+        row.addEventListener("click", () => {
+          if (e.effect) navigate({
+            surface: "explain", label: `Effect: ${(e.expr || "?").slice(0, 32)}`,
+            data: e.effect, build: buildExplain,
+          });
+        });
+        return row;
+      }));
+
+      container.appendChild(sect("detachedStates", r.detachedStates, (s) =>
+        el("div", { class: "leak-row" }, nodeLabel(s.rootNode)),
+      ));
+
+      container.appendChild(sect("orphanedSubs", r.orphanedSubs, (s) => {
+        const d = el("details", { class: "sub-row" });
+        d.appendChild(el("summary", null, `subscriber added ${fmtAgo(s.addedAt)}`));
+        d.appendChild(el("pre", { class: "stack" }, s.stackAt || "(no stack)"));
+        return d;
+      }));
+
+      container.appendChild(sect("suspiciousGrowth", r.suspiciousGrowth, (g) =>
+        el("div", { class: "leak-row" }, `${g.what}: ${g.size}  (+${g.delta})`),
+      ));
+    }
+
+    // ── Surface: Explain (effect) ──────────────────────────────────────
+    function buildExplain(effect) {
+      if (!effect) {
+        return el("div", { class: "surface" },
+          el("div", { class: "surface-head" }, el("h3", null, "Explain")),
+          el("div", { class: "empty" }, "no effect to explain — reach this surface from a Record row or a Leaks row"),
+        );
+      }
+      const info = hook.explainEffect(effect);
+      if (!info) {
+        return el("div", { class: "surface" },
+          el("div", { class: "surface-head" }, el("h3", null, "Explain")),
+          el("div", { class: "empty" }, "effect was torn down since it was captured"),
+        );
+      }
+      const root = el("div", { class: "surface" });
+      root.appendChild(el("div", { class: "surface-head" },
+        el("h3", null, "Effect"),
+      ));
+      root.appendChild(el("div", { class: "detail-headline" }, info.expr || "(no expr)"));
+      root.appendChild(el("div", { class: "muted small" },
+        `${info.pluginName || "?"}${info.subkey ? ":" + info.subkey : ""}  ·  on ${nodeLabel(info.node)}`,
+      ));
+
+      if (info.reads && info.reads.length) {
+        root.appendChild(el("div", { class: "section-title" }, "reads"));
+        const chips = el("div", { class: "chips" });
+        for (const r of info.reads) {
+          chips.appendChild(el("button", {
+            class: "chip",
+            title: "Query dependents",
+            onclick: () => navigate({
+              surface: "query", label: `Query ${fmtPath(r.path)}`,
+              data: { state: r.state, path: r.path },
+              build: buildPlaceholder("Query"),
+            }),
+          }, fmtPath(r.path)));
+        }
+        root.appendChild(chips);
+      }
+
+      root.appendChild(el("div", { class: "section-title" }, "recent runs"));
+      if (!info.recentRuns.length) {
+        root.appendChild(el("div", { class: "empty small" }, "no runs recorded yet"));
+      } else {
+        const table = el("table", { class: "grid" });
+        table.appendChild(el("tr", null,
+          el("th", { class: "num" }, "#"),
+          el("th", null, "when"),
+          el("th", null, "trigger path"),
+          el("th", { class: "num" }, "ms"),
+        ));
+        info.recentRuns.forEach((r, i) => {
+          table.appendChild(el("tr", null,
+            el("td", { class: "num" }, String(i + 1)),
+            el("td", { class: "dim" }, fmtAgo(r.t)),
+            el("td", { class: "expr-cell" }, fmtPath(r.path) || "—"),
+            el("td", { class: "num" }, (r.durationMs || 0).toFixed(2) + "ms"),
+          ));
+        });
+        root.appendChild(table);
+      }
+
+      root.appendChild(el("div", { class: "section-title" }, "why did this run"));
+      if (!info.whyDidThisRun.length) {
+        root.appendChild(el("div", { class: "empty small" }, "no recorded trigger paths yet"));
+      } else {
+        const chips = el("div", { class: "chips" });
+        for (const p of info.whyDidThisRun) chips.appendChild(el("code", { class: "chip static" }, fmtPath(p)));
+        root.appendChild(chips);
+      }
+      return root;
+    }
+
+    // ── Placeholder (Query — iteration 3) ──────────────────────────────
     function buildPlaceholder(name) {
       return () => el("div", { class: "surface" },
         el("div", { class: "surface-head" }, el("h3", null, name)),
-        el("div", { class: "empty" },
-          name + " moves into the drawer in the next iteration. For now, open the previous panel version to use it.",
-        ),
+        el("div", { class: "empty" }, name + " moves into the drawer in iteration 3."),
       );
     }
 
@@ -765,6 +1084,91 @@
     margin-bottom: 3px;
   }
   .detail-section-body { color: var(--v-fg); line-height: 1.55; }
+
+  /* Record */
+  .btn.recording {
+    background: #432; color: var(--v-amber); border-color: var(--v-amber);
+  }
+  .btn.recording::before {
+    content: "● "; color: var(--v-red);
+    animation: pulse 1s infinite;
+  }
+  @keyframes pulse { 50% { opacity: 0.3; } }
+
+  /* Tables (Record + Explain) */
+  .grid { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .grid th, .grid td {
+    text-align: left; padding: 4px 6px;
+    border-bottom: 1px solid var(--v-border);
+    vertical-align: top;
+  }
+  .grid th {
+    color: var(--v-fg-mute); font-weight: normal;
+    text-transform: uppercase; font-size: 10px; letter-spacing: 0.3px;
+    position: sticky; top: 0; background: var(--v-bg-2);
+  }
+  .grid td.num, .grid th.num {
+    text-align: right; font-variant-numeric: tabular-nums;
+  }
+  .grid td.expr-cell {
+    color: var(--v-green); font-family: ui-monospace, monospace;
+    max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .grid tr.clickable { cursor: pointer; }
+  .grid tr.clickable:hover td { background: var(--v-bg-3); }
+  .grid tr.slow td { color: var(--v-amber); }
+  .grid td.warn { color: var(--v-amber); font-weight: bold; }
+  .hint { color: var(--v-fg-mute); font-size: 10px; margin: 0 0 4px; }
+
+  /* Leaks (groups) */
+  .group {
+    border: 1px solid var(--v-border);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .group + .group { margin-top: 6px; }
+  .group-head {
+    width: 100%; background: var(--v-bg-2); color: var(--v-fg);
+    border: 0; border-bottom: 1px solid var(--v-border);
+    padding: 6px 10px;
+    display: flex; align-items: center; gap: 8px;
+    text-align: left;
+  }
+  .group-head:hover { background: var(--v-bg-3); }
+  .group-caret { color: var(--v-fg-mute); width: 10px; }
+  .group-title { flex: 1; font-weight: bold; }
+  .group-count {
+    padding: 1px 7px; border-radius: 999px; font-size: 10px;
+    font-variant-numeric: tabular-nums;
+  }
+  .group-count.ok   { background: var(--v-bg-3); color: var(--v-green); }
+  .group-count.warn { background: #432;         color: var(--v-amber); }
+  .group-body { padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; }
+  .ok { color: var(--v-green); font-style: italic; }
+  .small { font-size: 11px; }
+  .leak-row {
+    background: transparent; border: 0; color: inherit; text-align: left;
+    padding: 4px 0;
+    display: flex; align-items: baseline; gap: 4px;
+  }
+  .leak-row.clickable { cursor: pointer; }
+  .leak-row.clickable:hover .expr { background: var(--v-bg-3); }
+  .leak-row .code {
+    background: var(--v-bg-2); color: var(--v-amber);
+    padding: 1px 4px; border-radius: 3px;
+  }
+  .sub-row > summary { cursor: pointer; color: var(--v-green); padding: 2px 0; }
+  .sub-row > summary:hover { color: var(--v-cyan); }
+  .stack {
+    background: var(--v-bg); border-left: 2px solid var(--v-border);
+    padding: 6px 8px; margin: 4px 0 0 10px;
+    color: var(--v-fg-mute); white-space: pre-wrap;
+    font-size: 11px; max-height: 200px; overflow: auto;
+  }
+
+  /* Explain reads chip (static variant) */
+  .chip.static { cursor: default; }
+  .chip.static:hover { background: var(--v-bg-3); border-color: var(--v-border); }
 </style>
 <div class="badge" title="Velin devtools — click to open · Ctrl+Shift+V">
   ⓥ<span class="count"></span>
