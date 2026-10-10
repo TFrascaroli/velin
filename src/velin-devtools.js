@@ -9,9 +9,9 @@
  * - Badge shows unread signal count; click opens the drawer on Signals.
  * - Plain DOM + hook.subscribe inside a shadow root. Not a Velin app.
  *
- * Iteration 1 ports Inspect (pick + provenance) and Signals (inbox).
- * Record / Leaks / Query / Explain are rail stubs that render a
- * "coming next" placeholder. Iteration 2 and 3 port them.
+ * All six surfaces (Inspect, Record, Leaks, Signals, Query, Explain)
+ * render inside this drawer. Explain is the drill-in destination from
+ * every other surface; breadcrumb walks the drill history.
  */
 
 (function () {
@@ -170,7 +170,7 @@
       record:  () => ({ surface: "record",  label: "Record",  data: null, build: buildRecord }),
       leaks:   () => ({ surface: "leaks",   label: "Leaks",   data: null, build: buildLeaks }),
       signals: () => ({ surface: "signals", label: "Signals", data: null, build: buildSignals }),
-      query:   () => ({ surface: "query",   label: "Query",   data: null, build: buildPlaceholder("Query") }),
+      query:   () => ({ surface: "query",   label: "Query",   data: null, build: buildQuery }),
     };
 
     railBtns.forEach((b) => {
@@ -363,15 +363,12 @@
             chips.appendChild(el("button", {
               class: "chip",
               title: "Query dependents of this path",
-              onclick: () => {
-                // Query surface not ported yet in iteration 1.
-                navigate({
-                  surface: "query",
-                  label: `Query ${fmtPath(r.path)}`,
-                  data: { state: r.state, path: r.path },
-                  build: buildPlaceholder("Query"),
-                });
-              },
+              onclick: () => navigate({
+                surface: "query",
+                label: `Query ${fmtPath(r.path)}`,
+                data: { state: r.state, path: r.path },
+                build: buildQuery,
+              }),
             }, fmtPath(r.path)));
           }
           box.appendChild(row("reads", chips));
@@ -762,7 +759,7 @@
             onclick: () => navigate({
               surface: "query", label: `Query ${fmtPath(r.path)}`,
               data: { state: r.state, path: r.path },
-              build: buildPlaceholder("Query"),
+              build: buildQuery,
             }),
           }, fmtPath(r.path)));
         }
@@ -802,12 +799,110 @@
       return root;
     }
 
-    // ── Placeholder (Query — iteration 3) ──────────────────────────────
-    function buildPlaceholder(name) {
-      return () => el("div", { class: "surface" },
-        el("div", { class: "surface-head" }, el("h3", null, name)),
-        el("div", { class: "empty" }, name + " moves into the drawer in iteration 3."),
-      );
+    // ── Surface: Query (dependents) ────────────────────────────────────
+    let queryScope = "narrow";
+
+    function buildQuery(data) {
+      const root = el("div", { class: "surface" });
+      root.appendChild(el("div", { class: "surface-head" }, el("h3", null, "Query")));
+      root.appendChild(el("p", { class: "muted" },
+        "Enter a state path. Dependents are every effect whose read set includes it. Narrow matches the exact path; wide also matches children and composed substates.",
+      ));
+
+      const rootStates = [...hook.states].filter((s) => !hook.parentOf(s));
+      const stateSel = el("select", { class: "field" });
+      rootStates.forEach((s, i) => {
+        const n = hook.nodeFor(s);
+        stateSel.appendChild(el("option", { value: String(i) }, n ? nodeLabel(n) : `state#${i}`));
+      });
+
+      const pathInput = el("input", { class: "field grow", type: "text", placeholder: "theme or items[0].done" });
+
+      const scopeNarrow = el("button", { class: "btn" + (queryScope === "narrow" ? " primary" : "") }, "narrow");
+      const scopeWide   = el("button", { class: "btn" + (queryScope === "wide" ? " primary" : "") }, "wide");
+      const runBtn     = el("button", { class: "btn primary" }, "Run");
+
+      const out = el("div");
+      const run = () => {
+        const s = rootStates[+stateSel.value];
+        const path = pathInput.value.trim();
+        if (!s || !path) {
+          clear(out);
+          out.appendChild(el("div", { class: "empty" }, "pick a state and enter a path"));
+          return;
+        }
+        renderDependents(out, s, path, queryScope);
+      };
+      runBtn.addEventListener("click", run);
+      pathInput.addEventListener("keydown", (e) => { if (e.key === "Enter") run(); });
+      const setScope = (k) => {
+        queryScope = k;
+        scopeNarrow.classList.toggle("primary", k === "narrow");
+        scopeWide.classList.toggle("primary", k === "wide");
+        if (pathInput.value.trim()) run();
+      };
+      scopeNarrow.addEventListener("click", () => setScope("narrow"));
+      scopeWide.addEventListener("click", () => setScope("wide"));
+
+      root.appendChild(el("div", { class: "query-form" }, stateSel, pathInput));
+      root.appendChild(el("div", { class: "query-form" },
+        el("span", { class: "row-label" }, "scope"), scopeNarrow, scopeWide,
+        el("span", { style: "flex:1" }), runBtn,
+      ));
+      root.appendChild(out);
+
+      // If we arrived with { state, path }, prefill and run.
+      if (data && data.state && data.path) {
+        const idx = rootStates.indexOf(data.state);
+        if (idx >= 0) stateSel.value = String(idx);
+        pathInput.value = data.path;
+        queueMicrotask(run);
+      } else {
+        out.appendChild(el("div", { class: "empty" }, "no query yet"));
+      }
+
+      return root;
+    }
+
+    function renderDependents(container, rs, path, scope) {
+      clear(container);
+      const rows = hook.dependentsOf(rs, path, { scope });
+      container.appendChild(el("div", { class: "hint" },
+        `${rows.length} node${rows.length === 1 ? "" : "s"} depend on ${fmtPath(path)} (${scope})`,
+      ));
+      if (!rows.length) {
+        container.appendChild(el("div", { class: "empty" }, "nobody watches this path"));
+        return;
+      }
+      const table = el("table", { class: "grid" });
+      table.appendChild(el("tr", null,
+        el("th", null, "Node"),
+        el("th", null, "Expressions"),
+        el("th", { class: "num" }, "≈ ms"),
+      ));
+      for (const r of rows) {
+        const exprs = r.effects.map((e) => e.expr).filter(Boolean).join(", ") || "—";
+        const nodeLbl = el("span", null, nodeLabel(r.node),
+          r.isDetached ? el("span", { class: "chip warn-chip" }, " detached") : null,
+        );
+        const tr = el("tr", { class: "clickable" + (r.isDetached ? " slow" : "") },
+          el("td", null, nodeLbl),
+          el("td", { class: "expr-cell" }, exprs),
+          el("td", { class: "num" }, r.estimatedCostMs == null ? "—" : r.estimatedCostMs.toFixed(2) + "ms"),
+        );
+        tr.addEventListener("mouseenter", () => r.node && highlightExternal(r.node, true));
+        tr.addEventListener("mouseleave", () => r.node && highlightExternal(r.node, false));
+        tr.addEventListener("click", () => {
+          const eff = r.effects[0] && r.effects[0].effect;
+          if (eff) navigate({
+            surface: "explain",
+            label: `Effect: ${(r.effects[0].expr || "?").slice(0, 32)}`,
+            data: eff, build: buildExplain,
+          });
+        });
+        table.appendChild(tr);
+      }
+      container.appendChild(table);
     }
 
     // ── Wiring ─────────────────────────────────────────────────────────
@@ -1169,6 +1264,27 @@
   /* Explain reads chip (static variant) */
   .chip.static { cursor: default; }
   .chip.static:hover { background: var(--v-bg-3); border-color: var(--v-border); }
+
+  /* Query form */
+  .query-form {
+    display: flex; align-items: center; gap: 6px;
+    margin: 2px 0;
+  }
+  .field {
+    background: var(--v-bg-2); color: var(--v-fg);
+    border: 1px solid var(--v-border);
+    border-radius: 3px; padding: 4px 8px;
+    font: inherit;
+    outline: none;
+  }
+  .field:focus { border-color: var(--v-cyan); }
+  .field.grow { flex: 1; min-width: 0; }
+  select.field { cursor: pointer; }
+  .chip.warn-chip {
+    background: #432; color: var(--v-amber);
+    border-color: var(--v-amber); cursor: default;
+    margin-left: 4px;
+  }
 </style>
 <div class="badge" title="Velin devtools — click to open · Ctrl+Shift+V">
   ⓥ<span class="count"></span>
