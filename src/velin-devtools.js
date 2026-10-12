@@ -113,6 +113,11 @@
     // Each frame: { surface, label, data, build }.
     // build(data) must return a DOM node (the body).
     const stack = [];
+    // Per-surface memory: last stack seen on that surface. Lets rail
+    // switches restore the picked node / recorded capture / etc. rather
+    // than resetting the surface every click.
+    /** @type {Map<string, any[]>} */
+    const surfaceMemory = new Map();
 
     function navigate(frame) {
       stack.push(frame);
@@ -127,6 +132,18 @@
       if (stack.length <= 1) return;
       stack.pop();
       renderFrame();
+    }
+    function switchToSurface(key) {
+      // Remember current surface stack before leaving.
+      if (stack.length) surfaceMemory.set(stack[0].surface, stack.slice());
+      const remembered = surfaceMemory.get(key);
+      if (remembered && remembered.length) {
+        stack.length = 0;
+        for (const f of remembered) stack.push(f);
+        renderFrame();
+      } else if (entries[key]) {
+        navigateReplace(entries[key]());
+      }
     }
     function renderFrame() {
       const frame = stack[stack.length - 1];
@@ -174,10 +191,7 @@
     };
 
     railBtns.forEach((b) => {
-      b.addEventListener("click", () => {
-        const key = b.dataset.surface;
-        if (entries[key]) navigateReplace(entries[key]());
-      });
+      b.addEventListener("click", () => switchToSurface(b.dataset.surface));
     });
 
     // ── Badge + signals ────────────────────────────────────────────────
@@ -801,6 +815,9 @@
 
     // ── Surface: Query (dependents) ────────────────────────────────────
     let queryScope = "narrow";
+    // Last picked state across visits (survives rail switches / rebuilds).
+    let lastQueryState = null;
+    let lastQueryPath = "";
 
     function buildQuery(data) {
       const root = el("div", { class: "surface" });
@@ -809,14 +826,30 @@
         "Enter a state path. Dependents are every effect whose read set includes it. Narrow matches the exact path; wide also matches children and composed substates.",
       ));
 
-      const rootStates = [...hook.states].filter((s) => !hook.parentOf(s));
-      const stateSel = el("select", { class: "field" });
-      rootStates.forEach((s, i) => {
-        const n = hook.nodeFor(s);
-        stateSel.appendChild(el("option", { value: String(i) }, n ? nodeLabel(n) : `state#${i}`));
-      });
+      // Build the state list. Include every live state, not just roots —
+      // composed children (vln-loop iteration states) have their own
+      // bindings and are legitimate query targets.
+      const allStates = [...hook.states];
+      // Prefill target: whatever was passed in, or the last used state,
+      // or the first root we can find.
+      const prefillState = (data && data.state) || lastQueryState ||
+        allStates.find((s) => !hook.parentOf(s)) || allStates[0] || null;
 
-      const pathInput = el("input", { class: "field grow", type: "text", placeholder: "theme or items[0].done" });
+      const stateSel = el("select", { class: "field" });
+      allStates.forEach((s, i) => {
+        const n = hook.nodeFor(s);
+        const isRoot = !hook.parentOf(s);
+        stateSel.appendChild(el("option", { value: String(i) },
+          (n ? nodeLabel(n) : `state#${i}`) + (isRoot ? "  (root)" : "  (child)")));
+      });
+      const prefillIdx = prefillState ? allStates.indexOf(prefillState) : -1;
+      if (prefillIdx >= 0) stateSel.value = String(prefillIdx);
+
+      const pathInput = el("input", {
+        class: "field grow", type: "text",
+        placeholder: "theme  ·  tasks[0].done  ·  filter",
+        value: (data && data.path) ? fmtPath(data.path) : lastQueryPath,
+      });
 
       const scopeNarrow = el("button", { class: "btn" + (queryScope === "narrow" ? " primary" : "") }, "narrow");
       const scopeWide   = el("button", { class: "btn" + (queryScope === "wide" ? " primary" : "") }, "wide");
@@ -824,14 +857,16 @@
 
       const out = el("div");
       const run = () => {
-        const s = rootStates[+stateSel.value];
-        const path = pathInput.value.trim();
-        if (!s || !path) {
+        const s = allStates[+stateSel.value];
+        const typed = pathInput.value.trim();
+        if (!s || !typed) {
           clear(out);
           out.appendChild(el("div", { class: "empty" }, "pick a state and enter a path"));
           return;
         }
-        renderDependents(out, s, path, queryScope);
+        lastQueryState = s;
+        lastQueryPath = typed;
+        renderDependents(out, s, typed, queryScope);
       };
       runBtn.addEventListener("click", run);
       pathInput.addEventListener("keydown", (e) => { if (e.key === "Enter") run(); });
@@ -844,18 +879,15 @@
       scopeNarrow.addEventListener("click", () => setScope("narrow"));
       scopeWide.addEventListener("click", () => setScope("wide"));
 
-      root.appendChild(el("div", { class: "query-form" }, stateSel, pathInput));
+      root.appendChild(el("div", { class: "query-form" }, stateSel));
+      root.appendChild(el("div", { class: "query-form" }, pathInput));
       root.appendChild(el("div", { class: "query-form" },
         el("span", { class: "row-label" }, "scope"), scopeNarrow, scopeWide,
         el("span", { style: "flex:1" }), runBtn,
       ));
       root.appendChild(out);
 
-      // If we arrived with { state, path }, prefill and run.
-      if (data && data.state && data.path) {
-        const idx = rootStates.indexOf(data.state);
-        if (idx >= 0) stateSel.value = String(idx);
-        pathInput.value = data.path;
+      if ((data && data.state && data.path) || (lastQueryState && lastQueryPath)) {
         queueMicrotask(run);
       } else {
         out.appendChild(el("div", { class: "empty" }, "no query yet"));
@@ -864,14 +896,20 @@
       return root;
     }
 
-    function renderDependents(container, rs, path, scope) {
+    // Internal dep keys always carry the "root." prefix; the UI always
+    // strips it. Round-trip: user types display form, we append on query.
+    const toInternalPath = (typed) => "root." + typed.replace(/^root\./, "");
+
+    function renderDependents(container, rs, typedPath, scope) {
       clear(container);
-      const rows = hook.dependentsOf(rs, path, { scope });
+      const display = fmtPath(typedPath);
+      const rows = hook.dependentsOf(rs, toInternalPath(typedPath), { scope });
       container.appendChild(el("div", { class: "hint" },
-        `${rows.length} node${rows.length === 1 ? "" : "s"} depend on ${fmtPath(path)} (${scope})`,
+        `${rows.length} node${rows.length === 1 ? "" : "s"} depend on ${display} (${scope})`,
       ));
       if (!rows.length) {
-        container.appendChild(el("div", { class: "empty" }, "nobody watches this path"));
+        container.appendChild(el("div", { class: "empty" },
+          `nobody on this state watches ${display} — try the other state or switch scope to wide`));
         return;
       }
       const table = el("table", { class: "grid" });
