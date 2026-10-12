@@ -416,8 +416,8 @@
       },
       "long-effect": {
         what: "This expression ran once and took longer than one frame (16ms).",
-        why:  "Long single-run cost shows up as jank — scroll stutters, input lag, animation hitches.",
-        action: "Open the effect from its row to see its reads, recent runs, and triggering path. Common fixes: narrow deps, defer the work.",
+        why:  "A single run that busts the frame budget shows up as jank — scroll stutters, input lag, animation hitches. Reducing re-run frequency doesn't help if one run already hurts.",
+        action: "Open the effect. Look at what it does, not just what it reads. Common root causes: a quadratic loop over a list that grew (switch to a linear algorithm, e.g. .includes), serialization or deep-clone of large state (compute the few fields you actually need), or heavy DOM work on every change (debounce the mutation that triggers it, or move the work outside the reactive path with queueMicrotask / requestIdleCallback).",
       },
       "orphan-spike": {
         what: "Effects are firing on DOM nodes that are no longer in the document.",
