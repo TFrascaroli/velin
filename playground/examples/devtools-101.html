@@ -64,7 +64,7 @@
 
     <!-- Step 1: Pick -->
     <details class="border rounded p-3" open>
-      <summary class="font-medium cursor-pointer">1 — What's really wired to a node?</summary>
+      <summary class="font-medium cursor-pointer">1 — What is really wired to a node?</summary>
       <div class="text-sm mt-2 space-y-2">
         <p>
           Open <strong>Inspect</strong> on the rail, hit <strong>Pick an element</strong>,
@@ -83,14 +83,14 @@
         <p class="text-gray-600">
           <strong>Takeaway:</strong> Inspect replaces grepping for directives and
           guessing what each binding reads. The reads chips drill into Query for
-          "who else depends on this path".
+          who else depends on each path.
         </p>
       </div>
     </details>
 
     <!-- Step 2: Theme fan-out -->
     <details class="border rounded p-3">
-      <summary class="font-medium cursor-pointer">2 — "The theme switcher feels sluggish"</summary>
+      <summary class="font-medium cursor-pointer">2 — The sluggish theme switcher</summary>
       <div class="text-sm mt-2 space-y-2">
         <p>
           Open <strong>Record</strong>, hit <strong>Record</strong>, toggle the
@@ -107,18 +107,25 @@
         <p class="text-gray-600">
           <strong>Root cause:</strong> the <code>theme-badge-X</code> class lives
           on each row because it was convenient to template there
-          (<code>devtools-101.html</code> line 36). Every theme write re-evaluates
-          every row's class string.
-          <strong>Fix:</strong> move the theme-dependent class up to the container
-          (the <code>theme-</code> wrapper is already there) and keep only the
-          priority-dependent class on the row.
+          (<code>devtools-101.html</code> line 36). Every theme write
+          re-evaluates every row's class string.
+          <strong>Fix:</strong> pull the theme-dependent class up to the
+          container, keep only the priority-dependent class on the row:
         </p>
+<pre class="text-xs bg-red-50 border border-red-200 rounded p-2 overflow-auto"><span class="text-red-700 font-bold">// before — devtools-101.html line 14 + line 36</span>
+&lt;div vln-class="'theme-' + theme"&gt;
+  ...
+  &lt;span vln-class="'priority-' + task.priority + ' theme-badge-' + theme"&gt;&lt;/span&gt;</pre>
+<pre class="text-xs bg-emerald-50 border border-emerald-200 rounded p-2 overflow-auto"><span class="text-emerald-700 font-bold">// after — one theme class on the parent, badges only read task.priority</span>
+&lt;div vln-class="'theme-' + theme + ' theme-badge-root-' + theme"&gt;
+  ...
+  &lt;span vln-class="'priority-' + task.priority"&gt;&lt;/span&gt;</pre>
       </div>
     </details>
 
     <!-- Step 3: debugLine -->
     <details class="border rounded p-3">
-      <summary class="font-medium cursor-pointer">3 — "That innocent-looking stat line"</summary>
+      <summary class="font-medium cursor-pointer">3 — The innocent-looking stat line</summary>
       <div class="text-sm mt-2 space-y-2">
         <p>
           See the gray <em>N tasks · M done · state size</em> line? Looks like a
@@ -135,19 +142,29 @@
         <p class="text-gray-600">
           <strong>Root cause:</strong> <code>JSON.stringify(this.tasks)</code>
           inside the getter (<code>devtools-101.js</code> line 41). Velin's
-          proxy records every property Velin's tracker observes during the
-          getter run — <code>stringify</code> walks everything, so the effect
-          takes a dep on everything.
-          <strong>Fix:</strong> compute what you actually need
-          (<code>this.tasks.length</code> and a <code>done</code> count) and
-          don't ask for a serialized snapshot you aren't going to display.
+          tracker records every property observed during the getter run —
+          <code>stringify</code> walks everything, so the effect takes a dep on
+          everything.
+          <strong>Fix:</strong> compute what you'll actually display, nothing
+          more:
         </p>
+<pre class="text-xs bg-red-50 border border-red-200 rounded p-2 overflow-auto"><span class="text-red-700 font-bold">// before — devtools-101.js line 40</span>
+get debugLine() {
+  const serialized = JSON.stringify(this.tasks);
+  const doneCount  = this.tasks.filter((t) =&gt; t.done).length;
+  return `${this.tasks.length} tasks · ${doneCount} done · state size: ${serialized.length}b`;
+}</pre>
+<pre class="text-xs bg-emerald-50 border border-emerald-200 rounded p-2 overflow-auto"><span class="text-emerald-700 font-bold">// after — reads tasks.length and tasks[i].done only</span>
+get debugLine() {
+  const doneCount = this.tasks.filter((t) =&gt; t.done).length;
+  return `${this.tasks.length} tasks · ${doneCount} done`;
+}</pre>
       </div>
     </details>
 
     <!-- Step 4: markAllDone batch -->
     <details class="border rounded p-3">
-      <summary class="font-medium cursor-pointer">4 — "Clean code, loud footprint"</summary>
+      <summary class="font-medium cursor-pointer">4 — Clean code, loud footprint</summary>
       <div class="text-sm mt-2 space-y-2">
         <p>
           <strong>Record</strong>, click <strong>✓ all done</strong>,
@@ -164,17 +181,25 @@
           N × every-effect-that-reads-tasks.
         </p>
         <p class="text-gray-600">
-          <strong>Fix:</strong> wrap the loop in
-          <code>Velin.getController(this).batch(() =&gt; { … })</code>. Open
-          <code>devtools-101.js</code>, uncomment lines 58 and 60, record again
-          — per-expression counts collapse from N to 1.
+          <strong>Fix:</strong> wrap the loop in a <code>batch()</code>. The
+          mutations still happen one by one, but effects run once at the end:
         </p>
+<pre class="text-xs bg-red-50 border border-red-200 rounded p-2 overflow-auto"><span class="text-red-700 font-bold">// before — devtools-101.js line 57</span>
+markAllDone() {
+  for (const t of this.tasks) t.done = true;
+}</pre>
+<pre class="text-xs bg-emerald-50 border border-emerald-200 rounded p-2 overflow-auto"><span class="text-emerald-700 font-bold">// after — one flush, same semantics</span>
+markAllDone() {
+  Velin.getController(this).batch(() =&gt; {
+    for (const t of this.tasks) t.done = true;
+  });
+}</pre>
       </div>
     </details>
 
     <!-- Step 5: Signals + Explain -->
     <details class="border rounded p-3">
-      <summary class="font-medium cursor-pointer">5 — "Push it until something screams"</summary>
+      <summary class="font-medium cursor-pointer">5 — Push it until something screams</summary>
       <div class="text-sm mt-2 space-y-2">
         <p>
           Click <strong>load 500</strong>, then type <code>fix</code> slowly into
@@ -192,16 +217,37 @@
         <p class="text-gray-600">
           <strong>Root cause:</strong> the filter is an O(n²) char-by-char match
           (<code>devtools-101.js</code> line 23). Fine at six rows, catastrophic
-          at 500. <strong>Fix:</strong> swap the nested loop for
-          <code>title.includes(q)</code>; <code>recentRuns</code> drops back
-          under 1ms.
+          at 500. <strong>Fix:</strong> swap the nested loop for the native
+          substring check:
         </p>
+<pre class="text-xs bg-red-50 border border-red-200 rounded p-2 overflow-auto"><span class="text-red-700 font-bold">// before — devtools-101.js line 23</span>
+get filteredTasks() {
+  const q = this.filter.toLowerCase();
+  if (!q) return this.tasks;
+  return this.tasks.filter((t) =&gt; {
+    const title = t.title.toLowerCase();
+    for (let i = 0; i &lt; title.length; i++) {
+      let match = true;
+      for (let j = 0; j &lt; q.length; j++) {
+        if (title[i + j] !== q[j]) { match = false; break; }
+      }
+      if (match) return true;
+    }
+    return false;
+  });
+}</pre>
+<pre class="text-xs bg-emerald-50 border border-emerald-200 rounded p-2 overflow-auto"><span class="text-emerald-700 font-bold">// after — same behaviour, O(n·m) → O(n)</span>
+get filteredTasks() {
+  const q = this.filter.toLowerCase();
+  if (!q) return this.tasks;
+  return this.tasks.filter((t) =&gt; t.title.toLowerCase().includes(q));
+}</pre>
       </div>
     </details>
 
     <!-- Step 6: Leaks -->
     <details class="border rounded p-3">
-      <summary class="font-medium cursor-pointer">6 — "Did anything stick around after I closed it?"</summary>
+      <summary class="font-medium cursor-pointer">6 — Did anything stick around after it closed?</summary>
       <div class="text-sm mt-2 space-y-2">
         <p>
           Click <strong>details</strong> on any task, close the modal (Esc or the
@@ -217,34 +263,55 @@
           <strong>Root cause:</strong> <code>openDetails</code> mounts a nested
           <code>Velin.bind()</code> on an overlay <code>&lt;div&gt;</code>, and
           the close handler only calls <code>overlay.remove()</code>
-          (<code>devtools-101.js</code> lines 90 and 94). The DOM is gone, but
-          the state tree, its bindings, and every effect those bindings created
-          are still alive and still subscribed to the parent.
-          <strong>Fix:</strong> uncomment the <code>Velin.unbind(nestedState)</code>
-          lines (93 and 101). Run the scan again — zero. Every
-          <code>bind()</code> wants a matching <code>unbind()</code>.
+          (<code>devtools-101.js</code> lines 90–104). The DOM is gone, but the
+          state tree, its bindings, and every effect those bindings created are
+          still alive and still subscribed to the parent.
+          <strong>Fix:</strong> pair every <code>bind()</code> with an
+          <code>unbind()</code>:
         </p>
+<pre class="text-xs bg-red-50 border border-red-200 rounded p-2 overflow-auto"><span class="text-red-700 font-bold">// before — devtools-101.js close handler + Esc handler</span>
+close() {
+  overlay.remove();
+}
+// …
+const onKey = (e) =&gt; {
+  if (e.key !== "Escape") return;
+  document.removeEventListener("keydown", onKey);
+  overlay.remove();
+};</pre>
+<pre class="text-xs bg-emerald-50 border border-emerald-200 rounded p-2 overflow-auto"><span class="text-emerald-700 font-bold">// after — unbind before you drop the DOM</span>
+close() {
+  Velin.unbind(nestedState);
+  overlay.remove();
+}
+// …
+const onKey = (e) =&gt; {
+  if (e.key !== "Escape") return;
+  document.removeEventListener("keydown", onKey);
+  Velin.unbind(nestedState);
+  overlay.remove();
+};</pre>
       </div>
     </details>
 
     <!-- Step 7: Query -->
     <details class="border rounded p-3">
-      <summary class="font-medium cursor-pointer">7 — "What else watches this path?"</summary>
+      <summary class="font-medium cursor-pointer">7 — What else watches this path?</summary>
       <div class="text-sm mt-2 space-y-2">
         <p>
           Open <strong>Query</strong>, path <code>theme</code>, scope
           <strong>wide</strong>, <strong>Run</strong>. The results list every
           effect that would re-run if you changed the theme, grouped by node,
-          with the estimated ms cost. Narrow mode asks "effects on the root state
-          that read this exact path"; wide mode descends into composed children
-          (every row's own state).
+          with the estimated ms cost. Narrow mode asks: effects on <em>this</em>
+          state that read this exact path. Wide mode descends into composed
+          children — every row's own state.
         </p>
         <p class="text-gray-600">
-          <strong>Why this matters:</strong> iteration dependencies aren't visible
-          to source grep — a row that reads <code>task.priority</code> doesn't
-          type <code>theme</code> anywhere, but still subscribes to it via the
-          composed template string. Query is how you answer "if I rename this
-          path, what breaks?" before you break it.
+          <strong>Why this matters:</strong> iteration dependencies aren't
+          visible to source grep — a row that reads <code>task.priority</code>
+          doesn't type <code>theme</code> anywhere, but still subscribes to it
+          via the composed template string. Query is how you answer <em>if I
+          rename this path, what breaks?</em> before you break it.
         </p>
       </div>
     </details>
