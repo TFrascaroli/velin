@@ -1,10 +1,12 @@
-<div class="max-w-5xl">
+<div class="max-w-4xl">
   <div class="mb-6">
     <h1 class="text-3xl font-bold">Devtools 101</h1>
     <p class="text-gray-600 mt-1">
-      A working task tracker. Nothing feels broken. Open the panel
-      (<kbd class="bg-gray-200 px-1.5 py-0.5 rounded text-xs font-mono">Ctrl + Shift + V</kbd>)
-      and follow the steps — each surfaces something the UI never shows.
+      A task tracker. Six rows, nothing feels wrong. Open the panel with
+      <kbd class="bg-gray-200 px-1.5 py-0.5 rounded text-xs font-mono">Ctrl + Shift + V</kbd>
+      and investigate alongside the narrative below — every section ends
+      with the exact file and line in <code class="text-xs">devtools-101.js</code>
+      so you can read the source after the devtools shows you where to look.
     </p>
   </div>
 
@@ -47,74 +49,226 @@
   </div>
 
   <!-- ── Walkthrough ───────────────────────────────────────────────── -->
-  <div class="space-y-2">
-    <h2 class="text-xl font-semibold mb-2">Guided tour</h2>
+  <div class="space-y-3">
+    <h2 class="text-xl font-semibold mb-2">Walkthrough</h2>
 
+    <!-- Opening -->
+    <div class="border rounded p-4 bg-blue-50 border-blue-200">
+      <p class="text-sm">
+        <strong>First impression.</strong> Checkboxes work. Filter works. Theme
+        switcher works. The code is 100 lines, no console errors, no
+        obviously-expensive expressions. If this landed in review you'd probably
+        approve it. Let's see what the runtime says.
+      </p>
+    </div>
+
+    <!-- Step 1: Pick -->
     <details class="border rounded p-3" open>
-      <summary class="font-medium cursor-pointer">1 — Pick an element</summary>
-      <p class="text-sm mt-2">
-        <kbd class="bg-gray-100 border px-1 rounded text-xs font-mono">Ctrl+Shift+P</kbd>, hover a priority badge, click.
-        The popover lists the states that own the node, every directive bound to it, each expression,
-        the state paths it reads, and the mutation that last changed each value. All at once, from a click.
-      </p>
+      <summary class="font-medium cursor-pointer">1 — What's really wired to a node?</summary>
+      <div class="text-sm mt-2 space-y-2">
+        <p>
+          Open <strong>Inspect</strong> on the rail, hit <strong>Pick an element</strong>,
+          click any priority badge.
+        </p>
+        <p>
+          You get two bindings — the <code>vln-text</code> and the
+          <code>vln-class</code> — with their current values, reads, and the
+          mutation that last changed each read. Look at the badge's
+          <code>vln-class</code>: it reads <strong>two</strong> paths,
+          <code>task.priority</code> and <code>theme</code>. The second one
+          isn't typed anywhere obvious — it's hiding in the template string
+          <code>'theme-badge-' + theme</code>, and every row's badge is now
+          subscribed to the global theme.
+        </p>
+        <p class="text-gray-600">
+          <strong>Takeaway:</strong> Inspect replaces grepping for directives and
+          guessing what each binding reads. The reads chips drill into Query for
+          "who else depends on this path".
+        </p>
+      </div>
     </details>
 
+    <!-- Step 2: Theme fan-out -->
     <details class="border rounded p-3">
-      <summary class="font-medium cursor-pointer">2 — Hidden fan-out</summary>
-      <p class="text-sm mt-2">
-        <code>hotspots</code> → <strong>Record</strong>, toggle the theme dropdown 3 times, <strong>Stop</strong>.
-        The badge class <code>'priority-' + task.priority + ' theme-badge-' + theme</code> fires once per visible row per toggle.
-        Three top-level writes produced <code>3 × rowCount</code> re-renders — invisible fan-out across sibling rows that happen to share one dep.
-        Move <code>theme-badge-X</code> to the container; one write, one effect.
-      </p>
+      <summary class="font-medium cursor-pointer">2 — "The theme switcher feels sluggish"</summary>
+      <div class="text-sm mt-2 space-y-2">
+        <p>
+          Open <strong>Record</strong>, hit <strong>Record</strong>, toggle the
+          theme dropdown three times, hit <strong>Stop</strong>.
+        </p>
+        <p>
+          The top row is the badge's <code>vln-class</code> expression. It ran
+          3 × (number of visible rows) times. One state change, N re-renders — a
+          sibling fan-out. Click the row to drill into <strong>Explain</strong>:
+          the <em>reads</em> chips show both <code>theme</code> and
+          <code>task.priority</code>; <em>why did this run</em> shows
+          <code>theme</code> as the triggering path.
+        </p>
+        <p class="text-gray-600">
+          <strong>Root cause:</strong> the <code>theme-badge-X</code> class lives
+          on each row because it was convenient to template there
+          (<code>devtools-101.html</code> line 36). Every theme write re-evaluates
+          every row's class string.
+          <strong>Fix:</strong> move the theme-dependent class up to the container
+          (the <code>theme-</code> wrapper is already there) and keep only the
+          priority-dependent class on the row.
+        </p>
+      </div>
     </details>
 
+    <!-- Step 3: debugLine -->
     <details class="border rounded p-3">
-      <summary class="font-medium cursor-pointer">3 — The innocent debug line</summary>
-      <p class="text-sm mt-2">
-        See the gray line below the list? Looks like a cheap stat summary. <strong>Record</strong>, toggle one checkbox, <strong>Stop</strong>.
-        <code>debugLine</code> ran — it reads <code>JSON.stringify(this.tasks)</code>, so Velin captured a dep on every field of every task.
-        Any mutation anywhere re-serializes the whole list for one display character.
-      </p>
+      <summary class="font-medium cursor-pointer">3 — "That innocent-looking stat line"</summary>
+      <div class="text-sm mt-2 space-y-2">
+        <p>
+          See the gray <em>N tasks · M done · state size</em> line? Looks like a
+          cheap counter. <strong>Record</strong>, toggle one checkbox,
+          <strong>Stop</strong>.
+        </p>
+        <p>
+          <code>debugLine</code> ran once — expected. Drill into it. The
+          <em>reads</em> chips are a mile long: <code>tasks[0].title</code>,
+          <code>tasks[0].done</code>, <code>tasks[0].priority</code>,
+          <code>tasks[1].title</code>… every field of every task. Toggling one
+          checkbox re-serializes the entire list.
+        </p>
+        <p class="text-gray-600">
+          <strong>Root cause:</strong> <code>JSON.stringify(this.tasks)</code>
+          inside the getter (<code>devtools-101.js</code> line 41). Velin's
+          proxy records every property Velin's tracker observes during the
+          getter run — <code>stringify</code> walks everything, so the effect
+          takes a dep on everything.
+          <strong>Fix:</strong> compute what you actually need
+          (<code>this.tasks.length</code> and a <code>done</code> count) and
+          don't ask for a serialized snapshot you aren't going to display.
+        </p>
+      </div>
     </details>
 
+    <!-- Step 4: markAllDone batch -->
     <details class="border rounded p-3">
-      <summary class="font-medium cursor-pointer">4 — Clean code, loud footprint</summary>
-      <p class="text-sm mt-2">
-        <strong>Record</strong>, click <strong>✓ all done</strong>, <strong>Stop</strong>.
-        <code>filteredTasks</code> and <code>debugLine</code> each fired once per task. The code is a plain <code>for</code> loop assigning
-        <code>t.done = true</code> — nothing looks wrong, but every assignment synchronously flushes every dependent effect.
-        Open <code>devtools-101.js</code> and uncomment the <code>Velin.getController(this).batch(() =&gt; { … })</code> wrapper around the loop.
-        Record again — the per-expression counts collapse from N to 1.
-      </p>
+      <summary class="font-medium cursor-pointer">4 — "Clean code, loud footprint"</summary>
+      <div class="text-sm mt-2 space-y-2">
+        <p>
+          <strong>Record</strong>, click <strong>✓ all done</strong>,
+          <strong>Stop</strong>. The results show <code>filteredTasks</code> and
+          <code>debugLine</code> each firing N times, with <em>total</em> ms
+          well above a single-run cost. The driver column pins it on
+          <code>tasks[i].done</code>, N distinct paths.
+        </p>
+        <p>
+          The source is a plain <code>for</code> loop assigning
+          <code>t.done = true</code> (<code>devtools-101.js</code> line 59).
+          Nothing <em>looks</em> wrong. The problem is that each assignment
+          synchronously flushes every dependent effect — so N writes =
+          N × every-effect-that-reads-tasks.
+        </p>
+        <p class="text-gray-600">
+          <strong>Fix:</strong> wrap the loop in
+          <code>Velin.getController(this).batch(() =&gt; { … })</code>. Open
+          <code>devtools-101.js</code>, uncomment lines 58 and 60, record again
+          — per-expression counts collapse from N to 1.
+        </p>
+      </div>
     </details>
 
+    <!-- Step 5: Signals + Explain -->
     <details class="border rounded p-3">
-      <summary class="font-medium cursor-pointer">5 — What watches this?</summary>
-      <p class="text-sm mt-2">
-        <code>dependents</code>, path <code>root.theme</code>, scope <strong>wide</strong>. Every expression that would re-run if you changed the theme, with its node and estimated cost.
-        Narrow scope answers "which effects on this exact state read this path"; wide descends into composed children (every row's state).
-        You can't get this answer from source grep — iteration deps aren't visible until runtime.
-      </p>
+      <summary class="font-medium cursor-pointer">5 — "Push it until something screams"</summary>
+      <div class="text-sm mt-2 space-y-2">
+        <p>
+          Click <strong>load 500</strong>, then type <code>fix</code> slowly into
+          the filter. Watch the badge in the corner — it ticks up and tints amber
+          as the hook emits <code>W002 slow-expression</code>.
+        </p>
+        <p>
+          Click the badge. The <strong>Signals</strong> inbox opens with each
+          signal explained (what / why / what to do). Click an entry — the detail
+          view spells out that <code>filteredTasks</code> crossed one frame
+          (16ms). From the inbox you can drill into <strong>Explain</strong>:
+          <em>recent runs</em> shows the per-keystroke duration climbing;
+          <em>reads</em> shows <code>tasks[i].title</code> for every row.
+        </p>
+        <p class="text-gray-600">
+          <strong>Root cause:</strong> the filter is an O(n²) char-by-char match
+          (<code>devtools-101.js</code> line 23). Fine at six rows, catastrophic
+          at 500. <strong>Fix:</strong> swap the nested loop for
+          <code>title.includes(q)</code>; <code>recentRuns</code> drops back
+          under 1ms.
+        </p>
+      </div>
     </details>
 
+    <!-- Step 6: Leaks -->
     <details class="border rounded p-3">
-      <summary class="font-medium cursor-pointer">6 — The invisible leak</summary>
-      <p class="text-sm mt-2">
-        Click <strong>details</strong> on any task, close the modal (× or <kbd class="bg-gray-100 border px-1 rounded text-xs font-mono">Esc</kbd>), repeat five times.
-        <code>leaks</code> → <strong>run scan</strong>: <code>detachedStates</code> and <code>detachedEffects</code> both grew.
-        Each modal mounts a nested <code>Velin.bind()</code>; closing only removes DOM. The state tree is still alive, bindings still registered.
-        Uncomment the <code>Velin.unbind(nestedState)</code> line in <code>openDetails</code> — scan goes clean.
-      </p>
+      <summary class="font-medium cursor-pointer">6 — "Did anything stick around after I closed it?"</summary>
+      <div class="text-sm mt-2 space-y-2">
+        <p>
+          Click <strong>details</strong> on any task, close the modal (Esc or the
+          close button), repeat five times. Everything feels normal — the modal
+          is gone, no visible residue.
+        </p>
+        <p>
+          Open <strong>Leaks</strong>, hit <strong>Run scan</strong>.
+          <em>Detached state roots</em> and <em>Detached effects</em> are both
+          non-zero and growing with every open+close.
+        </p>
+        <p class="text-gray-600">
+          <strong>Root cause:</strong> <code>openDetails</code> mounts a nested
+          <code>Velin.bind()</code> on an overlay <code>&lt;div&gt;</code>, and
+          the close handler only calls <code>overlay.remove()</code>
+          (<code>devtools-101.js</code> lines 90 and 94). The DOM is gone, but
+          the state tree, its bindings, and every effect those bindings created
+          are still alive and still subscribed to the parent.
+          <strong>Fix:</strong> uncomment the <code>Velin.unbind(nestedState)</code>
+          lines (93 and 101). Run the scan again — zero. Every
+          <code>bind()</code> wants a matching <code>unbind()</code>.
+        </p>
+      </div>
     </details>
 
+    <!-- Step 7: Query -->
     <details class="border rounded p-3">
-      <summary class="font-medium cursor-pointer">7 — Push it until signals fire</summary>
-      <p class="text-sm mt-2">
-        <strong>load 500</strong>, then type into the filter. Toasts appear bottom-right. The filter uses an O(n²) highlight match that crosses the 16ms frame budget on 500 rows, tripping <code>W002 slow-expression</code>.
-        <code>signals</code> opens the persistent inbox — each entry has a human-written <em>what / why / what to do</em>, and drills into <code>explainEffect</code> for <code>recentRuns</code>, <code>reads</code>, and <code>whyDidThisRun</code>.
-      </p>
+      <summary class="font-medium cursor-pointer">7 — "What else watches this path?"</summary>
+      <div class="text-sm mt-2 space-y-2">
+        <p>
+          Open <strong>Query</strong>, path <code>theme</code>, scope
+          <strong>wide</strong>, <strong>Run</strong>. The results list every
+          effect that would re-run if you changed the theme, grouped by node,
+          with the estimated ms cost. Narrow mode asks "effects on the root state
+          that read this exact path"; wide mode descends into composed children
+          (every row's own state).
+        </p>
+        <p class="text-gray-600">
+          <strong>Why this matters:</strong> iteration dependencies aren't visible
+          to source grep — a row that reads <code>task.priority</code> doesn't
+          type <code>theme</code> anywhere, but still subscribes to it via the
+          composed template string. Query is how you answer "if I rename this
+          path, what breaks?" before you break it.
+        </p>
+      </div>
     </details>
+
+    <!-- Close -->
+    <div class="border rounded p-4 bg-emerald-50 border-emerald-200">
+      <p class="text-sm">
+        <strong>Patterns to carry out.</strong> Each bug above is a shape, not a
+        fluke:
+      </p>
+      <ul class="text-sm list-disc pl-6 mt-2 space-y-1">
+        <li>Any binding that interpolates two state paths fans out across siblings — move the slower-changing one to a parent.</li>
+        <li>Any <code>JSON.stringify</code>, <code>deepClone</code>, or <code>Object.values</code> inside a getter widens the dep set to everything it walks.</li>
+        <li>Any mutation loop over a collection wants <code>batch()</code>.</li>
+        <li>Any nested <code>Velin.bind()</code> wants a matching <code>Velin.unbind()</code> on teardown.</li>
+        <li>Any expensive expression that touches a frequently-mutated path will hit <code>W002</code> under load — the signal tells you before the user does.</li>
+      </ul>
+      <p class="text-sm mt-3 text-gray-600">
+        The devtools can't tell you which fix is right. It <em>can</em> tell you
+        exactly which expression, on which node, reading which paths, triggered
+        by which mutation, cost which number of milliseconds. That's usually
+        enough.
+      </p>
+    </div>
   </div>
 </div>
 
