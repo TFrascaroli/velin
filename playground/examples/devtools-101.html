@@ -319,19 +319,18 @@ const onKey = (e) =&gt; {
       <summary class="font-medium cursor-pointer">7 — What else watches this path?</summary>
       <div class="text-sm mt-2 space-y-2">
         <p>
-          Open <strong>Query</strong>, path <code>theme</code>, scope
-          <strong>wide</strong>, <strong>Run</strong>. The results list every
-          effect that would re-run if you changed the theme, grouped by node,
-          with the estimated ms cost. Narrow mode asks: effects on <em>this</em>
-          state that read this exact path. Wide mode descends into composed
-          children — every row's own state.
+          Open <strong>Query</strong>, path <code>theme</code>,
+          <strong>Run</strong>. The results list every effect that would re-run
+          if you changed the theme — grouped by node, with its expressions and
+          the estimated ms cost. Click a row to drill into Explain.
         </p>
         <p class="text-gray-600">
           <strong>Why this matters:</strong> iteration dependencies aren't
           visible to source grep — a row that reads <code>task.priority</code>
           doesn't type <code>theme</code> anywhere, but still subscribes to it
-          via the composed template string. Query is how you answer <em>if I
-          rename this path, what breaks?</em> before you break it.
+          via the composed template string on an ancestor. Query is how you
+          answer <em>if I rename this path, what breaks?</em> before you
+          break it.
         </p>
       </div>
     </details>

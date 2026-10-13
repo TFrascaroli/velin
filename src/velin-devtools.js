@@ -814,80 +814,40 @@
     }
 
     // ── Surface: Query (dependents) ────────────────────────────────────
-    let queryScope = "narrow";
-    // Last picked state across visits (survives rail switches / rebuilds).
-    let lastQueryState = null;
     let lastQueryPath = "";
 
     function buildQuery(data) {
       const root = el("div", { class: "surface" });
       root.appendChild(el("div", { class: "surface-head" }, el("h3", null, "Query")));
       root.appendChild(el("p", { class: "muted" },
-        "Enter a state path. Dependents are every effect whose read set includes it. Narrow matches the exact path; wide also matches children and composed substates.",
+        "Enter a state path. The result is every effect that would re-run if you mutated it — any state, any depth.",
       ));
-
-      // Build the state list. Include every live state, not just roots —
-      // composed children (vln-loop iteration states) have their own
-      // bindings and are legitimate query targets.
-      const allStates = [...hook.states];
-      // Prefill target: whatever was passed in, or the last used state,
-      // or the first root we can find.
-      const prefillState = (data && data.state) || lastQueryState ||
-        allStates.find((s) => !hook.parentOf(s)) || allStates[0] || null;
-
-      const stateSel = el("select", { class: "field" });
-      allStates.forEach((s, i) => {
-        const n = hook.nodeFor(s);
-        const isRoot = !hook.parentOf(s);
-        stateSel.appendChild(el("option", { value: String(i) },
-          (n ? nodeLabel(n) : `state#${i}`) + (isRoot ? "  (root)" : "  (child)")));
-      });
-      const prefillIdx = prefillState ? allStates.indexOf(prefillState) : -1;
-      if (prefillIdx >= 0) stateSel.value = String(prefillIdx);
 
       const pathInput = el("input", {
         class: "field grow", type: "text",
         placeholder: "theme  ·  tasks[0].done  ·  filter",
         value: (data && data.path) ? fmtPath(data.path) : lastQueryPath,
       });
-
-      const scopeNarrow = el("button", { class: "btn" + (queryScope === "narrow" ? " primary" : "") }, "narrow");
-      const scopeWide   = el("button", { class: "btn" + (queryScope === "wide" ? " primary" : "") }, "wide");
-      const runBtn     = el("button", { class: "btn primary" }, "Run");
+      const runBtn = el("button", { class: "btn primary" }, "Run");
 
       const out = el("div");
       const run = () => {
-        const s = allStates[+stateSel.value];
         const typed = pathInput.value.trim();
-        if (!s || !typed) {
+        if (!typed) {
           clear(out);
-          out.appendChild(el("div", { class: "empty" }, "pick a state and enter a path"));
+          out.appendChild(el("div", { class: "empty" }, "enter a path"));
           return;
         }
-        lastQueryState = s;
         lastQueryPath = typed;
-        renderDependents(out, s, typed, queryScope);
+        renderDependents(out, typed);
       };
       runBtn.addEventListener("click", run);
       pathInput.addEventListener("keydown", (e) => { if (e.key === "Enter") run(); });
-      const setScope = (k) => {
-        queryScope = k;
-        scopeNarrow.classList.toggle("primary", k === "narrow");
-        scopeWide.classList.toggle("primary", k === "wide");
-        if (pathInput.value.trim()) run();
-      };
-      scopeNarrow.addEventListener("click", () => setScope("narrow"));
-      scopeWide.addEventListener("click", () => setScope("wide"));
 
-      root.appendChild(el("div", { class: "query-form" }, stateSel));
-      root.appendChild(el("div", { class: "query-form" }, pathInput));
-      root.appendChild(el("div", { class: "query-form" },
-        el("span", { class: "row-label" }, "scope"), scopeNarrow, scopeWide,
-        el("span", { style: "flex:1" }), runBtn,
-      ));
+      root.appendChild(el("div", { class: "query-form" }, pathInput, runBtn));
       root.appendChild(out);
 
-      if ((data && data.state && data.path) || (lastQueryState && lastQueryPath)) {
+      if ((data && data.path) || lastQueryPath) {
         queueMicrotask(run);
       } else {
         out.appendChild(el("div", { class: "empty" }, "no query yet"));
@@ -900,34 +860,46 @@
     // strips it. Round-trip: user types display form, we append on query.
     const toInternalPath = (typed) => "root." + typed.replace(/^root\./, "");
 
-    function renderDependents(container, rs, typedPath, scope) {
+    function renderDependents(container, typedPath) {
       clear(container);
       const display = fmtPath(typedPath);
       const internal = toInternalPath(typedPath);
-      const rows = hook.dependentsOf(rs, internal, { scope });
+
+      // Scan every live state. Exact-match only (narrow): reading
+      // root.theme.name registers deps at BOTH root.theme and
+      // root.theme.name, so wide-prefix matching would just return
+      // duplicates of effects already caught by their shorter intermediate
+      // dep. From the user's view, "who reads this" doesn't care which
+      // state in the tree holds the binding — we aggregate across all.
+      const seenEffects = new Set();
+      const perNode = new Map();
+      for (const s of hook.states) {
+        const rows = hook.dependentsOf(s, internal, { scope: "narrow" });
+        for (const r of rows) {
+          for (const e of r.effects) {
+            if (seenEffects.has(e.effect)) continue;
+            seenEffects.add(e.effect);
+            let row = perNode.get(r.node);
+            if (!row) {
+              row = { node: r.node, effects: [], isDetached: r.isDetached };
+              perNode.set(r.node, row);
+            }
+            row.effects.push(e);
+          }
+        }
+      }
+      const rows = [...perNode.values()].map((r) => {
+        let est = 0, anyKnown = false;
+        for (const e of r.effects) if (typeof e.avgMs === "number") { est += e.avgMs; anyKnown = true; }
+        return { ...r, estimatedCostMs: anyKnown ? +est.toFixed(3) : null };
+      });
+
       container.appendChild(el("div", { class: "hint" },
-        `${rows.length} node${rows.length === 1 ? "" : "s"} depend on ${display} (${scope})`,
+        `${rows.length} node${rows.length === 1 ? "" : "s"} read ${display}`,
       ));
       if (!rows.length) {
         container.appendChild(el("div", { class: "empty" },
-          `nobody on this state watches ${display} — try the other state or switch scope to wide`));
-        const keys = rs && rs.bindings ? [...rs.bindings.keys()] : [];
-        if (keys.length) {
-          container.appendChild(el("div", { class: "section-title" }, "keys this state tracks"));
-          const chips = el("div", { class: "chips" });
-          const sorted = keys.slice().sort();
-          for (const k of sorted) {
-            chips.appendChild(el("button", {
-              class: "chip",
-              title: "Query this exact key",
-              onclick: () => {
-                lastQueryPath = fmtPath(k);
-                renderDependents(container, rs, fmtPath(k), scope);
-              },
-            }, fmtPath(k)));
-          }
-          container.appendChild(chips);
-        }
+          `nobody reads ${display} — check the spelling, or pick an element with Inspect first and click a reads chip`));
         return;
       }
       const table = el("table", { class: "grid" });
