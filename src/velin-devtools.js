@@ -903,13 +903,31 @@
     function renderDependents(container, rs, typedPath, scope) {
       clear(container);
       const display = fmtPath(typedPath);
-      const rows = hook.dependentsOf(rs, toInternalPath(typedPath), { scope });
+      const internal = toInternalPath(typedPath);
+      const rows = hook.dependentsOf(rs, internal, { scope });
       container.appendChild(el("div", { class: "hint" },
         `${rows.length} node${rows.length === 1 ? "" : "s"} depend on ${display} (${scope})`,
       ));
       if (!rows.length) {
         container.appendChild(el("div", { class: "empty" },
           `nobody on this state watches ${display} — try the other state or switch scope to wide`));
+        const keys = rs && rs.bindings ? [...rs.bindings.keys()] : [];
+        if (keys.length) {
+          container.appendChild(el("div", { class: "section-title" }, "keys this state tracks"));
+          const chips = el("div", { class: "chips" });
+          const sorted = keys.slice().sort();
+          for (const k of sorted) {
+            chips.appendChild(el("button", {
+              class: "chip",
+              title: "Query this exact key",
+              onclick: () => {
+                lastQueryPath = fmtPath(k);
+                renderDependents(container, rs, fmtPath(k), scope);
+              },
+            }, fmtPath(k)));
+          }
+          container.appendChild(chips);
+        }
         return;
       }
       const table = el("table", { class: "grid" });
