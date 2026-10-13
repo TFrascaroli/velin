@@ -214,51 +214,54 @@ markAllDone() {
       </div>
     </details>
 
-    <!-- Step 5: Signals + Explain -->
+    <!-- Step 5: Signals + Explain — thrash on an unbatched insert loop -->
     <details class="border rounded p-3">
-      <summary class="font-medium cursor-pointer">5 — Push it until something screams</summary>
+      <summary class="font-medium cursor-pointer">5 — Signals catch the same bug at scale</summary>
       <div class="text-sm mt-2 space-y-2">
         <p>
-          Click <strong>load 500</strong>, then type <code>fix</code> slowly into
-          the filter. Watch the badge in the corner — it ticks up and tints amber
-          as the hook emits <code>W002 slow-expression</code>.
+          Click <strong>load 500</strong>. The UI hangs for a beat and the badge
+          in the corner tints amber: the hook emitted a <code>thrash</code>
+          signal because <code>tasks</code> was mutated more than 32× in one
+          animation frame.
         </p>
         <p>
           Click the badge. The <strong>Signals</strong> inbox opens with each
-          signal explained (what / why / what to do). Click an entry — the detail
-          view spells out that <code>filteredTasks</code> crossed one frame
-          (16ms). From the inbox you can drill into <strong>Explain</strong>:
-          <em>recent runs</em> shows the per-keystroke duration climbing;
-          <em>reads</em> shows <code>tasks[i].title</code> for every row.
+          signal explained (what / why / what to do). From any entry you can
+          drill into <strong>Explain</strong> to see the effect's recent runs,
+          its reads, and the paths that triggered it.
         </p>
         <p class="text-gray-600">
-          <strong>Root cause:</strong> the filter is an O(n²) char-by-char match
-          (<code>devtools-101.js</code> line 23). Fine at six rows, catastrophic
-          at 500. <strong>Fix:</strong> swap the nested loop for the native
-          substring check:
+          <strong>Root cause:</strong> <code>loadDemo</code> is exactly the
+          same shape as the pre-fix <code>markAllDone</code> from step 4 — a
+          plain loop doing 500 synchronous writes
+          (<code>devtools-101.js</code> line 65). Every push re-runs every
+          effect that reads <code>tasks</code>: the loop re-renders,
+          <code>debugLine</code> re-serializes, every row's vln-loop recomputes.
+          <strong>Fix:</strong> the same batch pattern:
         </p>
-<pre class="text-xs bg-red-50 border border-red-200 rounded p-2 overflow-auto"><span class="text-red-700 font-bold">// before — devtools-101.js line 23</span>
-get filteredTasks() {
-  const q = this.filter.toLowerCase();
-  if (!q) return this.tasks;
-  return this.tasks.filter((t) =&gt; {
-    const title = t.title.toLowerCase();
-    for (let i = 0; i &lt; title.length; i++) {
-      let match = true;
-      for (let j = 0; j &lt; q.length; j++) {
-        if (title[i + j] !== q[j]) { match = false; break; }
-      }
-      if (match) return true;
+<pre class="text-xs bg-red-50 border border-red-200 rounded p-2 overflow-auto"><span class="text-red-700 font-bold">// before — devtools-101.js line 63</span>
+loadDemo() {
+  const start = this.tasks.length;
+  for (let i = 0; i &lt; 500; i++) {
+    this.tasks.push({ id: this.nextId++, title: rndTitle(start + i), ... });
+  }
+}</pre>
+<pre class="text-xs bg-emerald-50 border border-emerald-200 rounded p-2 overflow-auto"><span class="text-emerald-700 font-bold">// after — one flush instead of 500</span>
+loadDemo() {
+  Velin.getController(this).batch(() =&gt; {
+    const start = this.tasks.length;
+    for (let i = 0; i &lt; 500; i++) {
+      this.tasks.push({ id: this.nextId++, title: rndTitle(start + i), ... });
     }
-    return false;
   });
 }</pre>
-<pre class="text-xs bg-emerald-50 border border-emerald-200 rounded p-2 overflow-auto"><span class="text-emerald-700 font-bold">// after — same behaviour, O(n·m) → O(n)</span>
-get filteredTasks() {
-  const q = this.filter.toLowerCase();
-  if (!q) return this.tasks;
-  return this.tasks.filter((t) =&gt; t.title.toLowerCase().includes(q));
-}</pre>
+        <p class="text-gray-600 italic">
+          The lesson: Signals are a passive tripwire. You don't have to Record,
+          you don't have to go looking — when something crosses a threshold
+          (thrash, long-effect, orphan-spike) the badge counts it and the inbox
+          explains it. In practice this catches the same class of bug step 4
+          taught, but surfaces it without you remembering to look.
+        </p>
       </div>
     </details>
 
