@@ -254,9 +254,16 @@
     let pickMode = false;
     let pickHighlight = null;
 
+    let pickCursorStyle = null;
     function startPickMode() {
       pickMode = true;
       badge.classList.add("picking");
+      if (!pickCursorStyle) {
+        pickCursorStyle = document.createElement("style");
+        pickCursorStyle.textContent =
+          "*, *::before, *::after { cursor: crosshair !important; }";
+        document.head.appendChild(pickCursorStyle);
+      }
       document.addEventListener("mousemove", onPickMove, true);
       document.addEventListener("click", onPickClick, true);
       document.addEventListener("keydown", onPickKey, true);
@@ -264,6 +271,7 @@
     function cancelPickMode() {
       pickMode = false;
       badge.classList.remove("picking");
+      if (pickCursorStyle) { pickCursorStyle.remove(); pickCursorStyle = null; }
       document.removeEventListener("mousemove", onPickMove, true);
       document.removeEventListener("click", onPickClick, true);
       document.removeEventListener("keydown", onPickKey, true);
@@ -967,6 +975,16 @@
 
     window.__VELIN_DEVTOOLS_COMPANION__ = {
       version: VERSION,
+      /**
+       * Open the drawer and switch to a named surface. If the drawer is
+       * closed, it opens. If `surface` isn't one of the rail entries, it
+       * opens on the current (or default) surface.
+       * @param {"inspect"|"record"|"leaks"|"signals"|"query"} surface
+       */
+      open(surface) {
+        if (!open) openDrawer(entries[surface] ? entries[surface]() : undefined);
+        if (surface && entries[surface]) switchToSurface(surface);
+      },
       dispose() {
         cancelPickMode();
         host.remove();
