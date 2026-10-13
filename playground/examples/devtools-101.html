@@ -12,21 +12,6 @@
     </p>
   </div>
 
-  <script>
-    // Delegate: any <span class="dv-link" data-surface="x"> opens the drawer
-    // on surface x. Also catch bare .dv-link whose text matches a surface.
-    document.addEventListener("click", (e) => {
-      const t = e.target.closest && e.target.closest(".dv-link");
-      if (!t) return;
-      const api = window.__VELIN_DEVTOOLS_COMPANION__;
-      if (!api) return;
-      const surface = (t.dataset.surface || t.textContent || "").trim().toLowerCase();
-      if (["inspect", "record", "leaks", "signals", "query", "explain"].includes(surface)) {
-        api.open(surface === "explain" ? "inspect" : surface);
-      }
-    });
-  </script>
-
   <style>
     .dv-link {
       color: #0ea5e9; cursor: pointer; font-weight: bold;

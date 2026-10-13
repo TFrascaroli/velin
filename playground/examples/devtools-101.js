@@ -1,6 +1,23 @@
 // Devtools 101 — five realistic, hard-to-see-by-eye bugs. Each has a
 // walkthrough step in the companion .html that explains the reveal.
 
+// Delegate: tutorial surface mentions (span.dv-link) open the drawer on
+// that surface. Attached once per page load; <script> tags inside the
+// loaded HTML don't execute via innerHTML, so the handler lives here.
+if (!window.__DV_LINK_WIRED__) {
+  window.__DV_LINK_WIRED__ = true;
+  document.addEventListener("click", (e) => {
+    const t = e.target.closest && e.target.closest(".dv-link");
+    if (!t) return;
+    const api = window.__VELIN_DEVTOOLS_COMPANION__;
+    if (!api) return;
+    const surface = (t.dataset.surface || t.textContent || "").trim().toLowerCase();
+    if (["inspect", "record", "leaks", "signals", "query", "explain"].includes(surface)) {
+      api.open(surface === "explain" ? "inspect" : surface);
+    }
+  });
+}
+
 const PRIORITIES = ["high", "medium", "low"];
 const WORDS = ["write", "review", "ship", "test", "triage", "merge", "refactor", "doc", "demo", "fix", "spec", "sync"];
 
