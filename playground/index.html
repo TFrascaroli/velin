@@ -53,12 +53,22 @@
   </div>
 
   <script>
-    // Register vln-load plugin
+    // Register vln-load plugin. Each container keeps a reference to the
+    // last state it bound so we can unbind cleanly before loading the next
+    // example — otherwise every example switch leaks a whole state tree.
+    const boundStates = new WeakMap();
+
     Velin.plugins.registerPlugin({
       name: 'load',
       track: Velin.trackers.expressionTracker,
       render: ({ node, tracked }) => {
         if (!tracked) return { halt: true };
+
+        const prev = boundStates.get(node);
+        if (prev) {
+          Velin.unbind(prev);
+          boundStates.delete(node);
+        }
 
         // String input: just load HTML
         if (typeof tracked === 'string') {
@@ -82,7 +92,8 @@
               const state = typeof module.default === 'function'
                 ? module.default()
                 : module.default;
-              Velin.bind(node, state);
+              const bound = Velin.bind(node, state);
+              boundStates.set(node, bound);
             }
           });
           return { halt: true };
