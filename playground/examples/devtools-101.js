@@ -19,21 +19,10 @@ export default function () {
     filter: "",
     theme: "light",
 
-    // BUG — O(n²) char-by-char match. Fine at 6, trips W002 at 500.
     get filteredTasks() {
       const q = this.filter.toLowerCase();
       if (!q) return this.tasks;
-      return this.tasks.filter((t) => {
-        const title = t.title.toLowerCase();
-        for (let i = 0; i < title.length; i++) {
-          let match = true;
-          for (let j = 0; j < q.length; j++) {
-            if (title[i + j] !== q[j]) { match = false; break; }
-          }
-          if (match) return true;
-        }
-        return false;
-      });
+      return this.tasks.filter((t) => t.title.toLowerCase().includes(q));
     },
 
     // BUG — JSON.stringify takes a dep on every field of every task.
