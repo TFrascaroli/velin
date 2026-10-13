@@ -336,26 +336,6 @@ const onKey = (e) =&gt; {
       </div>
     </details>
 
-    <!-- Close -->
-    <div class="border rounded p-4 bg-emerald-50 border-emerald-200">
-      <p class="text-sm">
-        <strong>Patterns to carry out.</strong> Each bug above is a shape, not a
-        fluke:
-      </p>
-      <ul class="text-sm list-disc pl-6 mt-2 space-y-1">
-        <li>Any binding that interpolates two state paths fans out across siblings — move the slower-changing one to a parent.</li>
-        <li>Any <code>JSON.stringify</code>, <code>deepClone</code>, or <code>Object.values</code> inside a getter widens the dep set to everything it walks.</li>
-        <li>Any mutation loop over a collection wants <code>batch()</code>.</li>
-        <li>Any nested <code>Velin.bind()</code> wants a matching <code>Velin.unbind()</code> on teardown.</li>
-        <li>Any expensive expression that touches a frequently-mutated path will hit <code>W002</code> under load — the signal tells you before the user does.</li>
-      </ul>
-      <p class="text-sm mt-3 text-gray-600">
-        The devtools can't tell you which fix is right. It <em>can</em> tell you
-        exactly which expression, on which node, reading which paths, triggered
-        by which mutation, cost which number of milliseconds. That's usually
-        enough.
-      </p>
-    </div>
   </div>
 </div>
 
