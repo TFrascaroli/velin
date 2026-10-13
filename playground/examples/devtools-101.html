@@ -105,21 +105,38 @@
           <code>theme</code> as the triggering path.
         </p>
         <p class="text-gray-600">
-          <strong>Root cause:</strong> the <code>theme-badge-X</code> class lives
-          on each row because it was convenient to template there
-          (<code>devtools-101.html</code> line 36). Every theme write
-          re-evaluates every row's class string.
-          <strong>Fix:</strong> pull the theme-dependent class up to the
-          container, keep only the priority-dependent class on the row:
+          <strong>Root cause:</strong> the <code>theme-badge-X</code> class is
+          stamped on every row because, in the moment of writing the template,
+          it was easier to compose the class string than to think about CSS
+          cascade (<code>devtools-101.html</code> line 36). The theme is a
+          single switch sitting on an ancestor already — nothing downstream
+          needs to re-read it.
+          <strong>Fix:</strong> delete the per-row theme class entirely and
+          let CSS inherit from the parent. One reactive dep on the container,
+          zero on the rows:
         </p>
-<pre class="text-xs bg-red-50 border border-red-200 rounded p-2 overflow-auto"><span class="text-red-700 font-bold">// before — devtools-101.html line 14 + line 36</span>
-&lt;div vln-class="'theme-' + theme"&gt;
-  ...
-  &lt;span vln-class="'priority-' + task.priority + ' theme-badge-' + theme"&gt;&lt;/span&gt;</pre>
-<pre class="text-xs bg-emerald-50 border border-emerald-200 rounded p-2 overflow-auto"><span class="text-emerald-700 font-bold">// after — one theme class on the parent, badges only read task.priority</span>
-&lt;div vln-class="'theme-' + theme + ' theme-badge-root-' + theme"&gt;
-  ...
-  &lt;span vln-class="'priority-' + task.priority"&gt;&lt;/span&gt;</pre>
+<pre class="text-xs bg-red-50 border border-red-200 rounded p-2 overflow-auto"><span class="text-red-700 font-bold">// before — devtools-101.html line 37</span>
+&lt;span vln-class="'priority-' + task.priority + ' theme-badge-' + theme"&gt;&lt;/span&gt;
+
+<span class="text-red-700 font-bold">/* and the CSS */</span>
+.theme-badge-light { background: #e5e7eb; }
+.theme-badge-dark  { background: #374151; color: #f3f4f6; }
+.theme-badge-hc    { background: #fff; color: #000; outline: 1px solid #fff; }</pre>
+<pre class="text-xs bg-emerald-50 border border-emerald-200 rounded p-2 overflow-auto"><span class="text-emerald-700 font-bold">// after — no theme class on the row at all</span>
+&lt;span vln-class="'priority-' + task.priority"&gt;&lt;/span&gt;
+
+<span class="text-emerald-700 font-bold">/* and the CSS — descend from the already-themed container */</span>
+.theme-light .priority-high,
+.theme-light [class^="priority-"] { background: #e5e7eb; }
+.theme-dark  [class^="priority-"] { background: #374151; color: #f3f4f6; }
+.theme-hc    [class^="priority-"] { background: #fff; color: #000; outline: 1px solid; }</pre>
+        <p class="text-gray-600 italic">
+          The lesson isn't about Velin, it's about styling. A theme is a global
+          variable — treat it like one. Set it once on an ancestor and let the
+          cascade do the propagation CSS was designed to do, instead of
+          templating the same value into N descendants and asking the reactive
+          system to re-render them in lockstep.
+        </p>
       </div>
     </details>
 
