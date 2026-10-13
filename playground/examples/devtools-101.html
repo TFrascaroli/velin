@@ -4,11 +4,36 @@
     <p class="text-gray-600 mt-1">
       A task tracker. Six rows, nothing feels wrong. Open the panel with
       <kbd class="bg-gray-200 px-1.5 py-0.5 rounded text-xs font-mono">Ctrl + Shift + V</kbd>
-      and investigate alongside the narrative below — every section ends
-      with the exact file and line in <code class="text-xs">devtools-101.js</code>
-      so you can read the source after the devtools shows you where to look.
+      and investigate alongside the narrative below. Surface names in the
+      steps are clickable — click any <span class="dv-link">Inspect</span>,
+      <span class="dv-link">Record</span>, <span class="dv-link">Leaks</span>,
+      <span class="dv-link">Signals</span>, or <span class="dv-link">Query</span>
+      mention and the drawer opens straight to that tab.
     </p>
   </div>
+
+  <script>
+    // Delegate: any <span class="dv-link" data-surface="x"> opens the drawer
+    // on surface x. Also catch bare .dv-link whose text matches a surface.
+    document.addEventListener("click", (e) => {
+      const t = e.target.closest && e.target.closest(".dv-link");
+      if (!t) return;
+      const api = window.__VELIN_DEVTOOLS_COMPANION__;
+      if (!api) return;
+      const surface = (t.dataset.surface || t.textContent || "").trim().toLowerCase();
+      if (["inspect", "record", "leaks", "signals", "query", "explain"].includes(surface)) {
+        api.open(surface === "explain" ? "inspect" : surface);
+      }
+    });
+  </script>
+
+  <style>
+    .dv-link {
+      color: #0ea5e9; cursor: pointer; font-weight: bold;
+      border-bottom: 1px dashed currentColor;
+    }
+    .dv-link:hover { color: #0369a1; }
+  </style>
 
   <!-- ── The app ───────────────────────────────────────────────────── -->
   <div vln-class="'theme-' + theme" class="bg-white rounded-lg border border-gray-300 p-4 mb-6">
@@ -67,7 +92,7 @@
       <summary class="font-medium cursor-pointer">1 — What is really wired to a node?</summary>
       <div class="text-sm mt-2 space-y-2">
         <p>
-          Open <strong>Inspect</strong> on the rail, hit <strong>Pick an element</strong>,
+          Open <span class="dv-link">Inspect</span> on the rail, hit <strong>Pick an element</strong>,
           click any priority badge.
         </p>
         <p>
@@ -93,13 +118,13 @@
       <summary class="font-medium cursor-pointer">2 — The sluggish theme switcher</summary>
       <div class="text-sm mt-2 space-y-2">
         <p>
-          Open <strong>Record</strong>, hit <strong>Record</strong>, toggle the
+          Open <span class="dv-link">Record</span>, hit <span class="dv-link">Record</span>, toggle the
           theme dropdown three times, hit <strong>Stop</strong>.
         </p>
         <p>
           The top row is the badge's <code>vln-class</code> expression. It ran
           3 × (number of visible rows) times. One state change, N re-renders — a
-          sibling fan-out. Click the row to drill into <strong>Explain</strong>:
+          sibling fan-out. Click the row to drill into <span class="dv-link">Explain</span>:
           the <em>reads</em> chips show both <code>theme</code> and
           <code>task.priority</code>; <em>why did this run</em> shows
           <code>theme</code> as the triggering path.
@@ -146,7 +171,7 @@
       <div class="text-sm mt-2 space-y-2">
         <p>
           See the gray <em>N tasks · M done · state size</em> line? Looks like a
-          cheap counter. <strong>Record</strong>, toggle one checkbox,
+          cheap counter. <span class="dv-link">Record</span>, toggle one checkbox,
           <strong>Stop</strong>.
         </p>
         <p>
@@ -184,7 +209,7 @@ get debugLine() {
       <summary class="font-medium cursor-pointer">4 — Mutation loops need batches</summary>
       <div class="text-sm mt-2 space-y-2">
         <p>
-          <strong>Record</strong>, click <strong>✓ all done</strong>,
+          <span class="dv-link">Record</span>, click <strong>✓ all done</strong>,
           <strong>Stop</strong>. The results show <code>filteredTasks</code> and
           <code>debugLine</code> each firing N times, with <em>total</em> ms
           well above a single-run cost. The driver column pins it on
@@ -225,9 +250,9 @@ markAllDone() {
           animation frame.
         </p>
         <p>
-          Click the badge. The <strong>Signals</strong> inbox opens with each
+          Click the badge. The <span class="dv-link">Signals</span> inbox opens with each
           signal explained (what / why / what to do). From any entry you can
-          drill into <strong>Explain</strong> to see the effect's recent runs,
+          drill into <span class="dv-link">Explain</span> to see the effect's recent runs,
           its reads, and the paths that triggered it.
         </p>
         <p class="text-gray-600">
@@ -275,7 +300,7 @@ loadDemo() {
           is gone, no visible residue.
         </p>
         <p>
-          Open <strong>Leaks</strong>, hit <strong>Run scan</strong>.
+          Open <span class="dv-link">Leaks</span>, hit <strong>Run scan</strong>.
           <em>Detached state roots</em> and <em>Detached effects</em> are both
           non-zero and growing with every open+close.
         </p>
@@ -319,7 +344,7 @@ const onKey = (e) =&gt; {
       <summary class="font-medium cursor-pointer">7 — What else watches this path?</summary>
       <div class="text-sm mt-2 space-y-2">
         <p>
-          Open <strong>Query</strong>, path <code>theme</code>,
+          Open <span class="dv-link">Query</span>, path <code>theme</code>,
           <strong>Run</strong>. The results list every effect that would re-run
           if you changed the theme — grouped by node, with its expressions and
           the estimated ms cost. Click a row to drill into Explain.
