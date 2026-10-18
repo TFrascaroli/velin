@@ -551,7 +551,6 @@ function processPlugin(
   nodeState[stateKey + "__ø__lastTriggerID"] = null;
 
   pluginStates.set(node, nodeState);
-  if (__DEV__) console.log("  - Processing plugin", plugin, node);
   try {
     reactiveState.ø__finalizers.push(() => {
       if (plugin.destroy) {
@@ -677,8 +676,6 @@ function processPlugin(
           return normalizedRoot.startsWith(e);
         }))
       : entries;
-    if (deps.length && __DEV__)
-      console.log("Dependencies tracked: " + deps.join(", "));
     if (__DEV__ && /** @type {any} */ (effect).ø__debug) {
       /** @type {any} */ (effect).ø__debug.reads = deps.slice();
     }
@@ -2047,7 +2044,6 @@ function processNode(node, reactiveState) {
   // vln-template plugin registers them into the template store) but their
   // children live in `.content` — a DocumentFragment — so `node.children` is
   // empty and the tree walk below descends into nothing. Safe by design.
-  if (__DEV__) console.log("Processing node", node);
 
   // Track duplicate application per plugin/subcommand (only for real plugins;
   // synthetic error plugins for unknown attributes are intentionally allowed
