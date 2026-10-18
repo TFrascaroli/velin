@@ -858,6 +858,8 @@ describe("Devtools hook — causality + attribution", () => {
     expect(items.cascaded).toBe(0);
     // Unbatched: the binding re-ran once per write.
     expect(items.effects[0].calls).toBe(3);
+    // One binding re-ran three times: batching would save two runs.
+    expect(items.effects[0].distinct).toBe(1);
     expect(g.ownMs).toBeGreaterThanOrEqual(0);
     m.dispose();
   });
@@ -946,6 +948,13 @@ describe("Devtools hook — causality + attribution", () => {
     expect(g.writes.map((w: any) => w.path)).toEqual(["root.tasks[*].done"]);
     expect(g.writes[0].count).toBe(10);
     expect(g.writes[0].cascaded).toBe(0);
+    // Each row's binding re-ran once (nothing to batch away); the shared
+    // counter re-ran once per write.
+    const perRow = g.writes[0].effects.find((e: any) => e.expr === "t.done");
+    expect(perRow.calls).toBe(perRow.distinct);
+    const shared = g.writes[0].effects.find((e: any) => e.expr === "doneCount");
+    expect(shared.distinct).toBe(1);
+    expect(shared.calls).toBe(10);
     m.dispose();
   });
 

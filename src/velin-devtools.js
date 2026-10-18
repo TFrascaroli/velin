@@ -489,9 +489,11 @@
         return root;
       }
       const list = el("div", { class: "sig-list" });
-      for (let i = signalOrder.length - 1; i >= 0; i--) {
-        const entry = signalMap.get(signalOrder[i]);
-        if (!entry) continue;
+      // Newest first by when it happened: a long task is stamped with its
+      // start, so arrival order isn't time order.
+      const ordered = signalOrder.map((k) => signalMap.get(k)).filter(Boolean)
+        .sort((a, b) => (b.sig.t || 0) - (a.sig.t || 0));
+      for (const entry of ordered) {
         const sev = entry.sig.severity === "warn" ? "warn" : "info";
         const item = el("button", { class: `sig-item ${sev}` },
           el("div", { class: "sig-top" },
@@ -554,7 +556,7 @@
       navigate({ surface: "signals", label: label || "Tree", data: { seq, ofCount }, build: buildCausality });
     }
 
-    const fmtRatio = (x) => (x >= 10 ? x.toFixed(0) : x >= 1 ? String(+x.toFixed(1)) : String(+x.toFixed(2)));
+    const fmtRatio = (x) => (x >= 10 ? x.toFixed(0) : x >= 1 ? String(+x.toFixed(1)) : x >= 0.01 ? String(+x.toFixed(2)) : "<0.01");
 
     /** Effect rows shared by the window view and the tree view. */
     function effectTable(effects, writes) {
@@ -594,7 +596,7 @@
         ),
         el("div", { class: "split-legend" },
           el("span", null, el("i", { class: "sw velin" }), `your handlers + bindings ${fmtMs(velinMs)}`),
-          w.overheadMs >= 1 ? el("span", { title: "Time the devtools hook spent recording this trace." }, el("i", { class: "sw overhead" }), `devtools ${fmtMs(w.overheadMs)}`) : null,
+          w.overheadMs >= 1 ? el("span", { title: "Time the dev build's instrumentation spent recording. It runs whether or not the drawer is open; production builds don't have it." }, el("i", { class: "sw overhead" }), `recording ${fmtMs(w.overheadMs)}`) : null,
           el("span", null, el("i", { class: "sw other" }), `other ${fmtMs(w.otherMs)}`),
         ),
       ));
@@ -629,7 +631,7 @@
             ? el("span", { title: "The handler's own JavaScript plus Velin's work applying its writes and dispatching effects." },
                 g.origin === "mount" ? `building the DOM ${fmtMs(g.ownMs)} · ` : `handler + dispatch ${fmtMs(g.ownMs)} · `)
             : "",
-          `${g.writeCount} write${g.writeCount === 1 ? "" : "s"} · bindings ${fmtMs(g.effectsMs)}`,
+          g.writeCount ? `${g.writeCount} write${g.writeCount === 1 ? "" : "s"} · bindings ${fmtMs(g.effectsMs)}` : "no state written",
         ));
         if (g.kind === "handler" && !g.writeCount && g.origin === "handler") {
           grp.appendChild(el("div", { class: "advice" },
@@ -653,12 +655,19 @@
               }, "tree ›") : null,
             ),
           );
-          const maxRuns = wr.effects.reduce((m, e) => Math.max(m, e.calls), 0);
-          if (roots > 1 && maxRuns >= roots) {
+          // Batching only removes repeat runs of the same binding. Estimate
+          // that from distinct bindings vs. runs; never promise more.
+          let repeats = 0, savedMs = 0;
+          for (const e of wr.effects) {
+            if (e.distinct == null || e.calls <= e.distinct) continue;
+            repeats += e.calls - e.distinct;
+            savedMs += e.selfMs * (e.calls - e.distinct) / e.calls;
+          }
+          if (roots > 1 && repeats > 0) {
             row.appendChild(el("div", { class: "advice" },
-              `Written ${roots}× and its effects re-ran on every write. Wrapping the writes in `,
+              `Written ${roots}× in one go, and the same bindings re-ran after each write. Wrapping the writes in `,
               el("code", null, "Velin.getController(this).batch(() => …)"),
-              ` runs them once.`));
+              ` would skip about ${repeats} repeat runs, roughly ${fmtMs(savedMs)} of ${fmtMs(wr.ms)}.`));
           }
           row.appendChild(effectTable(wr.effects, wr.count));
           grp.appendChild(row);
@@ -1033,16 +1042,16 @@
         ));
         info.recentRuns.forEach((r, i) => {
           const self = r.selfMs ?? r.durationMs ?? 0;
-          const total = r.durationMs || 0;
-          // Inclusive time only differs when the run wrote state and
-          // cascaded; show it so the gap is explainable.
-          const cascaded = total - self > 0.05;
+          const cascadeMs = r.cascadeMs || 0;
+          // Only when the run wrote state and those writes re-ran other
+          // bindings; devtools overhead is excluded.
+          const cascaded = cascadeMs > 0.05;
           table.appendChild(el("tr", null,
             el("td", { class: "num" }, String(i + 1)),
             el("td", { class: "dim" }, fmtAgo(r.t)),
             el("td", { class: "expr-cell" }, fmtPath(r.path) || "—"),
-            el("td", { class: "num", title: cascaded ? `${total.toFixed(2)}ms including the writes it cascaded into` : null },
-              self.toFixed(2) + "ms" + (cascaded ? ` (+${(total - self).toFixed(1)} in writes it made)` : "")),
+            el("td", { class: "num" },
+              self.toFixed(2) + "ms" + (cascaded ? ` (+${cascadeMs.toFixed(1)} in writes it made)` : "")),
           ));
         });
         root.appendChild(table);
