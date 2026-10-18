@@ -300,7 +300,7 @@ const DefaultPluginPriorities = {
  * @property {CleanupState} cleanupState
  * @property {ProcessNode} processNode
  * @property {Trackers} trackers
- * @property {(state: any) => VelinStateControl} getController Returns the scheduler control for a bound state (as returned by Velin.bind()). Use `.batch(fn)` on the result to batch effects across mutations.
+ * @property {(state: any) => VelinStateControl} getController Returns the scheduler control for a bound state (the object returned by Velin.bind(), or `this` inside a state method). Use `.batch(fn)` on the result to batch effects across mutations.
  * @property {VelinInternal} ø__internal
  */
 
@@ -315,6 +315,10 @@ const pluginStates = new WeakMap();
 // collapses to `wrapper.ø__enclosing != null`. Cleaned states are deleted.
 /** @type {WeakMap<object, ReactiveState>} */
 const states = new WeakMap();
+// Per-evaluation scope proxies (what `this` is inside a state method called
+// from a directive) answer this symbol with their wrapper, so APIs that take
+// "a state" accept them too. Never enumerable, never user-visible.
+const ø__SCOPE = Symbol("velin.scope");
 
 if (__DEV__) {
   // eslint-disable-next-line
@@ -1290,6 +1294,7 @@ function evaluateAst(ast, reactiveState) {
   //   - dev-mode case-mismatch warning
   const contextualizedProxy = new Proxy(reactiveState.state, {
     get(target, prop, receiver) {
+      if (prop === ø__SCOPE) return reactiveState;
       const value = Reflect.get(target, prop, receiver);
       if (
         __DEV__ &&
@@ -1497,15 +1502,23 @@ function triggerEffects(prop, reactiveState, mutationSeq) {
 }
 
 /**
- * Returns the scheduler control for a bound state (as returned by Velin.bind()).
+ * Returns the scheduler control for a bound state: the object returned by
+ * Velin.bind(), or `this` inside a state method called from a directive.
+ * Composed scopes share their root's controller, so batching from inside a
+ * vln-loop row or a vln-on handler batches the whole tree.
  * Callers use `.batch(fn)` on the result to coalesce effects across mutations.
  * @param {any} state
  * @returns {VelinStateControl}
  */
 function getController(state) {
-  const wrapper = states.get(state);
-  if (!wrapper || wrapper.ø__enclosing) {
-    throw new Error("[Velin] getController: argument is not a state returned by Velin.bind().");
+  const wrapper = state && typeof state === "object"
+    ? (states.get(state) || /** @type {any} */ (state)[ø__SCOPE])
+    : null;
+  if (!wrapper) {
+    throw new Error("[Velin] getController: argument is not a Velin state. Pass the object returned by Velin.bind(), or `this` inside a state method.");
+  }
+  if (!wrapper.ø__control) {
+    throw new Error("[Velin] getController: this scope was torn down (its element was removed or the state unbound).");
   }
   return wrapper.ø__control;
 }

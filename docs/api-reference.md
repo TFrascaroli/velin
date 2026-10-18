@@ -126,6 +126,49 @@ const vln = Velin.bind(root, {
 });
 ```
 
+#### Batching writes
+
+Every write re-renders what depends on it right away. When a method makes
+many writes in a row, batch them so the page re-renders once at the end:
+
+```javascript
+const vln = Velin.bind(root, {
+  tasks: [],
+
+  markAllDone() {
+    Velin.getController(this).batch(() => {
+      for (const t of this.tasks) t.done = true;
+    });
+  }
+});
+```
+
+### `Velin.getController(state)`
+
+Returns the controller for a bound state. Accepts the object returned by
+`Velin.bind()` or `this` inside a state method, including methods called
+from inside a `vln-loop` row. Its one method:
+
+- `batch(fn)`: runs `fn`; every write inside it is applied immediately,
+  but dependent bindings re-render once, after `fn` returns. Batches nest.
+
+Throws if the argument isn't a Velin state, or if it's a `this` captured
+from a handler that has already finished.
+
+### `Velin.unbind(state)`
+
+Tears down a state returned by `Velin.bind()`: stops every binding,
+removes nested scopes, and runs each directive's cleanup. Safe to call
+twice. Use it when you remove a bound subtree yourself (a modal you built
+and attached, a widget you mount and unmount).
+
+```javascript
+const modal = Velin.bind(overlay, { /* … */ });
+// later
+Velin.unbind(modal);
+overlay.remove();
+```
+
 ---
 
 ## Advanced APIs
@@ -462,6 +505,9 @@ Velin uses error codes in console messages:
 - `[VLN012]`: Multiple plugins on the same node attempted to create a scoped state
 - `[VLN013]`: Duplicate plugin application
 - `[VLN014]`: Async mutation attempted after cleanup
+- `[VLN020]`: Keyed `vln-loop` item is missing its key property
+- `[VLN021]`: Keyed `vln-loop` has two items with the same key
+- `[VLN022]`: Unkeyed `vln-loop` moved items between rows (dev builds only; key the loop, see [vln-loop](./directives.md#vln-loop))
 
 ## TypeScript Support
 
