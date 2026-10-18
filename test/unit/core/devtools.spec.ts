@@ -34,7 +34,7 @@ describe("Devtools hook (D1)", () => {
     for (const fn of [
       "explainNode", "resolvePath", "substatesUnder", "dependentsOf",
       "hotspots", "explainEffect", "leaks",
-      "currentFrameMutations", "onSignal",
+      "currentFrameMutations", "onSignal", "causalityTree",
     ]) {
       expect(typeof hook[fn], fn).toBe("function");
     }
@@ -695,21 +695,44 @@ describe("Devtools hook — onSignal", () => {
     expect(signals[0].dismissKey).toBe(signals[1].dismissKey); // stable
   });
 
-  it("delivers 'long-effect' when a synthetic effect emit exceeds the threshold", () => {
+  it("does not deliver a per-effect long-effect signal (dropped in favor of longtask)", () => {
     const signals: any[] = [];
-    const off = getHook().onSignal((s: any) => s.kind === "long-effect" && signals.push(s));
-    getHook().ø__emit({ kind: "effect", expr: "slow", durationMs: 50 });
+    const off = getHook().onSignal((s: any) => signals.push(s));
+    getHook().ø__emit({ kind: "effect", expr: "slow", durationMs: 500 });
     off();
-    expect(signals.length).toBe(1);
-    expect(signals[0].payload.expr).toBe("slow");
-    expect(signals[0].dismissKey).toContain("slow");
+    expect(signals.find((s: any) => s.kind === "long-effect")).toBeUndefined();
   });
 
-  it("delivers 'thrash' when a path crosses the frame mutation threshold", () => {
+  it("thrash ignores batched writes and writes nobody watches", () => {
+    const signals: any[] = [];
+    const off = getHook().onSignal((s: any) => s.kind === "thrash" && signals.push(s));
+    const div = document.createElement("div");
+    div.innerHTML = '<i vln-text="items.length"></i>';
+    const s = Velin.bind(div, { items: [] as number[], unwatched: 0 });
+    Velin.getController(s).batch(() => { for (let i = 0; i < 50; i++) s.items.push(i); });
+    for (let i = 0; i < 50; i++) s.unwatched = i + 1;
+    off();
+    Velin.unbind(s);
+    expect(signals).toEqual([]);
+  });
+
+  it("thrash fires for an unbatched write loop on a watched path", () => {
+    const signals: any[] = [];
+    const off = getHook().onSignal((s: any) => s.kind === "thrash" && signals.push(s));
+    const div = document.createElement("div");
+    div.innerHTML = '<i vln-text="items.length"></i>';
+    const s = Velin.bind(div, { items: [] as number[] });
+    for (let i = 0; i < 50; i++) s.items.push(i);
+    off();
+    Velin.unbind(s);
+    expect(signals.map((x) => x.payload.path)).toContain("root.items");
+  });
+
+  it("delivers 'thrash' when a path crosses the frame flush threshold", () => {
     const signals: any[] = [];
     const off = getHook().onSignal((s: any) => s.kind === "thrash" && signals.push(s));
     for (let i = 0; i < 40; i++) {
-      getHook().ø__emit({ kind: "mutate", path: "root.thrashy", op: "set" });
+      getHook().ø__emit({ kind: "trigger", path: "root.thrashy", effectCount: 1, queued: false });
     }
     off();
     // The core code emits W003 once per frame at count === LIMIT+1 (33).
@@ -725,5 +748,197 @@ describe("Devtools hook — onSignal", () => {
     offA(); offB();
     expect(a.length).toBe(1);
     expect(b.length).toBe(1);
+  });
+});
+
+// ─── Cascade attribution: parent links, self time, handlers, windows ──────
+
+const burn = (ms: number) => { const s = performance.now(); while (performance.now() - s < ms); };
+
+function mount(html: string, state: any) {
+  const div = document.createElement("div");
+  div.innerHTML = html;
+  document.body.appendChild(div);
+  const bound = Velin.bind(div, state);
+  return { div, bound, dispose: () => { Velin.unbind(bound); div.remove(); } };
+}
+
+describe("Devtools hook — causality + attribution", () => {
+  beforeEach(() => getHook().ø__resetAggregators());
+
+  it("tags a mutate emitted inside a running effect with the running mutationSeq as parent", () => {
+    const hook = getHook();
+    const a = hook.ø__emit({ kind: "mutate", path: "root.a", op: "set" });
+    hook.ø__pushRunning(a.mutationSeq);
+    try {
+      const b = hook.ø__emit({ kind: "mutate", path: "root.b", op: "set" });
+      expect(b.parentMutationSeq).toBe(a.mutationSeq);
+    } finally {
+      hook.ø__popRunning();
+    }
+    const c = hook.ø__emit({ kind: "mutate", path: "root.c", op: "set" });
+    expect(c.parentMutationSeq).toBeNull();
+  });
+
+  it("links a real vln-watch chain and reports exclusive time without double counting", () => {
+    let S: any;
+    const m = mount(
+      '<span vln-text="c"></span><i vln-watch:ona="a"></i><i vln-watch:onb="b"></i>',
+      {
+        a: 0, b: 0, c: 0,
+        ona(v: number) { if (!v) return; burn(15); S.b = v * 10; },
+        onb(v: number) { if (!v) return; burn(20); S.c = v * 10; },
+      },
+    );
+    S = m.bound;
+    const t0 = performance.now();
+    S.a = 1;
+    const wall = performance.now() - t0;
+
+    const hook = getHook();
+    const rootSeq = [...hook.log].reverse().find((e: any) => e.kind === "mutate" && e.path === "root.a").mutationSeq;
+    const tree = hook.causalityTree(rootSeq);
+    expect(tree.children.map((c: any) => c.path)).toEqual(["root.b"]);
+    expect(tree.children[0].children.map((c: any) => c.path)).toEqual(["root.c"]);
+
+    // Watcher a's own cost is ~15ms, not 15 + 20 (b's cascade runs inside it).
+    const watchA = tree.effects.find((e: any) => e.pluginName === "watch");
+    expect(watchA.selfMs).toBeGreaterThanOrEqual(14);
+    expect(watchA.selfMs).toBeLessThan(25);
+    // The whole tree can't cost more than the wall time it took.
+    expect(tree.subtreeMs).toBeLessThanOrEqual(wall + 1);
+    expect(tree.subtreeMs).toBeGreaterThanOrEqual(34);
+    m.dispose();
+  });
+
+  it("keeps the cascade after the raw log has turned over", () => {
+    const hook = getHook();
+    hook.setLogCapacity(5);
+    const m = mount('<b vln-loop:x="items"><i vln-text="x.n"></i></b>', { items: [{ n: 1 }, { n: 2 }, { n: 3 }] });
+    m.bound.items.push({ n: 4 });
+    const push = hook.explainWindow(0, Infinity).groups.flatMap((g: any) => g.writes).find((w: any) => w.path === "root.items");
+    expect(push).toBeDefined();
+    const tree = hook.causalityTree(push.heaviest.mutationSeq);
+    expect(tree.effects.length).toBeGreaterThan(0);
+    hook.setLogCapacity(500);
+    m.dispose();
+  });
+
+  it("groups repeated bindings by directive + expression with a run count", () => {
+    const m = mount('<b vln-loop:x="items"><i vln-text="x.n"></i></b>', {
+      items: Array.from({ length: 5 }, (_, i) => ({ n: i })),
+    });
+    const hook = getHook();
+    hook.ø__resetAggregators();
+    m.bound.items.push({ n: 99 });
+    const seq = [...hook.log].reverse().find((e: any) => e.kind === "mutate" && e.path === "root.items").mutationSeq;
+    const tree = hook.causalityTree(seq);
+    const keys = tree.effects.map((e: any) => `${e.pluginName}|${e.expr}`);
+    expect(new Set(keys).size).toBe(keys.length);
+    for (const e of tree.effects) expect(e.calls).toBeGreaterThanOrEqual(1);
+    m.dispose();
+  });
+
+  it("attributes writes to the vln-on handler that made them", () => {
+    const m = mount('<button vln-on:click="load()">go</button><i vln-text="items.length"></i>', {
+      items: [] as any[],
+      load() { for (let i = 0; i < 3; i++) this.items.push(i); this.n = 1; },
+      n: 0,
+    });
+    const hook = getHook();
+    hook.ø__resetAggregators();
+    const t0 = performance.now();
+    m.div.querySelector("button")!.dispatchEvent(new Event("click"));
+    const w = hook.explainWindow(t0, performance.now());
+    const g = w.groups.find((x: any) => x.kind === "handler");
+    expect(g.label).toBe("load()");
+    expect(g.writeCount).toBe(4);
+    const items = g.writes.find((x: any) => x.path === "root.items");
+    expect(items.count).toBe(3);
+    expect(items.cascaded).toBe(0);
+    // Unbatched: the binding re-ran once per write.
+    expect(items.effects[0].calls).toBe(3);
+    expect(g.ownMs).toBeGreaterThanOrEqual(0);
+    m.dispose();
+  });
+
+  it("a batched handler re-runs bindings once", () => {
+    const m = mount('<button vln-on:click="load()">go</button><i vln-text="items.length"></i>', {
+      items: [] as any[],
+      load() { Velin.getController(this).batch(() => { for (let i = 0; i < 3; i++) this.items.push(i); }); },
+    });
+    const hook = getHook();
+    hook.ø__resetAggregators();
+    const t0 = performance.now();
+    m.div.querySelector("button")!.dispatchEvent(new Event("click"));
+    const g = hook.explainWindow(t0, performance.now()).groups.find((x: any) => x.kind === "handler");
+    const items = g.writes.find((x: any) => x.path === "root.items");
+    expect(items.count).toBe(3);
+    expect(items.effects.reduce((n: number, e: any) => n + e.calls, 0)).toBe(1);
+    m.dispose();
+  });
+
+  it("attributes vln-input writes to their setter", () => {
+    const m = mount('<input vln-input="filter"><i vln-text="filter"></i>', { filter: "" });
+    const hook = getHook();
+    hook.ø__resetAggregators();
+    const input = m.div.querySelector("input")!;
+    input.value = "abc";
+    const t0 = performance.now();
+    input.dispatchEvent(new Event("input"));
+    const g = hook.explainWindow(t0, performance.now()).groups.find((x: any) => x.kind === "handler");
+    expect(g.label).toBe("filter = …");
+    expect(g.writes[0].path).toBe("root.filter");
+    m.dispose();
+  });
+
+  it("groups writes made outside any handler as untracked", () => {
+    const m = mount('<i vln-text="n"></i>', { n: 0 });
+    const hook = getHook();
+    hook.ø__resetAggregators();
+    const t0 = performance.now();
+    m.bound.n = 5;
+    const w = hook.explainWindow(t0, performance.now());
+    expect(w.groups.length).toBe(1);
+    expect(w.groups[0].kind).toBe("untracked");
+    expect(w.groups[0].writes[0].path).toBe("root.n");
+    expect(w.otherMs).toBeGreaterThanOrEqual(0);
+    m.dispose();
+  });
+
+  it("causalityTree returns null for an unknown mutationSeq", () => {
+    expect(getHook().causalityTree(99999)).toBeNull();
+    expect(getHook().causalityTree(0)).toBeNull();
+  });
+});
+
+describe("Devtools hook — signal hygiene", () => {
+  beforeEach(() => getHook().ø__resetAggregators());
+
+  it("stamps every signal with a time", () => {
+    const got: any[] = [];
+    const off = getHook().onSignal((s: any) => got.push(s));
+    getHook().ø__emit({ kind: "warn", code: "W-T", message: "x" });
+    off();
+    expect(typeof got[0].t).toBe("number");
+  });
+
+  it("does not mirror W003 into the inbox (thrash already covers it)", () => {
+    const got: any[] = [];
+    const off = getHook().onSignal((s: any) => got.push(s));
+    for (let i = 0; i < 40; i++) getHook().ø__emit({ kind: "trigger", path: "root.hot", effectCount: 1, queued: false });
+    off();
+    expect(got.some((s) => s.kind === "thrash")).toBe(true);
+    expect(got.some((s) => s.kind === "warn" && s.payload.code === "W003")).toBe(false);
+  });
+
+  it("no longer emits W002 slow-expression", () => {
+    const m = mount('<button vln-on:click="slow()">x</button>', { slow() { burn(25); } });
+    const events: any[] = [];
+    const off = getHook().subscribe((e: any) => events.push(e));
+    m.div.querySelector("button")!.dispatchEvent(new Event("click"));
+    off();
+    expect(events.some((e) => e.kind === "warn" && e.code === "W002")).toBe(false);
+    m.dispose();
   });
 });

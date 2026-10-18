@@ -36,11 +36,11 @@
       <input vln-input="filter" placeholder="filter tasks…" class="flex-1 px-2 py-1 border rounded text-sm" />
       <button vln-on:click="addTask()"     class="px-3 py-1 bg-blue-500   text-white rounded text-sm">+ add</button>
       <button vln-on:click="markAllDone()" class="px-3 py-1 bg-emerald-600 text-white rounded text-sm">✓ all done</button>
-      <button vln-on:click="loadDemo()"    class="px-3 py-1 bg-gray-500   text-white rounded text-sm">load 500</button>
+      <button vln-on:click="loadDemo()"    class="px-3 py-1 bg-gray-500   text-white rounded text-sm">load 100</button>
     </div>
 
     <ul class="divide-y divide-gray-100 max-h-72 overflow-y-auto border border-gray-100 rounded">
-      <li vln-loop:task="filteredTasks" class="flex items-center gap-3 px-3 py-2 hover:bg-gray-50">
+      <li vln-loop:task="{ collection: filteredTasks, key: 'id' }" class="flex items-center gap-3 px-3 py-2 hover:bg-gray-50">
         <input type="checkbox" vln-input="task.done" />
         <span
           vln-text="task.priority"
@@ -118,14 +118,14 @@
           <strong>Root cause:</strong> the <code>theme-badge-X</code> class is
           stamped on every row because, in the moment of writing the template,
           it was easier to compose the class string than to think about CSS
-          cascade (<code>devtools-101.html</code> line 36). The theme is a
+          cascade (the badge's <code>vln-class</code> in <code>devtools-101.html</code>). The theme is a
           single switch sitting on an ancestor already — nothing downstream
           needs to re-read it.
           <strong>Fix:</strong> delete the per-row theme class entirely and
           let CSS inherit from the parent. One reactive dep on the container,
           zero on the rows:
         </p>
-<pre class="text-xs bg-red-50 border border-red-200 rounded p-2 overflow-auto"><span class="text-red-700 font-bold">// before — devtools-101.html line 37</span>
+<pre class="text-xs bg-red-50 border border-red-200 rounded p-2 overflow-auto"><span class="text-red-700 font-bold">// before — priority badge, devtools-101.html</span>
 &lt;span vln-class="'priority-' + task.priority + ' theme-badge-' + theme"&gt;&lt;/span&gt;
 
 <span class="text-red-700 font-bold">/* and the CSS */</span>
@@ -168,14 +168,14 @@
         </p>
         <p class="text-gray-600">
           <strong>Root cause:</strong> <code>JSON.stringify(this.tasks)</code>
-          inside the getter (<code>devtools-101.js</code> line 41). Velin's
+          inside <code>get debugLine()</code> (<code>devtools-101.js</code>). Velin's
           tracker records every property observed during the getter run —
           <code>stringify</code> walks everything, so the effect takes a dep on
           everything.
           <strong>Fix:</strong> compute what you'll actually display, nothing
           more:
         </p>
-<pre class="text-xs bg-red-50 border border-red-200 rounded p-2 overflow-auto"><span class="text-red-700 font-bold">// before — devtools-101.js line 40</span>
+<pre class="text-xs bg-red-50 border border-red-200 rounded p-2 overflow-auto"><span class="text-red-700 font-bold">// before — get debugLine(), devtools-101.js</span>
 get debugLine() {
   const serialized = JSON.stringify(this.tasks);
   const doneCount  = this.tasks.filter((t) =&gt; t.done).length;
@@ -195,14 +195,14 @@ get debugLine() {
       <div class="text-sm mt-2 space-y-2">
         <p>
           <span class="dv-link">Record</span>, click <strong>✓ all done</strong>,
-          <strong>Stop</strong>. The results show <code>filteredTasks</code> and
+          <strong>Stop</strong>. The results show the task loop and
           <code>debugLine</code> each firing N times, with <em>total</em> ms
           well above a single-run cost. The driver column pins it on
           <code>tasks[i].done</code>, N distinct paths.
         </p>
         <p>
           The source is a plain <code>for</code> loop assigning
-          <code>t.done = true</code> (<code>devtools-101.js</code> line 59).
+          <code>t.done = true</code> (<code>markAllDone()</code> in <code>devtools-101.js</code>).
           Nothing <em>looks</em> wrong. The problem is that each assignment
           synchronously flushes every dependent effect — so N writes =
           N × every-effect-that-reads-tasks.
@@ -211,7 +211,7 @@ get debugLine() {
           <strong>Fix:</strong> wrap the loop in a <code>batch()</code>. The
           mutations still happen one by one, but effects run once at the end:
         </p>
-<pre class="text-xs bg-red-50 border border-red-200 rounded p-2 overflow-auto"><span class="text-red-700 font-bold">// before — devtools-101.js line 57</span>
+<pre class="text-xs bg-red-50 border border-red-200 rounded p-2 overflow-auto"><span class="text-red-700 font-bold">// before — markAllDone(), devtools-101.js</span>
 markAllDone() {
   for (const t of this.tasks) t.done = true;
 }</pre>
@@ -224,53 +224,64 @@ markAllDone() {
       </div>
     </details>
 
-    <!-- Step 5: Signals + Explain — thrash on an unbatched insert loop -->
+    <!-- Step 5: Signals — long task attributed to an unbatched insert loop -->
     <details class="border rounded p-3">
-      <summary class="font-medium cursor-pointer">5 — Signals catch the same bug at scale</summary>
+      <summary class="font-medium cursor-pointer">5 — Long tasks: what ran while the page froze</summary>
       <div class="text-sm mt-2 space-y-2">
         <p>
-          Click <strong>load 500</strong>. The UI hangs for a beat and the badge
-          in the corner tints amber: the hook emitted a <code>thrash</code>
-          signal because <code>tasks</code> was mutated more than 32× in one
-          animation frame.
+          Click <strong>load 100</strong>. The page freezes for about a second
+          and the badge in the corner turns amber.
         </p>
         <p>
-          Click the badge. The <span class="dv-link">Signals</span> inbox opens with each
-          signal explained (what / why / what to do). From any entry you can
-          drill into <span class="dv-link">Explain</span> to see the effect's recent runs,
-          its reads, and the paths that triggered it.
+          Open <span class="dv-link">Signals</span>. The top entry reads
+          <code>…ms blocked · loadDemo()</code>: the browser measured a long
+          task, and the hook names the handler that ran during it. Open it.
+        </p>
+        <p>
+          The bar splits the freeze into your code, devtools bookkeeping, and
+          everything else. Under <code>loadDemo()</code> you get its 200 writes
+          grouped by path. <code>tasks ×100</code> carries a warning: written
+          100 times, and its bindings re-ran on every write. The table lists
+          those bindings. Read the <strong>runs/write</strong> column: the task
+          loop re-rendered once per push, and each row binding ran about 56
+          times per push. Every push re-rendered every row already on screen.
+          <strong>tree ›</strong> opens a single push's cascade, and any
+          binding opens in <span class="dv-link">Explain</span>.
         </p>
         <p class="text-gray-600">
-          <strong>Root cause:</strong> <code>loadDemo</code> is exactly the
-          same shape as the pre-fix <code>markAllDone</code> from step 4 — a
-          plain loop doing 500 synchronous writes
-          (<code>devtools-101.js</code> line 65). Every push re-runs every
-          effect that reads <code>tasks</code>: the loop re-renders,
-          <code>debugLine</code> re-serializes, every row's vln-loop recomputes.
-          <strong>Fix:</strong> the same batch pattern:
+          <strong>Root cause:</strong> <code>loadDemo()</code> has the same
+          shape as the pre-fix <code>markAllDone()</code> from step 4: a plain
+          loop of 100 synchronous pushes, each flushing everything that reads
+          <code>tasks</code>.
+          <strong>Fix:</strong> the same batch:
         </p>
-<pre class="text-xs bg-red-50 border border-red-200 rounded p-2 overflow-auto"><span class="text-red-700 font-bold">// before — devtools-101.js line 63</span>
+<pre class="text-xs bg-red-50 border border-red-200 rounded p-2 overflow-auto"><span class="text-red-700 font-bold">// before — loadDemo(), devtools-101.js</span>
 loadDemo() {
   const start = this.tasks.length;
-  for (let i = 0; i &lt; 500; i++) {
+  for (let i = 0; i &lt; 100; i++) {
     this.tasks.push({ id: this.nextId++, title: rndTitle(start + i), ... });
   }
 }</pre>
-<pre class="text-xs bg-emerald-50 border border-emerald-200 rounded p-2 overflow-auto"><span class="text-emerald-700 font-bold">// after — one flush instead of 500</span>
+<pre class="text-xs bg-emerald-50 border border-emerald-200 rounded p-2 overflow-auto"><span class="text-emerald-700 font-bold">// after — one flush instead of 100</span>
 loadDemo() {
   Velin.getController(this).batch(() =&gt; {
     const start = this.tasks.length;
-    for (let i = 0; i &lt; 500; i++) {
+    for (let i = 0; i &lt; 100; i++) {
       this.tasks.push({ id: this.nextId++, title: rndTitle(start + i), ... });
     }
   });
 }</pre>
+        <p class="text-gray-600">
+          Apply it, click <strong>load 100</strong> again, and compare the two
+          long-task entries. The batched one shows the loop running once. What
+          remains is the cost of building 100 new rows. The
+          <code>thrash</code> entry for <code>tasks</code> also stops
+          appearing: thrash only counts writes that re-ran effects.
+        </p>
         <p class="text-gray-600 italic">
-          The lesson: Signals are a passive tripwire. You don't have to Record,
-          you don't have to go looking — when something crosses a threshold
-          (thrash, long-effect, orphan-spike) the badge counts it and the inbox
-          explains it. In practice this catches the same class of bug step 4
-          taught, but surfaces it without you remembering to look.
+          The lesson: Signals is a passive tripwire. You don't have to remember
+          to Record. When the page freezes, the entry says which handler ran,
+          which writes it made, and what each write cost.
         </p>
       </div>
     </details>
