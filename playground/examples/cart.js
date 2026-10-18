@@ -7,6 +7,8 @@ export default function() {
       { id: 4, name: 'Thingamajig', price: 24.99 }
     ],
     cart: [],
+    // Each cart line gets its own id: the same product can be added twice.
+    nextLine: 1,
 
     // Computed total - automatically updates when cart changes
     get total() {
@@ -14,7 +16,7 @@ export default function() {
     },
 
     addToCart(product) {
-      this.cart.push({ ...product });
+      this.cart.push({ ...product, lineId: this.nextLine++ });
     },
 
     removeFromCart(item) {
