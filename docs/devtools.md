@@ -75,9 +75,10 @@ warnings. Entries persist for the session.
 
 Open a `long-task` entry to see what ran while the page was frozen:
 
-- **The bar** splits the task into your handlers and bindings, devtools'
-  own bookkeeping, and everything else (layout, garbage collection, other
-  scripts).
+- **The bar** splits the task into your handlers and bindings,
+  **recording** (the dev build's instrumentation, which runs whether or
+  not the drawer is open), and everything else (layout, garbage
+  collection, other scripts).
 - **Each entry point** is tagged: **handler** (`vln-on`), **input**
   (`vln-input`), or **mount** (`Velin.bind` building the page). It shows
   the time spent in it and in Velin applying its writes, then its writes
@@ -85,9 +86,11 @@ Open a `long-task` entry to see what ran while the page was frozen:
   (`tasks[*].done`). A handler that wrote nothing still shows up, with its
   time as its own JavaScript.
 - **Each write** lists the bindings it re-ran: **runs** in total and
-  **/write** (per write). Far above 1 per write means one write re-rendered many
-  elements. A write repeated in a loop whose bindings re-ran every time
-  gets a batch suggestion.
+  **/write** (per write). Far above 1 per write means one write
+  re-rendered many elements. When the same bindings re-ran after each of
+  several writes, you get a batch suggestion with an estimate of what
+  batching would save. Writes that each re-ran a *different* binding
+  (one row each) don't get one: batching wouldn't help.
 - **tree ›** opens the cascade of the costliest single write to that path:
   the bindings it re-ran, and any writes those bindings made in turn.
 - Any binding opens in Explain.
@@ -103,8 +106,8 @@ code that writes state directly) are grouped under **outside handlers**.
 
 - Everything is measured on a development build, which does extra
   checking on every binding and is several times slower than production
-  for binding-heavy work. The bar's "devtools" slice is only the recording
-  itself. Compare measurements with each other, not with production.
+  for binding-heavy work. The bar's "recording" slice is only the
+  instrumentation itself. Compare measurements with each other, not with production.
 - Cascades come from the last 2000 writes. A long task older than that
   says it's partial.
 - Writes in an `async` handler after its first `await` are attributed to
