@@ -186,6 +186,11 @@ get debugLine() {
   const doneCount = this.tasks.filter((t) =&gt; t.done).length;
   return `${this.tasks.length} tasks · ${doneCount} done`;
 }</pre>
+        <p class="text-gray-500 text-xs">
+          Known Velin bug: the count doesn't notice checkbox changes on tasks
+          added after the page loaded (<strong>load 100</strong>, then tick a new
+          task). It's not in this code, and it's being fixed.
+        </p>
       </div>
     </details>
 
@@ -195,10 +200,10 @@ get debugLine() {
       <div class="text-sm mt-2 space-y-2">
         <p>
           <span class="dv-link">Record</span>, click <strong>✓ all done</strong>,
-          <strong>Stop</strong>. The results show the task loop and
-          <code>debugLine</code> each firing N times, with <em>total</em> ms
-          well above a single-run cost. The driver column pins it on
-          <code>tasks[i].done</code>, N distinct paths.
+          <strong>Stop</strong>. <code>debugLine</code> ran once per task you
+          completed, and so did each of those rows' checkbox and strike-through
+          bindings. The driver column pins it on <code>tasks[i].done</code>: one
+          write per task, each flushed on its own.
         </p>
         <p>
           The source is a plain <code>for</code> loop assigning

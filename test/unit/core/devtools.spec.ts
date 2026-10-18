@@ -906,6 +906,49 @@ describe("Devtools hook — causality + attribution", () => {
     m.dispose();
   });
 
+  it("attributes a handler that burns time without writing", () => {
+    const m = mount('<button vln-on:click="slow()">x</button>', { slow() { burn(5); } });
+    const hook = getHook();
+    hook.ø__resetAggregators();
+    const t0 = performance.now();
+    m.div.querySelector("button")!.dispatchEvent(new Event("click"));
+    const g = hook.explainWindow(t0, performance.now()).groups.find((x: any) => x.label === "slow()");
+    expect(g).toBeDefined();
+    expect(g.writeCount).toBe(0);
+    expect(g.ownMs).toBeGreaterThanOrEqual(4);
+    m.dispose();
+  });
+
+  it("attributes the initial render to Velin.bind as a mount", () => {
+    const hook = getHook();
+    hook.ø__resetAggregators();
+    const t0 = performance.now();
+    const div = document.createElement("div");
+    div.id = "mnt";
+    div.innerHTML = '<b vln-loop:x="items"><i vln-text="x"></i></b>';
+    const s = Velin.bind(div, { items: Array.from({ length: 200 }, (_, i) => i) });
+    const g = hook.explainWindow(t0, performance.now()).groups.find((x: any) => x.origin === "mount");
+    expect(g).toBeDefined();
+    expect(g.label).toBe("Velin.bind(<div#mnt>)");
+    Velin.unbind(s);
+  });
+
+  it("groups writes to every item of a list under one path pattern", () => {
+    const m = mount(
+      '<button vln-on:click="all()">x</button><b vln-loop:t="tasks"><i vln-text="t.done"></i></b><u vln-text="doneCount"></u>',
+      { tasks: Array.from({ length: 10 }, () => ({ done: false })), get doneCount() { return this.tasks.filter((t: any) => t.done).length; }, all() { for (const t of this.tasks) t.done = true; } },
+    );
+    const hook = getHook();
+    hook.ø__resetAggregators();
+    const t0 = performance.now();
+    m.div.querySelector("button")!.dispatchEvent(new Event("click"));
+    const g = hook.explainWindow(t0, performance.now()).groups.find((x: any) => x.label === "all()");
+    expect(g.writes.map((w: any) => w.path)).toEqual(["root.tasks[*].done"]);
+    expect(g.writes[0].count).toBe(10);
+    expect(g.writes[0].cascaded).toBe(0);
+    m.dispose();
+  });
+
   it("causalityTree returns null for an unknown mutationSeq", () => {
     expect(getHook().causalityTree(99999)).toBeNull();
     expect(getHook().causalityTree(0)).toBeNull();
