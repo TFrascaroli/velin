@@ -20,10 +20,14 @@ const AGG_PATH_CAP = 512;
 // Mutation seq → path lookup ring. Bounds memory while giving hotspots
 // enough history to correlate effects with their driving mutation.
 const MUTATION_TRACK_CAP = 2000;
+const SOURCE_TRACK_CAP = 500;
+// Per-record caps. Aggregates are keyed by directive+expression, so they're
+// bounded by template size; these only guard pathological fan-out.
+const CHILD_LIST_CAP = 256;
+const ROOT_LIST_CAP = 2000;
 
 // Signal thresholds. Not user-configurable in phase 1 — trust these, adjust
 // once real usage tells us otherwise.
-const LONG_EFFECT_THRESHOLD_MS = 16;       // ~1 frame at 60fps
 const ORPHAN_SPIKE_THRESHOLD = 10;
 const ORPHAN_SPIKE_WINDOW_MS = 1000;
 const GROWTH_ALERT_MIN_DELTA = 128;        // ignore small wiggles
@@ -177,19 +181,41 @@ export function createDevHook() {
 
   /** @type {Map<string, number>} */
   const frameMutations = new Map();
+  // Unbatched flushes per path this frame. Thrash is about wasted effect
+  // runs, so writes inside a batch (queued) and writes nobody watches
+  // don't count — batching must make the warning go away.
+  /** @type {Map<string, number>} */
+  const frameFlushes = new Map();
   let frameScheduled = false;
+  function scheduleFrameReset() {
+    if (frameScheduled || typeof requestAnimationFrame === "undefined") return;
+    frameScheduled = true;
+    requestAnimationFrame(() => { frameMutations.clear(); frameFlushes.clear(); frameScheduled = false; });
+  }
   const THRASH_LIMIT = 32;
 
   let emitSeq = 0;
   let mutationSeq = 0;
-  /** @type {Map<number, {path: string, state: any, t: number}>} */
+  // Per-mutation record. Effect costs are folded in as they run, so the
+  // cascade survives the raw log turning over (one click can emit 100k+
+  // events; the log keeps 500).
+  /** @type {Map<number, {path: string, state: any, t: number, parent: number|null, source: number|null, effects: Map<string, any>|null, children: number[]|null, childOverflow: number}>} */
   const mutationRing = new Map();
+  // Frames for code currently executing: "source" = a top-level entry point
+  // (event handler, input setter); "effect" = a reactive effect run. Gives
+  // mutations their parent + originating handler, and gives every frame an
+  // exclusive (self) time by subtracting nested frames.
+  /** @type {Array<any>} */
+  const runningStack = [];
+  let sourceSeq = 0;
+  /** @type {Map<number, any>} completed handler runs that caused writes */
+  const sourceRing = new Map();
 
   const aggExpr = createAgg(AGG_EXPR_CAP);
   const aggMut = createAgg(AGG_PATH_CAP);
 
   // Signals — a parallel channel to the log. Emitted by the hook itself
-  // under internal triggers (long-effect, thrash, warns, orphan-spike).
+  // under internal triggers (thrash, long-task, warns, orphan-spike).
   /** @type {Set<Function>} */
   const signalListeners = new Set();
   /** Recent orphan-effect timestamps for spike detection. Rolling. */
@@ -199,13 +225,136 @@ export function createDevHook() {
   let prevSizes = null;
 
   function emitSignal(sig) {
+    sig.t = sig.t ?? now();
     for (const l of signalListeners) {
       try { l(sig); }
       catch (err) { queueMicrotask(() => { throw err; }); }
     }
   }
 
+  function nearestEffectFrame() {
+    for (let i = runningStack.length - 1; i >= 0; i--) {
+      if (runningStack[i].kind === "effect") return runningStack[i];
+    }
+    return null;
+  }
+
+  /** Fold one effect run into an aggregate map keyed by directive + expr. */
+  function foldEffect(map, ev, self) {
+    const key = (ev.pluginName || "?") + "\u0000" + (ev.expr || "");
+    let a = map.get(key);
+    if (!a) {
+      a = { pluginName: ev.pluginName || null, expr: ev.expr || "", calls: 0, selfMs: 0, maxSelfMs: 0, sample: ev.effect ? WK(ev.effect) : null };
+      map.set(key, a);
+    }
+    a.calls++;
+    a.selfMs += self;
+    if (self > a.maxSelfMs) a.maxSelfMs = self;
+  }
+
+  function pushFrame(frame) {
+    frame.t0 = now();
+    frame.nestedMs = 0;
+    runningStack.push(frame);
+  }
+  /** Pop the top frame; returns inclusive + exclusive time and charges the parent. */
+  function popFrame() {
+    const f = runningStack.pop();
+    if (!f) return { totalMs: 0, selfMs: 0, frame: null };
+    const totalMs = now() - f.t0;
+    const parent = runningStack[runningStack.length - 1];
+    if (parent) parent.nestedMs += totalMs;
+    return { totalMs, selfMs: Math.max(0, totalMs - f.nestedMs), frame: f };
+  }
+
+  function pushRunning(seq) {
+    pushFrame({ kind: "effect", seq: seq || 0 });
+  }
+  function popRunning() {
+    const r = popFrame();
+    return { totalMs: r.totalMs, selfMs: r.selfMs };
+  }
+
+  function billOverhead(dt) {
+    const n = runningStack.length;
+    if (!n || dt <= 0) return;
+    runningStack[n - 1].nestedMs += dt;
+    if (runningStack[0].kind === "source") runningStack[0].overheadMs += dt;
+  }
+
+  /**
+   * Run one effect with full instrumentation: frame, timing, effect emit,
+   * detached-node check. Everything except the effect body itself is
+   * billed as overhead, so neither the effect nor the code that triggered
+   * it is charged for the hook's bookkeeping.
+   */
+  function runEffect(effect, seq, state, path) {
+    const tIn = now();
+    pushFrame({ kind: "effect", seq: seq || 0 });
+    let r;
+    try { effect(); } finally { r = popFrame(); }
+    billingSuppressed++;
+    try {
+      const dbg = effect.ø__debug;
+      emit({ kind: "effect", state, path, node: dbg?.node, expr: dbg?.expr, pluginName: dbg?.pluginName, durationMs: r.totalMs, selfMs: r.selfMs, mutationSeq: seq, effect });
+      if (dbg && dbg.node && typeof document !== "undefined") {
+        if (document.contains(dbg.node)) dbg.wasConnected = true;
+        else {
+          trackOrphan();
+          emit({ kind: "warn", code: "W001", message: "dangling-effect: effect ran on detached node", state, ref: { path, expr: dbg.expr } });
+        }
+      }
+    } finally {
+      billingSuppressed--;
+    }
+    // popFrame already charged the parent r.totalMs as nested time.
+    billOverhead(now() - tIn - r.totalMs);
+  }
+
+  /**
+   * Open a source frame for a top-level entry point (event handler, input
+   * setter). Only opens when nothing else is executing — an evaluation
+   * inside an effect or another handler belongs to that frame instead.
+   * Returns whether a frame was opened; pass that to exitSource.
+   */
+  function enterSource(label) {
+    if (runningStack.length) return false;
+    pushFrame({ kind: "source", id: ++sourceSeq, label, writes: new Map(), rootCount: 0, overheadMs: 0 });
+    return true;
+  }
+  function exitSource(opened) {
+    if (!opened) return;
+    const { totalMs, selfMs, frame } = popFrame();
+    if (!frame || !frame.writes.size) return;
+    if (sourceRing.size >= SOURCE_TRACK_CAP) sourceRing.delete(sourceRing.keys().next().value);
+    sourceRing.set(frame.id, {
+      id: frame.id, label: frame.label, t: frame.t0, totalMs, selfMs,
+      overheadMs: frame.overheadMs,
+      rootCount: frame.rootCount, writes: frame.writes,
+    });
+  }
+
+  // The hook's own bookkeeping is real time on the main thread, but it is
+  // not the user's code. Charge it to the enclosing frame as nested time
+  // (so handler/effect self times exclude it) and report it separately.
+  let emitDepth = 0;
+  // >0 while runEffect is doing its post-run bookkeeping; it bills that
+  // whole stretch itself, so emits inside it must not bill again.
+  let billingSuppressed = 0;
   function emit(ev) {
+    if (emitDepth++ || billingSuppressed) {
+      try { return emitInner(ev); } finally { emitDepth--; }
+    }
+    const t0 = now();
+    try {
+      return emitInner(ev);
+    } finally {
+      emitDepth--;
+      billOverhead(now() - t0);
+    }
+  }
+
+  function emitInner(ev) {
     if (ev.state) {
       for (let s = ev.state; s; s = parents.get(s) || null) {
         if (ignoredStates.has(s)) return null;
@@ -217,26 +366,44 @@ export function createDevHook() {
 
     if (ev.kind === "mutate") {
       ev.mutationSeq = ++mutationSeq;
+      const effFrame = nearestEffectFrame();
+      const srcFrame = runningStack.length && runningStack[0].kind === "source" ? runningStack[0] : null;
+      ev.parentMutationSeq = effFrame && effFrame.seq ? effFrame.seq : null;
+      ev.sourceId = srcFrame ? srcFrame.id : null;
       if (mutationRing.size >= MUTATION_TRACK_CAP) {
         const first = mutationRing.keys().next().value;
         mutationRing.delete(first);
       }
       // state ref stored weakly — mutationRing is bounded but can retain
       // thousands of entries, and we must not keep torn-down states alive.
-      mutationRing.set(ev.mutationSeq, { path: ev.path, state: WK(ev.state), t: ev.t });
+      mutationRing.set(ev.mutationSeq, {
+        path: ev.path, state: WK(ev.state), t: ev.t,
+        parent: ev.parentMutationSeq, source: ev.sourceId,
+        effects: null, children: null, childOverflow: 0,
+      });
+      if (ev.parentMutationSeq) {
+        const p = mutationRing.get(ev.parentMutationSeq);
+        if (p) {
+          if (!p.children) p.children = [];
+          if (p.children.length < CHILD_LIST_CAP) p.children.push(ev.mutationSeq);
+          else p.childOverflow++;
+        }
+      }
+      if (srcFrame) {
+        const w = srcFrame.writes.get(ev.path);
+        if (w) w.count++;
+        else srcFrame.writes.set(ev.path, { count: 1, effects: new Map(), roots: [] });
+        if (!ev.parentMutationSeq) {
+          srcFrame.rootCount++;
+          const ww = srcFrame.writes.get(ev.path);
+          if (ww.roots.length < ROOT_LIST_CAP) ww.roots.push(ev.mutationSeq);
+        }
+      }
       if (ev.path) aggMut.record(ev.path, ev.t, 0, null);
 
       if (typeof requestAnimationFrame !== "undefined") {
-        const n = (frameMutations.get(ev.path) || 0) + 1;
-        frameMutations.set(ev.path, n);
-        if (n === THRASH_LIMIT + 1) {
-          emit({ kind: "warn", code: "W003", message: `mutation-thrash: ${ev.path} mutated ${n}x in one frame`, ref: { path: ev.path } });
-          emitSignal({ kind: "thrash", severity: "warn", payload: { path: ev.path, count: n }, dismissKey: `thrash:${ev.path}` });
-        }
-        if (!frameScheduled) {
-          frameScheduled = true;
-          requestAnimationFrame(() => { frameMutations.clear(); frameScheduled = false; });
-        }
+        frameMutations.set(ev.path, (frameMutations.get(ev.path) || 0) + 1);
+        scheduleFrameReset();
       }
     }
 
@@ -244,12 +411,31 @@ export function createDevHook() {
       if (ev.path && typeof ev.effectCount === "number") {
         aggMut.recordFanout(ev.path, ev.t, ev.effectCount);
       }
+      if (!ev.queued && ev.effectCount > 0 && typeof requestAnimationFrame !== "undefined") {
+        const n = (frameFlushes.get(ev.path) || 0) + 1;
+        frameFlushes.set(ev.path, n);
+        if (n === THRASH_LIMIT + 1) {
+          emit({ kind: "warn", code: "W003", message: `mutation-thrash: ${ev.path} re-ran its effects ${n}x in one frame`, ref: { path: ev.path } });
+          emitSignal({ kind: "thrash", severity: "warn", payload: { path: ev.path, count: n }, dismissKey: `thrash:${ev.path}` });
+        }
+        scheduleFrameReset();
+      }
     }
 
     if (ev.kind === "effect") {
-      if (ev.expr) {
-        const driver = ev.mutationSeq ? mutationRing.get(ev.mutationSeq)?.path : null;
-        aggExpr.record(ev.expr, ev.t, ev.durationMs || 0, driver);
+      // Exclusive time. Core reports it from the running stack; synthetic
+      // emits (tests, external callers) may only carry durationMs.
+      const self = typeof ev.selfMs === "number" ? ev.selfMs : (ev.durationMs || 0);
+      const mut = ev.mutationSeq ? mutationRing.get(ev.mutationSeq) : null;
+      if (ev.expr) aggExpr.record(ev.expr, ev.t, self, mut ? mut.path : null);
+      if (mut) {
+        if (!mut.effects) mut.effects = new Map();
+        foldEffect(mut.effects, ev, self);
+        const srcFrame = runningStack.length && runningStack[0].kind === "source" ? runningStack[0] : null;
+        if (srcFrame && mut.source === srcFrame.id) {
+          const w = srcFrame.writes.get(mut.path);
+          if (w) foldEffect(w.effects, ev, self);
+        }
       }
       const dbg = ev.effect && ev.effect.ø__debug;
       if (dbg) {
@@ -260,27 +446,20 @@ export function createDevHook() {
         dbg.recentRuns[dbg.ø__runRingHead] = {
           t: ev.t,
           durationMs: ev.durationMs || 0,
+          selfMs: self,
           mutationSeq: ev.mutationSeq || 0,
           path: ev.path || "",
         };
         dbg.ø__runRingHead = (dbg.ø__runRingHead + 1) % DEBUG_RUN_RING;
       }
-      if ((ev.durationMs || 0) > LONG_EFFECT_THRESHOLD_MS) {
-        // node/effect refs stored weakly — signal entries persist across
-        // the whole session in the devtools' signalMap.
-        emitSignal({
-          kind: "long-effect",
-          severity: "warn",
-          payload: { expr: ev.expr, durationMs: ev.durationMs, node: WK(ev.node), effect: WK(ev.effect) },
-          dismissKey: `long-effect:${ev.expr || "?"}`,
-        });
-      }
     }
 
-    if (ev.kind === "warn") {
+    // W003 is mirrored by the dedicated `thrash` signal; forwarding it too
+    // would put the same event in the inbox twice.
+    if (ev.kind === "warn" && ev.code !== "W003") {
       emitSignal({
         kind: "warn",
-        severity: ev.code === "W003" ? "warn" : "info",
+        severity: "info",
         payload: { code: ev.code, message: ev.message, ref: ev.ref },
         dismissKey: `warn:${ev.code}:${(ev.ref && (ev.ref.path || ev.ref.expr)) || ev.message || ""}`,
       });
@@ -544,8 +723,9 @@ export function createDevHook() {
       const idx = (head - 1 - i + cap) % cap;
       const r = dbg.recentRuns[idx];
       if (!r) continue;
-      if (last == null) last = r.durationMs;
-      total += r.durationMs;
+      const ms = r.selfMs ?? r.durationMs;
+      if (last == null) last = ms;
+      total += ms;
       count++;
     }
     return {
@@ -619,7 +799,7 @@ export function createDevHook() {
       for (let i = 0; i < cap; i++) {
         const idx = (head - 1 - i + cap) % cap;
         const r = dbg.recentRuns[idx];
-        if (r) recentRuns.push({ t: r.t, durationMs: r.durationMs, mutationSeq: r.mutationSeq, path: r.path });
+        if (r) recentRuns.push({ t: r.t, durationMs: r.durationMs, selfMs: r.selfMs ?? r.durationMs, mutationSeq: r.mutationSeq, path: r.path });
       }
     }
     return {
@@ -714,6 +894,220 @@ export function createDevHook() {
     return () => signalListeners.delete(fn);
   }
 
+  const r3 = (x) => +x.toFixed(3);
+
+  /** Aggregates → sorted plain rows. `live` derefs the effect sample. */
+  function effectRows(map, live) {
+    const rows = [];
+    if (!map) return rows;
+    for (const a of map.values()) {
+      rows.push({
+        kind: "effect",
+        pluginName: a.pluginName,
+        expr: a.expr,
+        calls: a.calls,
+        selfMs: r3(a.selfMs),
+        maxSelfMs: r3(a.maxSelfMs),
+        effect: live ? UN(a.sample) : a.sample,
+      });
+    }
+    return rows.sort((x, y) => y.selfMs - x.selfMs);
+  }
+
+  function mergeEffects(into, from) {
+    if (!from) return;
+    for (const [k, a] of from) {
+      const b = into.get(k);
+      if (!b) { into.set(k, { ...a }); continue; }
+      b.calls += a.calls;
+      b.selfMs += a.selfMs;
+      if (a.maxSelfMs > b.maxSelfMs) b.maxSelfMs = a.maxSelfMs;
+    }
+  }
+
+  function subtreeMs(seq, depth) {
+    const m = mutationRing.get(seq);
+    if (!m) return 0;
+    let ms = 0;
+    if (m.effects) for (const a of m.effects.values()) ms += a.selfMs;
+    if (m.children && depth < 64) for (const c of m.children) ms += subtreeMs(c, depth + 1);
+    return ms;
+  }
+
+  /**
+   * The write → effects → child-writes tree for one mutation, built from
+   * per-mutation aggregates recorded as effects ran. Effects are grouped by
+   * directive + expression (`calls` = how many times that binding ran).
+   * Times are exclusive, so subtreeMs = effectsMs + Σ children.subtreeMs
+   * with no double counting.
+   */
+  function causalityTree(seq, depth = 0) {
+    if (!seq) return null;
+    const m = mutationRing.get(seq);
+    if (!m) return null;
+    const effects = effectRows(m.effects, true);
+    let effectsMs = 0;
+    for (const e of effects) effectsMs += e.selfMs;
+    const children = [];
+    let missingChildren = 0;
+    for (const c of m.children || []) {
+      const node = depth < 64 ? causalityTree(c, depth + 1) : null;
+      if (node) children.push(node); else missingChildren++;
+    }
+    let sub = effectsMs;
+    for (const c of children) sub += c.subtreeMs;
+    const src = m.source != null ? sourceRing.get(m.source) : null;
+    return {
+      kind: "mutate",
+      mutationSeq: seq,
+      path: m.path,
+      t: m.t,
+      parentMutationSeq: m.parent,
+      source: src ? src.label : null,
+      effectsMs: r3(effectsMs),
+      subtreeMs: r3(sub),
+      effects,
+      children: children.sort((x, y) => y.subtreeMs - x.subtreeMs),
+      childOverflow: m.childOverflow,
+      missingChildren,
+    };
+  }
+
+  /**
+   * Attribute a time window (typically a long task) to the Velin work that
+   * ran inside it. Groups by originating handler; writes made outside any
+   * handler (async continuations, timers, external code) form their own
+   * group. Within a group: one row per written path, each with the effects
+   * its writes re-ran.
+   *
+   * overheadMs is the hook's own bookkeeping (absent without devtools).
+   * otherMs is the part of the window no handler, effect or overhead
+   * accounts for — layout, GC, non-Velin code. `partial` means the
+   * mutation ring had already evicted writes from the start of the window.
+   */
+  function explainWindow(start, end, opts) {
+    const live = !opts || opts.live !== false;
+    const groups = [];
+
+    for (const s of sourceRing.values()) {
+      if (s.t > end || s.t + s.totalMs < start) continue;
+      const writes = [];
+      let effectsMs = 0, writeCount = 0;
+      for (const [path, w] of s.writes) {
+        const effects = effectRows(w.effects, live);
+        let ms = 0;
+        for (const e of effects) ms += e.selfMs;
+        effectsMs += ms;
+        writeCount += w.count;
+        let heaviest = null;
+        for (const seq of w.roots) {
+          if (!mutationRing.has(seq)) continue;
+          const hm = subtreeMs(seq, 0);
+          if (!heaviest || hm > heaviest.ms) heaviest = { mutationSeq: seq, ms: r3(hm) };
+        }
+        writes.push({ path, count: w.count, cascaded: w.count - w.roots.length, ms: r3(ms), effects, heaviest });
+      }
+      writes.sort((x, y) => y.ms - x.ms);
+      groups.push({
+        kind: "handler",
+        label: s.label,
+        t: s.t,
+        totalMs: r3(s.totalMs),
+        ownMs: r3(s.selfMs),
+        overheadMs: r3(s.overheadMs || 0),
+        effectsMs: r3(effectsMs),
+        writeCount,
+        writes,
+      });
+    }
+
+    /** @type {Map<string, {count:number, cascaded:number, effects:Map<string,any>, roots:number[]}>} */
+    const loose = new Map();
+    let oldest = Infinity;
+    for (const [seq, m] of mutationRing) {
+      if (m.t < oldest) oldest = m.t;
+      if (m.t < start || m.t > end || m.source != null) continue;
+      let row = loose.get(m.path);
+      if (!row) { row = { count: 0, cascaded: 0, effects: new Map(), roots: [] }; loose.set(m.path, row); }
+      row.count++;
+      if (m.parent) row.cascaded++;
+      else row.roots.push(seq);
+      mergeEffects(row.effects, m.effects);
+    }
+    if (loose.size) {
+      const writes = [];
+      let effectsMs = 0, writeCount = 0;
+      for (const [path, row] of loose) {
+        const effects = effectRows(row.effects, live);
+        let ms = 0;
+        for (const e of effects) ms += e.selfMs;
+        effectsMs += ms;
+        writeCount += row.count;
+        let heaviest = null;
+        for (const seq of row.roots) {
+          const hm = subtreeMs(seq, 0);
+          if (!heaviest || hm > heaviest.ms) heaviest = { mutationSeq: seq, ms: r3(hm) };
+        }
+        writes.push({ path, count: row.count, cascaded: row.cascaded, ms: r3(ms), effects, heaviest });
+      }
+      writes.sort((x, y) => y.ms - x.ms);
+      groups.push({ kind: "untracked", label: null, t: start, totalMs: r3(effectsMs), ownMs: 0, overheadMs: 0, effectsMs: r3(effectsMs), writeCount, writes });
+    }
+
+    groups.sort((x, y) => (y.ownMs + y.effectsMs) - (x.ownMs + x.effectsMs));
+    let attributed = 0;
+    let overhead = 0;
+    for (const g of groups) { attributed += g.ownMs + g.effectsMs; overhead += g.overheadMs; }
+    const durationMs = end - start;
+    return {
+      start,
+      end,
+      durationMs: r3(durationMs),
+      attributedMs: r3(Math.min(attributed, durationMs)),
+      overheadMs: r3(overhead),
+      otherMs: r3(Math.max(0, durationMs - attributed - overhead)),
+      partial: mutationRing.size >= MUTATION_TRACK_CAP && oldest > start,
+      groups,
+    };
+  }
+
+  // ── longtask observer ───────────────────────────────────────────────────
+  // PerformanceObserver reports every JS task that blocked the main thread
+  // >50ms. Browser-exact; no estimation. The window is attributed eagerly
+  // (the rings keep moving) and shipped on the signal payload.
+  let longtaskObserver = null;
+  function startLongtaskObserver() {
+    if (longtaskObserver) return;
+    if (typeof PerformanceObserver === "undefined") return;
+    try {
+      longtaskObserver = new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) {
+          const start = entry.startTime;
+          const end = start + entry.duration;
+          emitSignal({
+            kind: "long-task",
+            severity: "warn",
+            payload: {
+              durationMs: +entry.duration.toFixed(1),
+              startTime: start,
+              // Effect samples stay WeakRefs: signals persist for the session.
+              window: explainWindow(start, end, { live: false }),
+            },
+            // One entry per task — two janks are two events, never merged.
+            dismissKey: `long-task:${start.toFixed(1)}`,
+          });
+        }
+      });
+      longtaskObserver.observe({ entryTypes: ["longtask"] });
+    } catch { longtaskObserver = null; }
+  }
+  function stopLongtaskObserver() {
+    if (!longtaskObserver) return;
+    try { longtaskObserver.disconnect(); } catch { /* noop */ }
+    longtaskObserver = null;
+  }
+  startLongtaskObserver();
+
   // ── Wiring called by velin-core.js ──────────────────────────────────────
 
   function registerEffectNode(node, effect) {
@@ -792,9 +1186,19 @@ export function createDevHook() {
     leaks,
     currentFrameMutations,
     onSignal,
+    causalityTree,
+    explainWindow,
 
     // internal wiring called by core
     ø__trackState: trackState,
+    ø__pushRunning: pushRunning,
+    ø__popRunning: popRunning,
+    ø__enterSource: enterSource,
+    ø__exitSource: exitSource,
+    /** Test escape hatch: inject a signal (jsdom has no longtask observer). */
+    ø__emitSignal: emitSignal,
+    ø__runEffect: runEffect,
+    ø__stopLongtaskObserver: stopLongtaskObserver,
     ø__registerStateNode(state, node) { if (state && node) stateNodes.set(state, node); },
     ø__registerParent(child, parent) { if (child && parent) parents.set(child, parent); },
     ø__registerEffectNode: registerEffectNode,
@@ -845,6 +1249,16 @@ export function createDevHook() {
       orphanEvents.length = 0;
       prevSizes = null;
       frameMutations.clear();
+      frameFlushes.clear();
+      // Clear the log too — resetting mutationSeq while leaving historical
+      // entries behind would silently alias old events onto new seqs, which
+      // breaks causalityTree and any seq-correlated query.
+      log = new Array(logCap);
+      logHead = 0;
+      logSize = 0;
+      runningStack.length = 0;
+      sourceRing.clear();
+      sourceSeq = 0;
     },
   };
 

@@ -453,10 +453,16 @@ surfaced in the panel:
   `ø__debug.node` fails `document.contains`. Indicates a missing
   `cleanupState` in a plugin. Rate-limited: one warning per
   (nodeId, path) pair.
-- **W002 `slow-expression`** — any `evaluate` with `durationMs > 8`
-  (configurable).
-- **W003 `mutation-thrash`** — > N `mutate` events on the same path
-  within one animation frame. Likely a missing `ctrl.batch()`.
+- **W002 `slow-expression`** — *removed (2026-10).* A per-expression
+  timing threshold was a stand-in for frame-level jank. The `long-task`
+  signal (browser `longtask` observer, attributed to the handler and
+  writes that ran) replaces it; keeping both reported the same event
+  twice and false-positived on slow-but-harmless expressions.
+- **W003 `mutation-thrash`** — > N *unbatched flushes* of the same path
+  within one animation frame (writes queued inside `batch()` and writes
+  to paths with no bindings don't count). Likely a missing
+  `ctrl.batch()`. *(Was: > N `mutate` events, which kept firing after
+  the user batched.)*
 - **W004 `track-throw`** — plugin `track()` threw. Currently
   `console.error`'d by `processPlugin`; additionally emit as
   `warn` with the error.

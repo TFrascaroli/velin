@@ -1334,19 +1334,23 @@ function evaluateAst(ast, reactiveState) {
     },
   });
   if (__DEV__) {
+    const src = (ast && /** @type {any} */ (ast).ø__src) || "";
+    // Top-level evaluation (nothing else running) = an entry point such as
+    // a vln-on handler. Writes it makes are attributed to it.
+    const opened = hook.ø__enterSource(src);
     const t0 = hook.ø__now();
     try {
       const r = evalAst(ast, contextualizedProxy, reactiveState);
       const dt = hook.ø__now() - t0;
-      const src = (ast && /** @type {any} */ (ast).ø__src) || "";
       hook.ø__recordExpressionEval(src, dt);
       hook.ø__emit({ kind: "evaluate", state: reactiveState, expr: src, durationMs: dt, ok: true });
-      if (dt > 16) hook.ø__emit({ kind: "warn", code: "W002", state: reactiveState, message: `slow-expression: ${src} took ${dt.toFixed(1)}ms`, ref: { expr: src } });
       return r;
     } catch (err) {
       const dt = hook.ø__now() - t0;
-      hook.ø__emit({ kind: "evaluate", state: reactiveState, expr: (ast && /** @type {any} */ (ast).ø__src) || "", durationMs: dt, ok: false, error: err && err.message });
+      hook.ø__emit({ kind: "evaluate", state: reactiveState, expr: src, durationMs: dt, ok: false, error: err && err.message });
       throw err;
+    } finally {
+      hook.ø__exitSource(opened);
     }
   }
   return evalAst(ast, contextualizedProxy, reactiveState);
@@ -1440,20 +1444,31 @@ function getSetter(reactiveState, expr) {
       : expr;
   const lastDotIndex = property.lastIndexOf(".");
 
-  // Handle root-level properties (no dots)
+  /** @type {(value: any) => any} */
+  let set;
   if (lastDotIndex === -1) {
-    return (value) => (reactiveState.state[property] = value);
+    // Handle root-level properties (no dots)
+    set = (value) => (reactiveState.state[property] = value);
+  } else {
+    const parentPath = property.slice(0, lastDotIndex);
+    const key = property.slice(lastDotIndex + 1);
+    set = (value) => {
+      const parent = evaluate(reactiveState, parentPath);
+      if (parent == null)
+        throw new TypeError("Cannot set property on null or undefined");
+      parent[key] = value;
+    };
   }
-
-  const parentPath = property.slice(0, lastDotIndex);
-  const key = property.slice(lastDotIndex + 1);
-
-  return (value) => {
-    const parent = evaluate(reactiveState, parentPath);
-    if (parent == null)
-      throw new TypeError("Cannot set property on null or undefined");
-    parent[key] = value;
-  };
+  if (__DEV__) {
+    // Setters are entry points too (vln-input pushes through one).
+    const label = `${property} = …`;
+    const inner = set;
+    set = (value) => {
+      const opened = hook.ø__enterSource(label);
+      try { return inner(value); } finally { hook.ø__exitSource(opened); }
+    };
+  }
+  return set;
 }
 
 /**
@@ -1482,18 +1497,7 @@ function triggerEffects(prop, reactiveState, mutationSeq) {
     } else {
       if (__DEV__) {
         hook.stats.updateCounter++;
-        const t0 = hook.ø__now();
-        effect();
-        const dbg = /** @type {any} */ (effect).ø__debug;
-        hook.ø__emit({ kind: "effect", state: reactiveState, path: prop, node: dbg?.node, expr: dbg?.expr, pluginName: dbg?.pluginName, durationMs: hook.ø__now() - t0, mutationSeq, effect });
-        if (dbg && dbg.node && typeof document !== "undefined") {
-          const connected = document.contains(dbg.node);
-          if (connected) dbg.wasConnected = true;
-          else {
-            hook.ø__trackOrphan();
-            hook.ø__emit({ kind: "warn", code: "W001", message: "dangling-effect: effect ran on detached node", state: reactiveState, ref: { path: prop, expr: dbg.expr } });
-          }
-        }
+        hook.ø__runEffect(effect, mutationSeq || 0, reactiveState, prop);
       } else {
         effect();
       }
@@ -1550,10 +1554,9 @@ function setupState(obj) {
           for (const [effect, seq] of effects) {
             if (__DEV__) {
               hook.stats.updateCounter++;
-              const t0 = hook.ø__now();
-              effect();
               const dbg = /** @type {any} */ (effect).ø__debug;
-              hook.ø__emit({ kind: "effect", state: reactiveState, path: dbg?.recentPaths?.[dbg?.ø__pathRingHead === 0 ? DEBUG_PATH_RING - 1 : dbg.ø__pathRingHead - 1] ?? "", node: dbg?.node, expr: dbg?.expr, pluginName: dbg?.pluginName, durationMs: hook.ø__now() - t0, mutationSeq: seq, effect });
+              const path = dbg?.recentPaths?.[dbg?.ø__pathRingHead === 0 ? DEBUG_PATH_RING - 1 : dbg.ø__pathRingHead - 1] ?? "";
+              hook.ø__runEffect(effect, seq || 0, reactiveState, path);
             } else {
               effect();
             }

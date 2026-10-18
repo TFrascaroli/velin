@@ -134,6 +134,14 @@
       renderFrame();
     }
     function switchToSurface(key) {
+      // Re-selecting the surface you're on pops back to its root frame, like
+      // re-tapping an active tab. The root frame keeps its data (Inspect's
+      // picked node survives).
+      if (stack.length && stack[0].surface === key) {
+        stack.length = 1;
+        renderFrame();
+        return;
+      }
       // Remember current surface stack before leaving.
       if (stack.length) surfaceMemory.set(stack[0].surface, stack.slice());
       const remembered = surfaceMemory.get(key);
@@ -221,7 +229,11 @@
       const p = sig.payload || {};
       switch (sig.kind) {
         case "thrash":       return `${fmtPath(p.path)} × ${p.count}`;
-        case "long-effect":  return `${p.expr || "?"} took ${(p.durationMs || 0).toFixed(1)}ms`;
+        case "long-task": {
+          const top = p.window && p.window.groups && p.window.groups[0];
+          const who = top ? (top.kind === "handler" ? top.label : "writes outside handlers") : "no Velin work";
+          return `${(p.durationMs || 0).toFixed(0)}ms blocked · ${who}`;
+        }
         case "orphan-spike": return `${p.count} orphaned effects in ${p.windowMs}ms`;
         case "warn":         return `[${p.code}] ${p.message}`;
         default:             return sig.kind;
@@ -418,14 +430,14 @@
     // ── Surface: Signals ───────────────────────────────────────────────
     const SIGNAL_EXPLAINERS = {
       thrash: {
-        what: "The path shown mutated more than 32× in a single animation frame. Usually a feedback loop or an unbatched write-loop.",
-        why:  "Each mutation re-triggers every effect bound to it. Repeated writes multiply work.",
-        action: "Open Record, reproduce the write. The driving path will show up in the top row. Fix the feedback loop or wrap the writes in a batch.",
+        what: "Writes to this path re-ran its effects more than 32× within one animation frame. Usually a write loop that isn't batched, or a feedback loop.",
+        why:  "Every unbatched write re-runs every effect bound to the path; only the last run's output reaches the screen.",
+        action: "Wrap the write loop in Velin.getController(this).batch(() => …) so effects run once. Batched writes don't count toward this signal. If you can't find the loop, Record while reproducing; the path shows up as the top driver.",
       },
-      "long-effect": {
-        what: "This expression ran once and took longer than one frame (16ms).",
-        why:  "A single run that busts the frame budget shows up as jank — scroll stutters, input lag, animation hitches. Reducing re-run frequency doesn't help if one run already hurts.",
-        action: "Open the effect. Look at what it does, not just what it reads. Common root causes: a quadratic loop over a list that grew (switch to a linear algorithm, e.g. .includes), serialization or deep-clone of large state (compute the few fields you actually need), or heavy DOM work on every change (debounce the mutation that triggers it, or move the work outside the reactive path with queueMicrotask / requestIdleCallback).",
+      "long-task": {
+        what: "The browser blocked the main thread for longer than 50ms (longtask API). Input and rendering waited for the whole task.",
+        why:  "Measured by the browser, not estimated. Many cheap effects add up: one write can re-run hundreds of bindings.",
+        action: "Start with the costliest handler, then its costliest write. Runs/write far above 1 means one write re-ran a binding many times. A write repeated in a loop whose effects re-ran each time is a batch candidate. Open a write's tree for the cascade, or an effect for its reads and history.",
       },
       "orphan-spike": {
         what: "Effects are firing on DOM nodes that are no longer in the document.",
@@ -448,7 +460,7 @@
         } }, "Clear all") : null,
       ));
       root.appendChild(el("p", { class: "muted" },
-        "The hook emits a signal when something crosses a threshold (thrash, long effect, orphan spike, warn). Entries persist for the session.",
+        "Things the runtime noticed without being asked: long tasks, thrashing writes, effects firing on detached nodes, core warnings. Entries persist for the session.",
       ));
       if (!signalMap.size) {
         root.appendChild(el("div", { class: "empty" }, "no signals recorded yet"));
@@ -486,18 +498,194 @@
       const root = el("div", { class: "surface" });
       root.appendChild(el("div", { class: "surface-head" },
         el("h3", null, "Signal: " + sig.kind),
+        el("span", { class: "dim" }, fmtAgo(sig.t || hook.ø__now())),
       ));
       root.appendChild(el("div", { class: "detail-headline" }, formatSignalMessage(sig)));
+      if (sig.kind === "long-task" && sig.payload && sig.payload.window) {
+        root.appendChild(buildWindow(sig.payload.window));
+        root.appendChild(section("How to read this", ex.action));
+        return root;
+      }
       root.appendChild(section("What happened", ex.what));
       root.appendChild(section("Why it matters", ex.why));
       root.appendChild(section("What to do",   ex.action));
       return root;
     }
+
     function section(title, body) {
       return el("div", { class: "detail-section" },
         el("div", { class: "detail-section-title" }, title),
         el("div", { class: "detail-section-body" }, body),
       );
+    }
+
+    const deref = (r) => (r && typeof r.deref === "function" ? r.deref() : r);
+    const fmtMs = (ms) => (ms >= 10 ? ms.toFixed(0) : ms >= 1 ? ms.toFixed(1) : ms.toFixed(2)) + "ms";
+    const directiveLabel = (e) => e.pluginName ? `vln-${e.pluginName}` : "effect";
+
+    function openExplain(effectRef) {
+      const effect = deref(effectRef);
+      if (!effect) return;
+      navigate({ surface: "signals", label: "Explain", data: effect, build: buildExplain });
+    }
+    function openTree(seq, label) {
+      navigate({ surface: "signals", label: label || "Tree", data: seq, build: buildCausality });
+    }
+
+    /** Effect rows shared by the window view and the tree view. */
+    function effectTable(effects, perWrite) {
+      const table = el("table", { class: "grid wt" });
+      table.appendChild(el("tr", null,
+        el("th", null, "binding"),
+        el("th", { class: "num" }, perWrite ? "runs/write" : "runs"),
+        el("th", { class: "num" }, "self"),
+      ));
+      for (const e of effects) {
+        const live = !!deref(e.effect);
+        const tr = el("tr", { class: live ? "clickable" : "", title: live ? "Open in Explain" : "effect no longer exists" },
+          el("td", { class: "expr-cell", title: `${directiveLabel(e)}="${e.expr || ""}"` },
+            el("span", { class: "dir" }, directiveLabel(e)), " ", e.expr || "(no expr)"),
+          el("td", { class: "num" }, perWrite ? (e.calls / perWrite).toFixed(e.calls % perWrite ? 1 : 0) : String(e.calls)),
+          el("td", { class: "num" }, fmtMs(e.selfMs)),
+        );
+        if (live) tr.addEventListener("click", () => openExplain(e.effect));
+        table.appendChild(tr);
+      }
+      return table;
+    }
+
+    /** Long-task attribution: handler → writes → effects, costliest first. */
+    function buildWindow(w) {
+      const box = el("div", null);
+      const velinMs = w.attributedMs;
+      box.appendChild(el("div", { class: "split" },
+        el("div", { class: "split-bar" },
+          el("span", { class: "split-velin", style: `width:${w.durationMs ? (100 * velinMs / w.durationMs).toFixed(1) : 0}%` }),
+          el("span", { class: "split-overhead", style: `width:${w.durationMs ? (100 * (w.overheadMs || 0) / w.durationMs).toFixed(1) : 0}%` }),
+        ),
+        el("div", { class: "split-legend" },
+          el("span", null, el("i", { class: "sw velin" }), `your handlers + bindings ${fmtMs(velinMs)}`),
+          w.overheadMs >= 1 ? el("span", { title: "Time spent recording this trace. Not present without devtools." }, el("i", { class: "sw overhead" }), `devtools ${fmtMs(w.overheadMs)}`) : null,
+          el("span", null, el("i", { class: "sw other" }), `other ${fmtMs(w.otherMs)}`),
+        ),
+      ));
+      if (w.otherMs > velinMs) {
+        box.appendChild(el("div", { class: "note" },
+          "Most of this task was not Velin work: layout or style recalculation, GC, or other scripts. The Performance panel will show what."));
+      }
+      if (w.partial) {
+        box.appendChild(el("div", { class: "note" },
+          "Partial: the earliest writes in this task were already evicted from the mutation history (it keeps the last 2000)."));
+      }
+      if (!w.groups.length) {
+        box.appendChild(el("div", { class: "empty small" }, "No Velin handler ran and no state was written during this task."));
+        return box;
+      }
+
+      for (const g of w.groups) {
+        const head = g.kind === "handler"
+          ? el("div", { class: "grp-head" },
+              el("span", { class: "tag src" }, "handler"),
+              el("code", { class: "grp-label" }, g.label || "(anonymous)"),
+              el("span", { class: "grp-ms" }, fmtMs(g.ownMs + g.effectsMs)))
+          : el("div", { class: "grp-head" },
+              el("span", { class: "tag ext" }, "outside handlers"),
+              el("span", { class: "grp-label dim" }, "async continuation, timer, or direct state write"),
+              el("span", { class: "grp-ms" }, fmtMs(g.effectsMs)));
+        const grp = el("div", { class: "grp" }, head);
+        grp.appendChild(el("div", { class: "grp-sub" },
+          g.kind === "handler"
+            ? el("span", { title: "The handler's own JavaScript plus Velin's work applying its writes and dispatching effects." }, `handler + dispatch ${fmtMs(g.ownMs)} · `)
+            : "",
+          `${g.writeCount} write${g.writeCount === 1 ? "" : "s"} · bindings ${fmtMs(g.effectsMs)}`,
+        ));
+
+        const quiet = g.writes.filter((wr) => !wr.effects.length);
+        for (const wr of g.writes) {
+          if (!wr.effects.length) continue;
+          const roots = wr.count - wr.cascaded;
+          const row = el("div", { class: "wr" },
+            el("div", { class: "wr-head" },
+              el("span", { class: "tag mut" }, "write"),
+              el("code", { class: "wr-path" }, fmtPath(wr.path)),
+              el("span", { class: "dim" }, `×${wr.count}` + (wr.cascaded ? ` (${wr.cascaded} by effects)` : "")),
+              el("span", { class: "grp-ms" }, fmtMs(wr.ms)),
+              wr.heaviest ? el("button", {
+                class: "btn tiny",
+                title: "Open the cascade of the costliest single write",
+                onclick: () => openTree(wr.heaviest.mutationSeq, `Tree ${fmtPath(wr.path)}`),
+              }, "tree ›") : null,
+            ),
+          );
+          const maxRuns = wr.effects.reduce((m, e) => Math.max(m, e.calls), 0);
+          if (roots > 1 && maxRuns >= roots) {
+            row.appendChild(el("div", { class: "advice" },
+              `Written ${roots}× and its effects re-ran on every write. Wrapping the writes in `,
+              el("code", null, "Velin.getController(this).batch(() => …)"),
+              ` runs them once.`));
+          }
+          row.appendChild(effectTable(wr.effects, wr.count));
+          grp.appendChild(row);
+        }
+        if (quiet.length) {
+          grp.appendChild(el("div", { class: "grp-sub", style: "margin-top:8px" },
+            "also wrote, nothing re-ran: ",
+            ...quiet.flatMap((wr, i) => [i ? ", " : "", el("code", null, `${fmtPath(wr.path)} ×${wr.count}`)]),
+          ));
+        }
+        box.appendChild(grp);
+      }
+      return box;
+    }
+
+    // ── Causality tree ─────────────────────────────────────────────────
+    // One write and everything it caused: the bindings it re-ran (grouped)
+    // and any writes those effects made, recursively. Exclusive times, so
+    // the numbers add up.
+    function buildCausality(mutationSeq) {
+      const root = el("div", { class: "surface" });
+      root.appendChild(el("div", { class: "surface-head" }, el("h3", null, "Cascade")));
+      const tree = hook.causalityTree(mutationSeq);
+      if (!tree) {
+        root.appendChild(el("div", { class: "empty" },
+          "This write is no longer in the mutation history (it keeps the last 2000 writes)."));
+        return root;
+      }
+      root.appendChild(el("div", { class: "detail-headline" },
+        `${fmtPath(tree.path)} — ${fmtMs(tree.subtreeMs)} total`));
+      if (tree.source) {
+        root.appendChild(el("div", { class: "muted small" }, "written by ", el("code", null, tree.source)));
+      }
+
+      const MAX_DEPTH = 8;
+      function renderMut(node, depth, container) {
+        const indent = depth * 14;
+        if (depth > MAX_DEPTH) {
+          container.appendChild(el("div", { class: "dim small", style: `padding-left:${indent}px` }, "… deeper writes not shown"));
+          return;
+        }
+        container.appendChild(el("div", { class: "tree-row", style: `padding-left:${indent}px` },
+          el("span", { class: "tag mut" }, "write"),
+          el("span", { class: "tree-label" }, fmtPath(node.path)),
+          el("span", { class: "tree-time" }, `${fmtMs(node.subtreeMs)}` + (node.children.length ? ` (bindings ${fmtMs(node.effectsMs)})` : "")),
+        ));
+        if (node.effects.length) {
+          const t = effectTable(node.effects, 0);
+          t.style.marginLeft = `${indent + 14}px`;
+          t.style.width = `calc(100% - ${indent + 14}px)`;
+          container.appendChild(t);
+        }
+        for (const c of node.children) renderMut(c, depth + 1, container);
+        const lost = node.childOverflow + node.missingChildren;
+        if (lost) {
+          container.appendChild(el("div", { class: "dim small", style: `padding-left:${indent + 14}px` },
+            `${lost} more write${lost === 1 ? "" : "s"} not shown (evicted or over the per-write cap)`));
+        }
+      }
+      const container = el("div", { class: "tree" });
+      renderMut(tree, 0, container);
+      root.appendChild(container);
+      return root;
     }
 
     // ── Surface: Record (hotspots) ─────────────────────────────────────
@@ -572,7 +760,7 @@
                   recording.buffer.set(expr, b);
                 }
                 b.calls++;
-                const dt = ev.durationMs || 0;
+                const dt = ev.selfMs ?? ev.durationMs ?? 0;
                 b.totalMs += dt;
                 if (dt > b.maxMs) b.maxMs = dt;
                 const driver = recording.mutations.get(ev.mutationSeq);
@@ -797,14 +985,20 @@
           el("th", { class: "num" }, "#"),
           el("th", null, "when"),
           el("th", null, "trigger path"),
-          el("th", { class: "num" }, "ms"),
+          el("th", { class: "num" }, "self"),
         ));
         info.recentRuns.forEach((r, i) => {
+          const self = r.selfMs ?? r.durationMs ?? 0;
+          const total = r.durationMs || 0;
+          // Inclusive time only differs when the run wrote state and
+          // cascaded; show it so the gap is explainable.
+          const cascaded = total - self > 0.05;
           table.appendChild(el("tr", null,
             el("td", { class: "num" }, String(i + 1)),
             el("td", { class: "dim" }, fmtAgo(r.t)),
             el("td", { class: "expr-cell" }, fmtPath(r.path) || "—"),
-            el("td", { class: "num" }, (r.durationMs || 0).toFixed(2) + "ms"),
+            el("td", { class: "num", title: cascaded ? `${total.toFixed(2)}ms including the writes it cascaded into` : null },
+              self.toFixed(2) + "ms" + (cascaded ? ` (+${(total - self).toFixed(1)})` : "")),
           ));
         });
         root.appendChild(table);
@@ -1260,6 +1454,48 @@
   .grid tr.slow td { color: var(--v-amber); }
   .grid td.warn { color: var(--v-amber); font-weight: bold; }
   .hint { color: var(--v-fg-mute); font-size: 10px; margin: 0 0 4px; }
+
+  /* Long-task attribution + cascade */
+  .split { margin: 6px 0 10px; }
+  .split-bar { display: flex; height: 6px; background: var(--v-bg-3); border-radius: 3px; overflow: hidden; }
+  .split-velin { display: inline-block; vertical-align: top; height: 100%; background: var(--v-amber); }
+  .split-overhead { display: inline-block; vertical-align: top; height: 100%; background: var(--v-fg-mute); }
+  .split-legend { display: flex; gap: 14px; margin-top: 4px; color: var(--v-fg-dim); font-size: 11px; }
+  .sw { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; vertical-align: middle; }
+  .sw.velin { background: var(--v-amber); }
+  .sw.overhead { background: var(--v-fg-mute); }
+  .sw.other { background: var(--v-bg-3); border: 1px solid var(--v-border); }
+  .note { border-left: 2px solid var(--v-fg-mute); padding: 4px 8px; margin: 6px 0; color: var(--v-fg-dim); font-size: 11px; }
+  .advice { border-left: 2px solid var(--v-amber); background: var(--v-bg-2); padding: 5px 8px; margin: 4px 0; color: var(--v-fg); font-size: 11px; }
+  .advice code { color: var(--v-green); }
+  .grp { border: 1px solid var(--v-border); border-radius: 3px; margin-top: 10px; padding: 6px 8px 8px; }
+  .grp-head, .wr-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .grp-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--v-fg); }
+  .grp-ms { margin-left: auto; color: var(--v-fg); font-variant-numeric: tabular-nums; }
+  .grp-sub { color: var(--v-fg-mute); font-size: 11px; margin: 2px 0 6px; }
+  .wr { margin-top: 8px; }
+  .wr-path { color: var(--v-cyan); }
+  .tag {
+    font-family: ui-monospace, monospace; font-size: 9px; line-height: 14px;
+    padding: 0 5px; border-radius: 2px; text-transform: uppercase; letter-spacing: 0.5px;
+    color: var(--v-bg); flex: none;
+  }
+  .tag.src { background: var(--v-amber); }
+  .tag.ext { background: var(--v-fg-dim); }
+  .tag.mut { background: var(--v-cyan); }
+  .btn.tiny { padding: 0 6px; font-size: 10px; line-height: 16px; }
+  .grid.wt { margin-top: 4px; }
+  .grid.wt td.expr-cell { max-width: 260px; }
+  .dir { color: var(--v-fg-mute); }
+  .tree { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
+  .tree-row {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--v-bg-2); color: var(--v-fg);
+    border-left: 2px solid var(--v-cyan);
+    padding: 4px 8px; font-size: 11px;
+  }
+  .tree-label { flex: 1; font-family: ui-monospace, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tree-time { color: var(--v-fg-dim); font-variant-numeric: tabular-nums; }
 
   /* Leaks (groups) */
   .group {

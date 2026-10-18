@@ -4,12 +4,14 @@
 // Delegate: tutorial surface mentions (span.dv-link) open the drawer on
 // that surface. Attached once per page load; <script> tags inside the
 // loaded HTML don't execute via innerHTML, so the handler lives here.
-if (!window.__DV_LINK_WIRED__) {
-  window.__DV_LINK_WIRED__ = true;
+const w = /** @type {any} */ (window);
+if (!w.__DV_LINK_WIRED__) {
+  w.__DV_LINK_WIRED__ = true;
   document.addEventListener("click", (e) => {
-    const t = e.target.closest && e.target.closest(".dv-link");
-    if (!t) return;
-    const api = window.__VELIN_DEVTOOLS_COMPANION__;
+    const target = /** @type {Element | null} */ (e.target);
+    const t = target && target.closest && target.closest(".dv-link");
+    if (!(t instanceof HTMLElement)) return;
+    const api = w.__VELIN_DEVTOOLS_COMPANION__;
     if (!api) return;
     const surface = (t.dataset.surface || t.textContent || "").trim().toLowerCase();
     if (["inspect", "record", "leaks", "signals", "query", "explain"].includes(surface)) {
@@ -68,7 +70,7 @@ export default function () {
 
     loadDemo() {
       const start = this.tasks.length;
-      for (let i = 0; i < 500; i++) {
+      for (let i = 0; i < 100; i++) {
         this.tasks.push({
           id: this.nextId++,
           title: rndTitle(start + i),
@@ -81,7 +83,7 @@ export default function () {
     // BUG — nested Velin.bind() with no matching unbind. Each open+close
     // leaks a full state tree. Fix: uncomment Velin.unbind(nestedState).
     openDetails(task) {
-      const Velin = window.Velin;
+      const Velin = w.Velin;
       const overlay = document.createElement("div");
       overlay.className = "fixed inset-0 bg-black/40 flex items-center justify-center z-50";
       overlay.innerHTML = `
