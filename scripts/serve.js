@@ -56,8 +56,10 @@ function serveHtml(baseDir) {
 // Playground: canonicalize trailing slash so relative asset URLs resolve, then
 // transform html, then let express.static serve everything else.
 app.use('/playground', (req, res, next) => {
-  if (req.path === '/' && !req.originalUrl.endsWith('/')) {
-    return res.redirect(301, req.originalUrl + '/');
+  const [pathname, query] = req.originalUrl.split('?');
+  if (req.path === '/' && !pathname.endsWith('/')) {
+    // Keep the query string after the added slash (?velin-devtools=off).
+    return res.redirect(301, pathname + '/' + (query !== undefined ? '?' + query : ''));
   }
   next();
 });
