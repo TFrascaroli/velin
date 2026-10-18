@@ -244,10 +244,13 @@ export function createDevHook() {
     const key = (ev.pluginName || "?") + "\u0000" + (ev.expr || "");
     let a = map.get(key);
     if (!a) {
-      a = { pluginName: ev.pluginName || null, expr: ev.expr || "", calls: 0, selfMs: 0, maxSelfMs: 0, sample: ev.effect ? WK(ev.effect) : null };
+      a = { pluginName: ev.pluginName || null, expr: ev.expr || "", calls: 0, distinct: 0, seen: new WeakSet(), selfMs: 0, maxSelfMs: 0, sample: ev.effect ? WK(ev.effect) : null };
       map.set(key, a);
     }
     a.calls++;
+    // Distinct bindings vs. runs: 2400 rows each re-run once is not the
+    // same as one binding re-run 2400 times, and only the latter batches away.
+    if (ev.effect && !a.seen.has(ev.effect)) { a.seen.add(ev.effect); a.distinct++; }
     a.selfMs += self;
     if (self > a.maxSelfMs) a.maxSelfMs = self;
   }
@@ -255,6 +258,7 @@ export function createDevHook() {
   function pushFrame(frame) {
     frame.t0 = now();
     frame.nestedMs = 0;
+    frame.ownOverheadMs = 0;
     runningStack.push(frame);
   }
   /** Pop the top frame; returns inclusive + exclusive time and charges the parent. */
@@ -264,7 +268,7 @@ export function createDevHook() {
     const totalMs = now() - f.t0;
     const parent = runningStack[runningStack.length - 1];
     if (parent) parent.nestedMs += totalMs;
-    return { totalMs, selfMs: Math.max(0, totalMs - f.nestedMs), frame: f };
+    return { totalMs, selfMs: Math.max(0, totalMs - f.nestedMs), overheadMs: f.ownOverheadMs, frame: f };
   }
 
   function pushRunning(seq) {
@@ -292,7 +296,13 @@ export function createDevHook() {
       return;
     }
     runningStack[n - 1].nestedMs += dt;
+    runningStack[n - 1].ownOverheadMs += dt;
     if (runningStack[0].kind === "source") runningStack[0].overheadMs += dt;
+    else {
+      // No handler frame (async continuation, timer): still devtools time.
+      const epoch = Math.floor(now() / LOOSE_BUCKET_MS);
+      looseOverhead.set(epoch, (looseOverhead.get(epoch) || 0) + dt);
+    }
   }
 
   /** Writes to every index of a list group together: tasks[3].done → tasks[*].done. */
@@ -312,7 +322,7 @@ export function createDevHook() {
     billingSuppressed++;
     try {
       const dbg = effect.ø__debug;
-      emit({ kind: "effect", state, path, node: dbg?.node, expr: dbg?.expr, pluginName: dbg?.pluginName, durationMs: r.totalMs, selfMs: r.selfMs, mutationSeq: seq, effect });
+      emit({ kind: "effect", state, path, node: dbg?.node, expr: dbg?.expr, pluginName: dbg?.pluginName, durationMs: r.totalMs, selfMs: r.selfMs, cascadeMs: Math.max(0, r.totalMs - r.selfMs - r.overheadMs), mutationSeq: seq, effect });
       if (dbg && dbg.node && typeof document !== "undefined") {
         if (document.contains(dbg.node)) dbg.wasConnected = true;
         else {
@@ -472,6 +482,7 @@ export function createDevHook() {
           t: ev.t,
           durationMs: ev.durationMs || 0,
           selfMs: self,
+          cascadeMs: typeof ev.cascadeMs === "number" ? ev.cascadeMs : Math.max(0, (ev.durationMs || 0) - self),
           mutationSeq: ev.mutationSeq || 0,
           path: ev.path || "",
         };
@@ -824,7 +835,7 @@ export function createDevHook() {
       for (let i = 0; i < cap; i++) {
         const idx = (head - 1 - i + cap) % cap;
         const r = dbg.recentRuns[idx];
-        if (r) recentRuns.push({ t: r.t, durationMs: r.durationMs, selfMs: r.selfMs ?? r.durationMs, mutationSeq: r.mutationSeq, path: r.path });
+        if (r) recentRuns.push({ t: r.t, durationMs: r.durationMs, selfMs: r.selfMs ?? r.durationMs, cascadeMs: r.cascadeMs ?? 0, mutationSeq: r.mutationSeq, path: r.path });
       }
     }
     return {
@@ -931,6 +942,7 @@ export function createDevHook() {
         pluginName: a.pluginName,
         expr: a.expr,
         calls: a.calls,
+        distinct: a.distinct,
         selfMs: r3(a.selfMs),
         maxSelfMs: r3(a.maxSelfMs),
         effect: live ? UN(a.sample) : a.sample,
@@ -945,6 +957,8 @@ export function createDevHook() {
       const b = into.get(k);
       if (!b) { into.set(k, { ...a }); continue; }
       b.calls += a.calls;
+      // Identity is lost across separate aggregates; don't guess.
+      b.distinct = null;
       b.selfMs += a.selfMs;
       if (a.maxSelfMs > b.maxSelfMs) b.maxSelfMs = a.maxSelfMs;
     }

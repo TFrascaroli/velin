@@ -2148,7 +2148,9 @@ function bind(root, initialState) {
     // Initial render is an entry point too: a slow mount is a long task the
     // devtools should attribute, not report as "no Velin work".
     const el = /** @type {any} */ (root);
-    const desc = el && el.tagName ? `<${el.tagName.toLowerCase()}${el.id ? "#" + el.id : ""}>` : "fragment";
+    const desc = el && el.tagName
+      ? `<${el.tagName.toLowerCase()}${el.id ? "#" + el.id : el.classList && el.classList.length ? "." + el.classList[0] : ""}>`
+      : "fragment";
     mounting = hook.ø__enterSource(`Velin.bind(${desc})`, "mount");
   }
   try {
