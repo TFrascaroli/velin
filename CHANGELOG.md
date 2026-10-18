@@ -30,6 +30,8 @@ All notable changes to `@velinjs/all`. Follows
 
 ### Changed
 
+- Development builds no longer `console.log` every processed node, plugin
+  application and dependency set (about 16 lines per list row).
 - `Velin.getController()` accepts `this` inside a state method, including
   methods called from `vln-on` and from `vln-loop` rows. Before, the
   documented `Velin.getController(this).batch(…)` threw from any handler.
