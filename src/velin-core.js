@@ -1461,7 +1461,7 @@ function getSetter(reactiveState, expr) {
     const label = `${property} = …`;
     const inner = set;
     set = (value) => {
-      const opened = hook.ø__enterSource(label);
+      const opened = hook.ø__enterSource(label, "input");
       try { return inner(value); } finally { hook.ø__exitSource(opened); }
     };
   }
@@ -2143,7 +2143,19 @@ function bind(root, initialState) {
   if (initialState === undefined) initialState = {};
   const reactiveState = setupState(initialState);
   reactiveState.ø__rootNode = root;
-  processNode(root, reactiveState);
+  let mounting = false;
+  if (__DEV__) {
+    // Initial render is an entry point too: a slow mount is a long task the
+    // devtools should attribute, not report as "no Velin work".
+    const el = /** @type {any} */ (root);
+    const desc = el && el.tagName ? `<${el.tagName.toLowerCase()}${el.id ? "#" + el.id : ""}>` : "fragment";
+    mounting = hook.ø__enterSource(`Velin.bind(${desc})`, "mount");
+  }
+  try {
+    processNode(root, reactiveState);
+  } finally {
+    if (__DEV__) hook.ø__exitSource(mounting);
+  }
   states.set(reactiveState.state, reactiveState);
   if (__DEV__) {
     hook.ø__trackState(reactiveState);

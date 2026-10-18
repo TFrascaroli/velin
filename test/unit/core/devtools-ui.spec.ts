@@ -56,7 +56,7 @@ describe("Devtools drawer — smoke", () => {
     const text = bodyText();
     expect(text).toContain("load()");
     expect(text).toContain("items");
-    expect(text).toContain("runs/write");
+    expect(text).toContain("/write");
     expect(text).toContain("re-ran on every write");
 
     click(byText("button", "tree"));

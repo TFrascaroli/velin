@@ -275,12 +275,28 @@ export function createDevHook() {
     return { totalMs: r.totalMs, selfMs: r.selfMs };
   }
 
+  // Overhead spent while no frame is open (writes after an `await`, timers)
+  // is kept in coarse time buckets so a long-task window can still count it.
+  const LOOSE_BUCKET_MS = 5;
+  const LOOSE_BUCKET_CAP = 4000;
+  /** @type {Map<number, number>} bucket epoch → overhead ms */
+  const looseOverhead = new Map();
+
   function billOverhead(dt) {
+    if (dt <= 0) return;
     const n = runningStack.length;
-    if (!n || dt <= 0) return;
+    if (!n) {
+      const epoch = Math.floor(now() / LOOSE_BUCKET_MS);
+      looseOverhead.set(epoch, (looseOverhead.get(epoch) || 0) + dt);
+      if (looseOverhead.size > LOOSE_BUCKET_CAP) looseOverhead.delete(looseOverhead.keys().next().value);
+      return;
+    }
     runningStack[n - 1].nestedMs += dt;
     if (runningStack[0].kind === "source") runningStack[0].overheadMs += dt;
   }
+
+  /** Writes to every index of a list group together: tasks[3].done → tasks[*].done. */
+  const pathPattern = (p) => (typeof p === "string" ? p.replace(/\[\d+\]/g, "[*]").replace(/\.(\d+)(?=\.|$)/g, "[*]") : p);
 
   /**
    * Run one effect with full instrumentation: frame, timing, effect emit,
@@ -317,18 +333,24 @@ export function createDevHook() {
    * inside an effect or another handler belongs to that frame instead.
    * Returns whether a frame was opened; pass that to exitSource.
    */
-  function enterSource(label) {
+  /**
+   * @param {string} label what the user wrote (`loadDemo()`, `filter = …`)
+   * @param {"handler"|"input"|"mount"} [origin]
+   */
+  function enterSource(label, origin) {
     if (runningStack.length) return false;
-    pushFrame({ kind: "source", id: ++sourceSeq, label, writes: new Map(), rootCount: 0, overheadMs: 0 });
+    pushFrame({ kind: "source", origin: origin || "handler", id: ++sourceSeq, label, writes: new Map(), rootCount: 0, overheadMs: 0 });
     return true;
   }
   function exitSource(opened) {
     if (!opened) return;
     const { totalMs, selfMs, frame } = popFrame();
-    if (!frame || !frame.writes.size) return;
+    if (!frame) return;
+    // Kept even without writes: a handler that burns CPU and writes nothing
+    // is still the answer to "what froze the page".
     if (sourceRing.size >= SOURCE_TRACK_CAP) sourceRing.delete(sourceRing.keys().next().value);
     sourceRing.set(frame.id, {
-      id: frame.id, label: frame.label, t: frame.t0, totalMs, selfMs,
+      id: frame.id, origin: frame.origin, label: frame.label, t: frame.t0, totalMs, selfMs,
       overheadMs: frame.overheadMs,
       rootCount: frame.rootCount, writes: frame.writes,
     });
@@ -390,12 +412,14 @@ export function createDevHook() {
         }
       }
       if (srcFrame) {
-        const w = srcFrame.writes.get(ev.path);
+        const key = pathPattern(ev.path);
+        const w = srcFrame.writes.get(key);
         if (w) w.count++;
-        else srcFrame.writes.set(ev.path, { count: 1, effects: new Map(), roots: [] });
+        else srcFrame.writes.set(key, { count: 1, rootCount: 0, effects: new Map(), roots: [] });
         if (!ev.parentMutationSeq) {
           srcFrame.rootCount++;
-          const ww = srcFrame.writes.get(ev.path);
+          const ww = srcFrame.writes.get(key);
+          ww.rootCount++;
           if (ww.roots.length < ROOT_LIST_CAP) ww.roots.push(ev.mutationSeq);
         }
       }
@@ -412,11 +436,12 @@ export function createDevHook() {
         aggMut.recordFanout(ev.path, ev.t, ev.effectCount);
       }
       if (!ev.queued && ev.effectCount > 0 && typeof requestAnimationFrame !== "undefined") {
-        const n = (frameFlushes.get(ev.path) || 0) + 1;
-        frameFlushes.set(ev.path, n);
+        const key = pathPattern(ev.path);
+        const n = (frameFlushes.get(key) || 0) + 1;
+        frameFlushes.set(key, n);
         if (n === THRASH_LIMIT + 1) {
-          emit({ kind: "warn", code: "W003", message: `mutation-thrash: ${ev.path} re-ran its effects ${n}x in one frame`, ref: { path: ev.path } });
-          emitSignal({ kind: "thrash", severity: "warn", payload: { path: ev.path, count: n }, dismissKey: `thrash:${ev.path}` });
+          emit({ kind: "warn", code: "W003", message: `mutation-thrash: ${key} re-ran its effects more than ${THRASH_LIMIT}x in one frame`, ref: { path: key } });
+          emitSignal({ kind: "thrash", severity: "warn", payload: { path: key, limit: THRASH_LIMIT }, dismissKey: `thrash:${key}` });
         }
         scheduleFrameReset();
       }
@@ -433,7 +458,7 @@ export function createDevHook() {
         foldEffect(mut.effects, ev, self);
         const srcFrame = runningStack.length && runningStack[0].kind === "source" ? runningStack[0] : null;
         if (srcFrame && mut.source === srcFrame.id) {
-          const w = srcFrame.writes.get(mut.path);
+          const w = srcFrame.writes.get(pathPattern(mut.path));
           if (w) foldEffect(w.effects, ev, self);
         }
       }
@@ -991,6 +1016,8 @@ export function createDevHook() {
 
     for (const s of sourceRing.values()) {
       if (s.t > end || s.t + s.totalMs < start) continue;
+      // A sub-millisecond handler that wrote nothing can't explain a long task.
+      if (!s.writes.size && s.totalMs < 1) continue;
       const writes = [];
       let effectsMs = 0, writeCount = 0;
       for (const [path, w] of s.writes) {
@@ -1005,11 +1032,12 @@ export function createDevHook() {
           const hm = subtreeMs(seq, 0);
           if (!heaviest || hm > heaviest.ms) heaviest = { mutationSeq: seq, ms: r3(hm) };
         }
-        writes.push({ path, count: w.count, cascaded: w.count - w.roots.length, ms: r3(ms), effects, heaviest });
+        writes.push({ path, count: w.count, cascaded: w.count - w.rootCount, ms: r3(ms), effects, heaviest });
       }
       writes.sort((x, y) => y.ms - x.ms);
       groups.push({
         kind: "handler",
+        origin: s.origin || "handler",
         label: s.label,
         t: s.t,
         totalMs: r3(s.totalMs),
@@ -1027,11 +1055,12 @@ export function createDevHook() {
     for (const [seq, m] of mutationRing) {
       if (m.t < oldest) oldest = m.t;
       if (m.t < start || m.t > end || m.source != null) continue;
-      let row = loose.get(m.path);
-      if (!row) { row = { count: 0, cascaded: 0, effects: new Map(), roots: [] }; loose.set(m.path, row); }
+      const key = pathPattern(m.path);
+      let row = loose.get(key);
+      if (!row) { row = { count: 0, cascaded: 0, effects: new Map(), roots: [] }; loose.set(key, row); }
       row.count++;
       if (m.parent) row.cascaded++;
-      else row.roots.push(seq);
+      else if (row.roots.length < ROOT_LIST_CAP) row.roots.push(seq);
       mergeEffects(row.effects, m.effects);
     }
     if (loose.size) {
@@ -1058,6 +1087,10 @@ export function createDevHook() {
     let attributed = 0;
     let overhead = 0;
     for (const g of groups) { attributed += g.ownMs + g.effectsMs; overhead += g.overheadMs; }
+    for (const [epoch, ms] of looseOverhead) {
+      const t = epoch * LOOSE_BUCKET_MS;
+      if (t + LOOSE_BUCKET_MS > start && t < end) overhead += ms;
+    }
     const durationMs = end - start;
     return {
       start,
@@ -1086,6 +1119,8 @@ export function createDevHook() {
           const end = start + entry.duration;
           emitSignal({
             kind: "long-task",
+            // Stamp with when the freeze started, not when the observer fired.
+            t: start,
             severity: "warn",
             payload: {
               durationMs: +entry.duration.toFixed(1),
@@ -1259,6 +1294,7 @@ export function createDevHook() {
       runningStack.length = 0;
       sourceRing.clear();
       sourceSeq = 0;
+      looseOverhead.clear();
     },
   };
 

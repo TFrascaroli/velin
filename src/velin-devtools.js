@@ -153,7 +153,23 @@
         navigateReplace(entries[key]());
       }
     }
+    // The drawer's own renders can be long tasks (a big trace is a big DOM).
+    // Remember when they ran so the inbox doesn't blame the page for them.
+    const ownRenders = [];
     function renderFrame() {
+      const t0 = hook.ø__now();
+      try { renderFrameInner(); }
+      finally {
+        ownRenders.push([t0, hook.ø__now()]);
+        if (ownRenders.length > 20) ownRenders.shift();
+      }
+    }
+    function isOwnRender(start, duration) {
+      let mine = 0;
+      for (const [a, b] of ownRenders) mine += Math.max(0, Math.min(b, start + duration) - Math.max(a, start));
+      return mine >= duration / 2;
+    }
+    function renderFrameInner() {
       const frame = stack[stack.length - 1];
       if (!frame) return;
       // Rail active state follows the current surface.
@@ -228,7 +244,7 @@
     function formatSignalMessage(sig) {
       const p = sig.payload || {};
       switch (sig.kind) {
-        case "thrash":       return `${fmtPath(p.path)} × ${p.count}`;
+        case "thrash":       return `${fmtPath(p.path)}: more than ${p.limit || 32} unbatched writes in one frame`;
         case "long-task": {
           const top = p.window && p.window.groups && p.window.groups[0];
           const who = top ? (top.kind === "handler" ? top.label : "writes outside handlers") : "no Velin work";
@@ -241,6 +257,7 @@
     }
 
     hook.onSignal((sig) => {
+      if (sig.kind === "long-task" && sig.payload && isOwnRender(sig.payload.startTime, sig.payload.durationMs)) return;
       const key = sig.dismissKey || (sig.kind + ":" + Math.random());
       let entry = signalMap.get(key);
       if (!entry) {
@@ -389,7 +406,12 @@
           el("span", { class: "directive" }, b.directive),
           el("code", { class: "expr" }, b.expr),
         ));
-        box.appendChild(row("current", el("span", { class: "val" }, shortValue(b.currentValue))));
+        // The hook peeks the first path the binding read; say which one
+        // instead of implying it's the binding's rendered value.
+        if (b.reads && b.reads.length) {
+          box.appendChild(row("first read", el("span", { class: "val" },
+            el("code", null, fmtPath(b.reads[0].path)), " = ", shortValue(b.currentValue))));
+        }
 
         if (b.reads && b.reads.length) {
           const chips = el("div", { class: "chips" });
@@ -437,7 +459,7 @@
       "long-task": {
         what: "The browser blocked the main thread for longer than 50ms (longtask API). Input and rendering waited for the whole task.",
         why:  "Measured by the browser, not estimated. Many cheap effects add up: one write can re-run hundreds of bindings.",
-        action: "Start with the costliest handler, then its costliest write. Runs/write far above 1 means one write re-ran a binding many times. A write repeated in a loop whose effects re-ran each time is a batch candidate. Open a write's tree for the cascade, or an effect for its reads and history.",
+        action: "Start with the costliest handler, then its costliest write. A /write far above 1 means one write re-ran that binding many times. A write repeated in a loop whose effects re-ran each time is a batch candidate. Open a write's tree for the cascade, or an effect for its reads and history.",
       },
       "orphan-spike": {
         what: "Effects are firing on DOM nodes that are no longer in the document.",
@@ -528,16 +550,19 @@
       if (!effect) return;
       navigate({ surface: "signals", label: "Explain", data: effect, build: buildExplain });
     }
-    function openTree(seq, label) {
-      navigate({ surface: "signals", label: label || "Tree", data: seq, build: buildCausality });
+    function openTree(seq, label, ofCount) {
+      navigate({ surface: "signals", label: label || "Tree", data: { seq, ofCount }, build: buildCausality });
     }
 
+    const fmtRatio = (x) => (x >= 10 ? x.toFixed(0) : x >= 1 ? String(+x.toFixed(1)) : String(+x.toFixed(2)));
+
     /** Effect rows shared by the window view and the tree view. */
-    function effectTable(effects, perWrite) {
+    function effectTable(effects, writes) {
       const table = el("table", { class: "grid wt" });
       table.appendChild(el("tr", null,
         el("th", null, "binding"),
-        el("th", { class: "num" }, perWrite ? "runs/write" : "runs"),
+        el("th", { class: "num" }, "runs"),
+        writes > 1 ? el("th", { class: "num", title: "Runs per write. Far above 1: each write re-ran this binding many times." }, "/write") : null,
         el("th", { class: "num" }, "self"),
       ));
       for (const e of effects) {
@@ -545,7 +570,8 @@
         const tr = el("tr", { class: live ? "clickable" : "", title: live ? "Open in Explain" : "effect no longer exists" },
           el("td", { class: "expr-cell", title: `${directiveLabel(e)}="${e.expr || ""}"` },
             el("span", { class: "dir" }, directiveLabel(e)), " ", e.expr || "(no expr)"),
-          el("td", { class: "num" }, perWrite ? (e.calls / perWrite).toFixed(e.calls % perWrite ? 1 : 0) : String(e.calls)),
+          el("td", { class: "num" }, String(e.calls)),
+          writes > 1 ? el("td", { class: "num" }, fmtRatio(e.calls / writes)) : null,
           el("td", { class: "num" }, fmtMs(e.selfMs)),
         );
         if (live) tr.addEventListener("click", () => openExplain(e.effect));
@@ -553,6 +579,9 @@
       }
       return table;
     }
+
+    const ORIGIN_TAG = { handler: "handler", input: "input", mount: "mount" };
+    const WRITE_SECTIONS_SHOWN = 20;
 
     /** Long-task attribution: handler → writes → effects, costliest first. */
     function buildWindow(w) {
@@ -565,10 +594,12 @@
         ),
         el("div", { class: "split-legend" },
           el("span", null, el("i", { class: "sw velin" }), `your handlers + bindings ${fmtMs(velinMs)}`),
-          w.overheadMs >= 1 ? el("span", { title: "Time spent recording this trace. Not present without devtools." }, el("i", { class: "sw overhead" }), `devtools ${fmtMs(w.overheadMs)}`) : null,
+          w.overheadMs >= 1 ? el("span", { title: "Time the devtools hook spent recording this trace." }, el("i", { class: "sw overhead" }), `devtools ${fmtMs(w.overheadMs)}`) : null,
           el("span", null, el("i", { class: "sw other" }), `other ${fmtMs(w.otherMs)}`),
         ),
       ));
+      box.appendChild(el("div", { class: "note" },
+        "Measured on a development build, which does extra checking on every binding. Production runs the same work faster: compare these numbers with each other, not with production."));
       if (w.otherMs > velinMs) {
         box.appendChild(el("div", { class: "note" },
           "Most of this task was not Velin work: layout or style recalculation, GC, or other scripts. The Performance panel will show what."));
@@ -585,7 +616,7 @@
       for (const g of w.groups) {
         const head = g.kind === "handler"
           ? el("div", { class: "grp-head" },
-              el("span", { class: "tag src" }, "handler"),
+              el("span", { class: "tag src" }, ORIGIN_TAG[g.origin] || "handler"),
               el("code", { class: "grp-label" }, g.label || "(anonymous)"),
               el("span", { class: "grp-ms" }, fmtMs(g.ownMs + g.effectsMs)))
           : el("div", { class: "grp-head" },
@@ -595,14 +626,19 @@
         const grp = el("div", { class: "grp" }, head);
         grp.appendChild(el("div", { class: "grp-sub" },
           g.kind === "handler"
-            ? el("span", { title: "The handler's own JavaScript plus Velin's work applying its writes and dispatching effects." }, `handler + dispatch ${fmtMs(g.ownMs)} · `)
+            ? el("span", { title: "The handler's own JavaScript plus Velin's work applying its writes and dispatching effects." },
+                g.origin === "mount" ? `building the DOM ${fmtMs(g.ownMs)} · ` : `handler + dispatch ${fmtMs(g.ownMs)} · `)
             : "",
           `${g.writeCount} write${g.writeCount === 1 ? "" : "s"} · bindings ${fmtMs(g.effectsMs)}`,
         ));
+        if (g.kind === "handler" && !g.writeCount && g.origin === "handler") {
+          grp.appendChild(el("div", { class: "advice" },
+            "This handler wrote no state: the time is its own JavaScript. Profile it in the browser's Performance panel."));
+        }
 
+        const costed = g.writes.filter((wr) => wr.effects.length);
         const quiet = g.writes.filter((wr) => !wr.effects.length);
-        for (const wr of g.writes) {
-          if (!wr.effects.length) continue;
+        for (const wr of costed.slice(0, WRITE_SECTIONS_SHOWN)) {
           const roots = wr.count - wr.cascaded;
           const row = el("div", { class: "wr" },
             el("div", { class: "wr-head" },
@@ -612,8 +648,8 @@
               el("span", { class: "grp-ms" }, fmtMs(wr.ms)),
               wr.heaviest ? el("button", {
                 class: "btn tiny",
-                title: "Open the cascade of the costliest single write",
-                onclick: () => openTree(wr.heaviest.mutationSeq, `Tree ${fmtPath(wr.path)}`),
+                title: wr.count > 1 ? `Open the cascade of the costliest of these ${wr.count} writes` : "Open this write's cascade",
+                onclick: () => openTree(wr.heaviest.mutationSeq, `Tree ${fmtPath(wr.path)}`, wr.count),
               }, "tree ›") : null,
             ),
           );
@@ -627,10 +663,17 @@
           row.appendChild(effectTable(wr.effects, wr.count));
           grp.appendChild(row);
         }
+        const hidden = costed.slice(WRITE_SECTIONS_SHOWN);
+        if (hidden.length) {
+          const ms = hidden.reduce((a, wr) => a + wr.ms, 0);
+          grp.appendChild(el("div", { class: "grp-sub", style: "margin-top:8px" },
+            `${hidden.length} more written path${hidden.length === 1 ? "" : "s"}, ${fmtMs(ms)} together`));
+        }
         if (quiet.length) {
           grp.appendChild(el("div", { class: "grp-sub", style: "margin-top:8px" },
             "also wrote, nothing re-ran: ",
-            ...quiet.flatMap((wr, i) => [i ? ", " : "", el("code", null, `${fmtPath(wr.path)} ×${wr.count}`)]),
+            ...quiet.slice(0, 10).flatMap((wr, i) => [i ? ", " : "", el("code", null, `${fmtPath(wr.path)} ×${wr.count}`)]),
+            quiet.length > 10 ? ` and ${quiet.length - 10} more` : "",
           ));
         }
         box.appendChild(grp);
@@ -642,10 +685,11 @@
     // One write and everything it caused: the bindings it re-ran (grouped)
     // and any writes those effects made, recursively. Exclusive times, so
     // the numbers add up.
-    function buildCausality(mutationSeq) {
+    function buildCausality(data) {
+      const { seq, ofCount } = typeof data === "object" && data ? data : { seq: data, ofCount: 1 };
       const root = el("div", { class: "surface" });
       root.appendChild(el("div", { class: "surface-head" }, el("h3", null, "Cascade")));
-      const tree = hook.causalityTree(mutationSeq);
+      const tree = hook.causalityTree(seq);
       if (!tree) {
         root.appendChild(el("div", { class: "empty" },
           "This write is no longer in the mutation history (it keeps the last 2000 writes)."));
@@ -653,9 +697,9 @@
       }
       root.appendChild(el("div", { class: "detail-headline" },
         `${fmtPath(tree.path)} — ${fmtMs(tree.subtreeMs)} total`));
-      if (tree.source) {
-        root.appendChild(el("div", { class: "muted small" }, "written by ", el("code", null, tree.source)));
-      }
+      root.appendChild(el("div", { class: "muted small" },
+        ofCount > 1 ? `The costliest single write of ${ofCount}` : "One write",
+        ...(tree.source ? [" · written by ", el("code", null, tree.source)] : [])));
 
       const MAX_DEPTH = 8;
       function renderMut(node, depth, container) {
@@ -956,7 +1000,7 @@
       ));
       root.appendChild(el("div", { class: "detail-headline" }, info.expr || "(no expr)"));
       root.appendChild(el("div", { class: "muted small" },
-        `${info.pluginName || "?"}${info.subkey ? ":" + info.subkey : ""}  ·  on ${nodeLabel(info.node)}`,
+        `vln-${info.pluginName || "?"}${info.subkey ? ":" + info.subkey : ""}` + (info.node && info.node.nodeType === 1 ? `  ·  on ${nodeLabel(info.node)}` : ""),
       ));
 
       if (info.reads && info.reads.length) {
@@ -998,7 +1042,7 @@
             el("td", { class: "dim" }, fmtAgo(r.t)),
             el("td", { class: "expr-cell" }, fmtPath(r.path) || "—"),
             el("td", { class: "num", title: cascaded ? `${total.toFixed(2)}ms including the writes it cascaded into` : null },
-              self.toFixed(2) + "ms" + (cascaded ? ` (+${(total - self).toFixed(1)})` : "")),
+              self.toFixed(2) + "ms" + (cascaded ? ` (+${(total - self).toFixed(1)} in writes it made)` : "")),
           ));
         });
         root.appendChild(table);
@@ -1138,7 +1182,11 @@
     // ── Wiring ─────────────────────────────────────────────────────────
     badge.addEventListener("click", (e) => {
       e.stopPropagation();
-      if (open) closeDrawer(); else openDrawer();
+      if (open) { closeDrawer(); return; }
+      // An amber badge is a call to look at Signals; take the user there.
+      const unreadWarn = [...signalMap.values()].some((s) => s.unread && s.sig.severity === "warn");
+      if (unreadWarn) { openDrawer(entries.signals()); return; }
+      openDrawer();
     });
 
     $(".drawer-close").addEventListener("click", closeDrawer);
@@ -1485,7 +1533,7 @@
   .tag.mut { background: var(--v-cyan); }
   .btn.tiny { padding: 0 6px; font-size: 10px; line-height: 16px; }
   .grid.wt { margin-top: 4px; }
-  .grid.wt td.expr-cell { max-width: 260px; }
+  .grid.wt td.expr-cell { max-width: 210px; }
   .dir { color: var(--v-fg-mute); }
   .tree { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
   .tree-row {

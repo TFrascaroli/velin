@@ -64,9 +64,10 @@ warnings. Entries persist for the session.
 - **long-task**: the browser blocked the main thread for more than 50ms.
   This is the browser's measurement, not an estimate. The entry names the
   handler that ran during it.
-- **thrash**: writes to one path re-ran its bindings more than 32 times
-  within a single frame. Writes inside a `batch()` don't count, so batching
-  the loop clears it.
+- **thrash**: writes to one path (or to the same field across a list,
+  like `tasks[*].done`) re-ran their bindings more than 32 times within a
+  single frame. Writes inside a `batch()` don't count, so batching the
+  loop clears it.
 - **orphan-spike**: bindings keep running for elements that were removed.
 - **warn**: a warning from Velin core.
 
@@ -77,15 +78,18 @@ Open a `long-task` entry to see what ran while the page was frozen:
 - **The bar** splits the task into your handlers and bindings, devtools'
   own bookkeeping, and everything else (layout, garbage collection, other
   scripts).
-- **Each handler** (`vln-on`, `vln-input`) shows the time spent in the
-  handler and in Velin applying its writes, then its writes grouped by
-  path.
-- **Each write** lists the bindings it re-ran. **runs/write** is how many
-  times a binding ran per write: far above 1 means one write re-rendered
-  many elements. A write repeated in a loop whose bindings re-ran every
-  time gets a batch suggestion.
-- **tree ›** opens the cascade of that path's costliest single write: the
-  bindings it re-ran, and any writes those bindings made in turn.
+- **Each entry point** is tagged: **handler** (`vln-on`), **input**
+  (`vln-input`), or **mount** (`Velin.bind` building the page). It shows
+  the time spent in it and in Velin applying its writes, then its writes
+  grouped by path. Writes to every item of a list group together
+  (`tasks[*].done`). A handler that wrote nothing still shows up, with its
+  time as its own JavaScript.
+- **Each write** lists the bindings it re-ran: **runs** in total and
+  **/write** (per write). Far above 1 per write means one write re-rendered many
+  elements. A write repeated in a loop whose bindings re-ran every time
+  gets a batch suggestion.
+- **tree ›** opens the cascade of the costliest single write to that path:
+  the bindings it re-ran, and any writes those bindings made in turn.
 - Any binding opens in Explain.
 
 Times are *self* times: a binding's own cost, not counting writes it
@@ -97,8 +101,10 @@ code that writes state directly) are grouped under **outside handlers**.
 
 ## Things to know
 
-- Devtools makes the page slower. Compare measurements taken with
-  devtools to each other, not to production.
+- Everything is measured on a development build, which does extra
+  checking on every binding and is several times slower than production
+  for binding-heavy work. The bar's "devtools" slice is only the recording
+  itself. Compare measurements with each other, not with production.
 - Cascades come from the last 2000 writes. A long task older than that
   says it's partial.
 - Writes in an `async` handler after its first `await` are attributed to
