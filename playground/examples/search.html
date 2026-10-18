@@ -27,7 +27,7 @@
 
 <!-- User cards - Loop over computed getter -->
 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-  <div vln-loop:user="filteredUsers" class="bg-white border-2 border-gray-200 rounded-lg p-5 hover:border-blue-400 hover:shadow-md transition-all">
+  <div vln-loop:user="{ collection: filteredUsers, key: 'email' }" class="bg-white border-2 border-gray-200 rounded-lg p-5 hover:border-blue-400 hover:shadow-md transition-all">
     <div class="flex items-start justify-between mb-3">
       <div>
         <!-- vln-highlight - Custom plugin that highlights search term matches -->

@@ -164,6 +164,31 @@ Inside a loop, you can access `$index` (0-based):
 </ul>
 ```
 
+**Keyed loops:**
+
+Pass `{ collection, key }` to make each row follow its item by a stable id:
+
+```html
+<ul>
+  <li vln-loop:todo="{ collection: todos, key: 'id' }">
+    <input type="checkbox" vln-input="todo.done" />
+    <span vln-text="todo.title"></span>
+  </li>
+</ul>
+```
+
+Use a key whenever items can change position: sorting, filtering, inserting
+anywhere but the end, removing from the front or middle. Rows move with
+their items, so focus and partially typed input stay on the right row.
+Every item needs the key property, and keys must be unique (`VLN020`,
+`VLN021`).
+
+Without a key, rows are matched by position. That's the cheaper choice for
+lists that only grow or shrink at the end, or that you replace wholesale.
+If items do move between positions in an unkeyed loop, later edits to a
+moved item won't update its row; dev builds warn about this once per loop
+(`VLN022`).
+
 **Notes:**
 - The loop variable is scoped to that element and its children.
 - `$index` is automatically provided.

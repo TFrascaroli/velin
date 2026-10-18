@@ -45,9 +45,9 @@
   </div>
 </form>
 
-<!-- vln-loop:task="tasks" - Loop over array, 'task' is the loop variable -->
+<!-- Keyed by id: rows follow their task when earlier tasks are deleted -->
 <ul class="space-y-2">
-  <li vln-loop:task="tasks" class="p-3 bg-white border border-gray-200 rounded-md">
+  <li vln-loop:task="{ collection: tasks, key: 'id' }" class="p-3 bg-white border border-gray-200 rounded-md">
     <!-- vln-fragment with ternary - picks template based on editingId -->
     <div vln-fragment="editingId === task.id ? 'task-edit' : 'task-view'"></div>
   </li>
