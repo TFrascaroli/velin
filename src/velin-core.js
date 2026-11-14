@@ -20,11 +20,12 @@
  * @property {any} currentCycleID Marker used to deduplicate re-entrant dependency capture cycles
  * @property {number} batchDepth Nesting depth of active batch() calls; effects are queued when > 0
  * @property {Map<Function, number>} batchQueue Deferred effects collected while batchDepth > 0; value is the mutationSeq of the last mutation that queued each effect (dev-only correlation id, 0 for non-mutation queuings)
+ * @property {Set<Function>} batchRecapture Effects in batchQueue that must re-capture their dependencies when flushed
  * @property {(fn: () => void) => void} batch Defers effects triggered inside fn until fn returns, then flushes once (deduplicated). Safe to nest.
  */
 
 /**
- * @typedef {() => PluginControl | void} VelinBindingEffect
+ * @typedef {(recapture?: boolean) => PluginControl | void} VelinBindingEffect Runs the binding; `recapture` re-captures its dependencies on this run (ADR-0006)
  */
 
 /**
@@ -72,7 +73,7 @@
  * @property {(init: ComposeInit) => ChildContext} compose Pre-bound compose (returns ChildContext)
  * @property {(node: Node) => void} processNode Pre-bound processNode — runs plugins on `node` in THIS scope (no child scope is created). Use for dynamically-inserted subtrees that should share the current scope.
  * @property {(node: Node, name?: string, value?: string) => void} consume Pre-bound consumeAttribute
- * @property {(prop: string) => void} triggerEffects Pre-bound triggerEffects
+ * @property {(prop: string, recapture?: boolean) => void} triggerEffects Pre-bound triggerEffects
  * @property {(fn: () => void) => void} batch Pre-bound batch on this state's tree control
  */
 
@@ -87,7 +88,7 @@
  * @property {(key: string, interp: Interpolation) => ChildContext} setInterpolation
  * @property {(node: Node) => void} processNode
  * @property {(node?: Node | null) => void} cleanup
- * @property {(prop: string) => void} triggerEffects
+ * @property {(prop: string, recapture?: boolean) => void} triggerEffects
  * @property {ReactiveState} ø__reactiveState Escape hatch — the underlying ReactiveState
  */
 
@@ -231,7 +232,7 @@ const DefaultPluginPriorities = {
  * @property {WeakMap<Node, any>} pluginStates
  * @property {(state: any) => ReactiveState | undefined} getWrapper Test/introspection helper: look up the ReactiveState wrapper for a proxy previously returned by Velin.bind().
  * @property {(node: Element, attr: string, expr: string) => void} consumeAttribute
- * @property {(prop: string, reactiveState: ReactiveState) => void} triggerEffects
+ * @property {(prop: string, reactiveState: ReactiveState, mutationSeq?: number, recapture?: boolean) => void} triggerEffects
  * @property {(code: string, text: string | false, ctx?: string) => string} fmt Formats a coded message; full text in dev builds, code + docs link in production. Pass the text as `__DEV__ && \`…\`` so it is dropped from production bundles.
  */
 
@@ -494,8 +495,8 @@ function buildChildContext(parentState, init) {
     },
     /** @param {Node=} node */
     cleanup(node) { cleanupState(parentState, childState, node); },
-    /** @param {string} prop */
-    triggerEffects(prop) { triggerEffects("root." + prop, childState); },
+    /** @param {string} prop @param {boolean=} recapture */
+    triggerEffects(prop, recapture) { triggerEffects("root." + prop, childState, undefined, recapture); },
     /** Internal handle for processNode/scopedState unwrap. */
     ø__reactiveState: childState,
   };
@@ -524,8 +525,8 @@ function buildPluginHelpers(reactiveState) {
     processNode: (node) => processNode(node, reactiveState),
     /** @param {HTMLElement} node @param {string} name @param {string} value */
     consume: (node, name, value) => consumeAttribute(node, name, value),
-    /** @param {string} prop */
-    triggerEffects: (prop) => triggerEffects("root." + prop, reactiveState),
+    /** @param {string} prop @param {boolean=} recapture */
+    triggerEffects: (prop, recapture) => triggerEffects("root." + prop, reactiveState, undefined, recapture),
     /** @param {() => void} fn */
     batch: (fn) => reactiveState.ø__control.batch(fn),
   };
@@ -615,10 +616,58 @@ function processPlugin(
       console.error(fmt("VLN017", __DEV__ && `Error occurred while tracking expression '${expr}' in plugin '${plugin.name}':`, `${plugin.name}: ${expr}`), error);
     }
     depCapture.capturingDeps = false;
+    /** @type {Set<string>} Paths this effect is currently bound to. */
+    let bound = new Set();
+    // Binds the effect to what depCapture.deps holds now, dropping paths it
+    // no longer reads. Deps at or above ANY trickling root in the stack are
+    // filtered out. Stacking matters for nested loops: the inner loop must
+    // not lose the outer loop's anchor, otherwise cells re-register on the
+    // outer array (see ADR-0001).
+    const rebind = () => {
+      const roots = reactiveState.tricklingRoots;
+      /** @type {Set<string>} */
+      const next = new Set();
+      for (const e of depCapture.deps) {
+        if (!(roots && roots.length && roots.some((r) => (r.startsWith("root.") ? r : `root.${r}`).startsWith(e)))) next.add(e);
+      }
+      for (const d of bound) {
+        if (next.has(d)) continue;
+        const set = reactiveState.bindings.get(d);
+        set?.delete(effect);
+        if (set && !set.size) reactiveState.bindings.delete(d);
+        reactiveState.ø__innerBindings?.get(d)?.delete(effect);
+      }
+      for (const d of next) {
+        if (bound.has(d)) continue;
+        if (!reactiveState.bindings.has(d)) reactiveState.bindings.set(d, new Set());
+        reactiveState.bindings.get(d).add(effect);
+        if (reactiveState.ø__innerBindings) {
+          if (!reactiveState.ø__innerBindings.has(d)) reactiveState.ø__innerBindings.set(d, new Set());
+          reactiveState.ø__innerBindings.get(d).add(effect);
+        }
+      }
+      bound = next;
+      if (__DEV__ && /** @type {any} */ (effect).ø__debug) /** @type {any} */ (effect).ø__debug.reads = [...next];
+    };
     /** @type {VelinBindingEffect} */
-    const effect = () => {
+    const effect = (recapture) => {
       if (!nodeState?.[stateKey]) return; // Is finalized
-      const tracked = track();
+      let tracked;
+      if (recapture) {
+        // The write that woke us replaced an object/array or mutated an
+        // array: whatever we read now may not have existed at first capture
+        // (ADR-0006). Capture again and rebind.
+        depCapture.deps = new Set();
+        depCapture.capturingDeps = true;
+        reactiveState.ø__depCaptures.push(depCapture);
+        try {
+          tracked = track();
+        } finally {
+          reactiveState.ø__depCaptures.pop();
+          depCapture.capturingDeps = false;
+        }
+        rebind();
+      } else tracked = track();
       if (__DEV__) hook.ø__emit({ kind: "plugin", state: reactiveState, name: plugin.name, node, expr, subkey, phase: "render" });
       let control;
       try {
@@ -677,31 +726,7 @@ function processPlugin(
       };
       if (node) hook.ø__registerEffectNode(node, effect);
     }
-    const entries = [...depCapture.deps];
-    // Filter out any dep that is at or above ANY trickling root in the stack.
-    // Stacking matters for nested loops: the inner loop must not lose the outer
-    // loop's anchor, otherwise cells re-register on the outer array (see ADR-0001).
-    const roots = reactiveState.tricklingRoots;
-    const deps = roots && roots.length
-      ? entries.filter((e) => !roots.some((r) => {
-          const normalizedRoot = r.startsWith("root.") ? r : `root.${r}`;
-          return normalizedRoot.startsWith(e);
-        }))
-      : entries;
-    if (__DEV__ && /** @type {any} */ (effect).ø__debug) {
-      /** @type {any} */ (effect).ø__debug.reads = deps.slice();
-    }
-    for (const dep of deps) {
-      let prop = dep;
-      if (!reactiveState.bindings.has(prop))
-        reactiveState.bindings.set(prop, new Set());
-      reactiveState.bindings.get(prop).add(effect);
-      if (reactiveState.ø__innerBindings) {
-        if (!reactiveState.ø__innerBindings.has(prop))
-          reactiveState.ø__innerBindings.set(prop, new Set());
-        reactiveState.ø__innerBindings.get(prop).add(effect);
-      }
-    }
+    rebind();
     return effect();
   } finally {
     reactiveState.ø__depCaptures.pop();
@@ -1174,9 +1199,10 @@ function getSetter(reactiveState, expr) {
  * @param {string} prop Property path that changed
  * @param {ReactiveState} reactiveState The reactive state
  * @param {number=} mutationSeq Correlation id from the mutation that caused this trigger (dev-only; may be omitted for user-invoked triggerEffects)
+ * @param {boolean=} recapture Woken effects re-capture their dependencies on this run (structural writes, ADR-0006)
  * @returns {void}
  */
-function triggerEffects(prop, reactiveState, mutationSeq) {
+function triggerEffects(prop, reactiveState, mutationSeq, recapture) {
   if (!reactiveState.bindings.has(prop)) return;
   const ctrl = reactiveState.ø__control;
   if (__DEV__) {
@@ -1192,12 +1218,13 @@ function triggerEffects(prop, reactiveState, mutationSeq) {
       // Preserve the mutationSeq of the LAST mutation that queued this
       // effect — that's the one the eventual run gets credited to.
       ctrl.batchQueue.set(effect, mutationSeq || 0);
+      if (recapture) ctrl.batchRecapture.add(effect);
     } else {
       if (__DEV__) {
         hook.stats.updateCounter++;
-        hook.ø__runEffect(effect, mutationSeq || 0, reactiveState, prop);
+        hook.ø__runEffect(effect, mutationSeq || 0, reactiveState, prop, recapture);
       } else {
-        effect();
+        effect(recapture);
       }
     }
   }
@@ -1226,6 +1253,17 @@ function getController(state) {
 }
 
 /**
+ * A write is structural when it swaps an object or array in or out (as
+ * opposed to changing a primitive). Effects it wakes re-capture their
+ * dependencies, because the shape they read may have changed (ADR-0006).
+ * @param {any} old
+ * @param {any} value
+ */
+function isStructural(old, value) {
+  return (old !== null && typeof old === "object") || (value !== null && typeof value === "object");
+}
+
+/**
  * Sets up a reactive state proxy wrapping an object or array
  * @param {Object|Array} obj Initial state object/array
  * @returns {ReactiveState} Reactive state with proxies and dependency tracking
@@ -1240,6 +1278,7 @@ function setupState(obj) {
     batchDepth: 0,
     /** @type {Map<Function, number>} effect → mutationSeq of the last queuing */
     batchQueue: new Map(),
+    batchRecapture: new Set(),
     batch(fn) {
       this.batchDepth++;
       try {
@@ -1248,15 +1287,17 @@ function setupState(obj) {
         this.batchDepth--;
         if (this.batchDepth === 0 && this.batchQueue.size) {
           const effects = [...this.batchQueue.entries()];
+          const recaptures = this.batchRecapture;
           this.batchQueue.clear();
+          this.batchRecapture = new Set();
           for (const [effect, seq] of effects) {
             if (__DEV__) {
               hook.stats.updateCounter++;
               const dbg = /** @type {any} */ (effect).ø__debug;
               const path = dbg?.recentPaths?.[dbg?.ø__pathRingHead === 0 ? DEBUG_PATH_RING - 1 : dbg.ø__pathRingHead - 1] ?? "";
-              hook.ø__runEffect(effect, seq || 0, reactiveState, path);
+              hook.ø__runEffect(effect, seq || 0, reactiveState, path, recaptures.has(effect));
             } else {
-              effect();
+              effect(recaptures.has(effect));
             }
           }
         }
@@ -1323,7 +1364,7 @@ function setupState(obj) {
             const ev = hook.ø__emit({ kind: "mutate", state: reactiveState, path: path + "." + prop.toString(), op: "set", from: old, to: value });
             seq = ev && ev.mutationSeq;
           }
-          triggerEffects(path + "." + prop.toString(), reactiveState, seq);
+          triggerEffects(path + "." + prop.toString(), reactiveState, seq, isStructural(old, value));
         }
         return result;
       },
@@ -1373,7 +1414,7 @@ function setupState(obj) {
                 const ev = hook.ø__emit({ kind: "mutate", state: reactiveState, path, op: "arrayMethod", method: prop.toString() });
                 seq = ev && ev.mutationSeq;
               }
-              triggerEffects(path, reactiveState, seq);
+              triggerEffects(path, reactiveState, seq, true);
             }
             return result;
           };
@@ -1417,7 +1458,7 @@ function setupState(obj) {
               const ev = hook.ø__emit({ kind: "mutate", state: reactiveState, path: innerPath, op: "set", from: old, to: value });
               seq = ev && ev.mutationSeq;
             }
-            triggerEffects(innerPath, reactiveState, seq);
+            triggerEffects(innerPath, reactiveState, seq, isStructural(old, value));
           }
         } else if (old !== value && !init && !ø__control.wrapping) {
           let seq;
@@ -1425,14 +1466,14 @@ function setupState(obj) {
             const ev = hook.ø__emit({ kind: "mutate", state: reactiveState, path: path + "." + prop.toString(), op: "set", from: old, to: value });
             seq = ev && ev.mutationSeq;
           }
-          triggerEffects(path + "." + prop.toString(), reactiveState, seq);
+          triggerEffects(path + "." + prop.toString(), reactiveState, seq, isStructural(old, value));
           if (prop === "length") {
             let seq2;
             if (__DEV__) {
               const ev2 = hook.ø__emit({ kind: "mutate", state: reactiveState, path, op: "set", from: old, to: value });
               seq2 = ev2 && ev2.mutationSeq;
             }
-            triggerEffects(path, reactiveState, seq2);
+            triggerEffects(path, reactiveState, seq2, true);
           }
         }
         return result;

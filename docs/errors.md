@@ -142,12 +142,12 @@ Keys must be unique within the collection.
 
 ## VLN022
 
-**Unkeyed vln-loop moved items between rows.** Rows in an unkeyed loop
-are matched by position. After a sort, `unshift`, or deletion from the
-middle, later edits to a moved item won't update its row. Key the loop by
-a stable id: `vln-loop:item="{ collection: items, key: 'id' }"`. See
-[vln-loop](./directives.md#vln-loop). Logged once per loop, development
-builds only.
+**Retired.** This code warned that an unkeyed `vln-loop` had moved items
+between rows, because edits to a moved item then didn't update its new
+row. Rows now follow their item after a move, so the warning is gone and
+the code is not reused. Key a loop (`{ collection: items, key: 'id' }`)
+when rows must keep their DOM, focus or typed input across reorders. See
+[vln-loop](./directives.md#vln-loop).
 
 ## VLN023
 

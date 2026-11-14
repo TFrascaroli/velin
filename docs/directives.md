@@ -9,12 +9,15 @@ Directives are special HTML attributes that start with `vln-`. They tell Velin h
 All directive values are **JavaScript expressions** evaluated in the context of your state (accessed via `vln`).
 
 > ⚠ **Eager-touch your deps.** Velin captures an expression's reactive
-> dependencies exactly once, on the initial track pass. Anything a
-> ternary or short-circuit skips on that first run is **not** tracked,
-> and later changes to it won't trigger updates. If your expression
-> reads a value conditionally, hoist it to a state property getter
-> that touches every dep up front. See
-> [ADR-0003](./adr/0003-one-shot-dependency-capture.md).
+> dependencies when it first runs, and again whenever an object or array it
+> read is replaced or an array is mutated (`push`, `splice`, `sort`, …), so
+> items and fields added later are picked up. A change to a plain value
+> (string, number, boolean) does not re-capture: anything a ternary or
+> short-circuit skipped on the last capture is **not** tracked, and later
+> changes to it won't trigger updates. If your expression reads a value
+> conditionally, hoist it to a state property getter that touches every
+> dep up front. See [ADR-0003](./adr/0003-one-shot-dependency-capture.md)
+> and [ADR-0006](./adr/0006-recapture-on-structural-writes.md).
 
 ## Text and Content
 
@@ -182,9 +185,9 @@ Every item needs the key property, and keys must be unique (`VLN020`,
 
 Without a key, rows are matched by position. That's the cheaper choice for
 lists that only grow or shrink at the end, or that you replace wholesale.
-If items do move between positions in an unkeyed loop, later edits to a
-moved item won't update its row; dev builds warn about this once per loop
-(`VLN022`).
+When items do move in an unkeyed loop, each row re-renders with the item
+now in its slot and follows that item's later edits, but the row's DOM
+stays put: focus and typed input stay with the position, not the item.
 
 **Notes:**
 - The loop variable is scoped to that element and its children.

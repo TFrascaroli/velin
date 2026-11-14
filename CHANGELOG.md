@@ -24,9 +24,6 @@ All notable changes to `@velinjs/all`. Follows
 - Devtools: `hook.explainWindow(start, end)` and
   `hook.causalityTree(mutationSeq)`: attribution and write → bindings →
   child-writes cascades, with exclusive times that add up.
-- `VLN022` dev warning when an unkeyed `vln-loop` moves items between
-  rows (sort, unshift, delete from the middle). Edits to a moved item
-  don't update its row in unkeyed loops; the warning names the keyed form.
 
 ### Changed
 
@@ -35,13 +32,26 @@ All notable changes to `@velinjs/all`. Follows
   (`[VLN014] https://tfrascaroli.github.io/velin/e/VLN014`) instead of
   the full text. Development builds still print the explanation. The
   catalog is [docs/errors.md](docs/errors.md). `velin-all` drops from
-  11.9 KB to 10.2 KB gzipped; sizes in the README and docs are updated
+  11.9 KB to 10.5 KB gzipped; sizes in the README and docs are updated
   to measured values.
 - Development builds no longer `console.log` every processed node, plugin
   application and dependency set (about 16 lines per list row).
 - `Velin.getController()` accepts `this` inside a state method, including
   methods called from `vln-on` and from `vln-loop` rows. Before, the
   documented `Velin.getController(this).batch(…)` threw from any handler.
+- Bindings re-capture their dependencies when the write that re-ran them
+  replaced an object or array, or mutated an array (`push`, `splice`,
+  `sort`, …). A getter over a list now follows items added after first
+  render (`get doneCount() { return this.tasks.filter(t => t.done).length }`
+  updates when a new task is ticked), rows of an unkeyed `vln-loop` follow
+  the item that moved into them, and readers of a replaced object pick up
+  its new fields. Writes to primitives stay one-shot, so the rule from
+  [ADR 0003](docs/adr/0003-one-shot-dependency-capture.md) still applies
+  to branches guarded by a primitive: read what you depend on up front.
+  Decision record: [ADR 0006](docs/adr/0006-recapture-on-structural-writes.md).
+  Costs 160 B gzipped on `velin-all` (10.2 → 10.4 KB).
+- Plugin helpers: `triggerEffects(prop, recapture)` takes an optional
+  second argument; `true` makes the woken bindings re-capture.
 - Unkeyed `vln-loop` re-renders only rows whose item changed. Appending
   to a 50-row list no longer re-runs the 50 existing rows.
 - Devtools `thrash` counts writes that re-ran bindings, not raw writes:
