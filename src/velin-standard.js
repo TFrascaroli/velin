@@ -9,6 +9,7 @@
  * @param {VelinCore} vln
  */
 function setupVelinStd(vln) {
+  const fmt = vln.ø__internal.fmt;
   /**
    * When a parent substate rewrites an interpolation (e.g. keyed vln-loop
    * moves an item's `subkey` from `arr[oldI]` to `arr[newI]`), inherited
@@ -183,11 +184,11 @@ function setupVelinStd(vln) {
     track: vln.trackers.expressionTracker,
     render: ({ node, subkey, tracked }) => {
       if (!(node instanceof Element)) {
-        console.warn("[VLN001] Cannot set attributes on non-Element nodes");
+        console.warn(fmt("VLN001", __DEV__ && "Cannot set attributes on non-Element nodes"));
         return;
       }
       if (!subkey) {
-        console.warn("[VLN002] No attribute to set, expected 'attr:name'");
+        console.warn(fmt("VLN002", __DEV__ && "No attribute to set, expected 'attr:name'"));
         return;
       }
 
@@ -245,7 +246,7 @@ function setupVelinStd(vln) {
     track: vln.trackers.expressionTracker,
     render: ({ node, tracked, pluginState }) => {
       if (!(node instanceof Element)) {
-        console.warn("[VLN003] Cannot set classes on non-Element nodes");
+        console.warn(fmt("VLN003", __DEV__ && "Cannot set classes on non-Element nodes"));
         return;
       }
 
@@ -317,11 +318,11 @@ function setupVelinStd(vln) {
     },
     render: ({ compose, compiledExpression, node, subkey }) => {
       if (typeof node.addEventListener !== "function") {
-        console.warn("[VLN004] No events hook found");
+        console.warn(fmt("VLN004", __DEV__ && "No events hook found"));
         return;
       }
       if (!subkey) {
-        console.warn("[VLN005] Expected event name 'on:event'");
+        console.warn(fmt("VLN005", __DEV__ && "Expected event name 'on:event'"));
         return;
       }
       const handler = async (event) => {
@@ -401,7 +402,7 @@ function setupVelinStd(vln) {
     render: ({ node, tracked, expr, getSetter, pluginState = {} }) => {
       const role = inputRole(node);
       if (!role) {
-        console.warn("[VLN006] target is not input/textarea/select/contenteditable");
+        console.warn(fmt("VLN006", __DEV__ && "target is not input/textarea/select/contenteditable"));
         return;
       }
       if (!pluginState.initialized) {
@@ -436,12 +437,12 @@ function setupVelinStd(vln) {
     track: vln.trackers.expressionTracker,
     render: ({ tracked, subkey, evaluate }) => {
       if (!subkey) {
-        console.warn("[VLN007] vln-watch requires a handler: vln-watch:methodName=\"expr\"");
+        console.warn(fmt("VLN007", __DEV__ && "vln-watch requires a handler: vln-watch:methodName=\"expr\""));
         return;
       }
       const handler = evaluate(subkey);
       if (typeof handler !== "function") {
-        console.warn(`[VLN007] vln-watch:${subkey} did not resolve to a function (HTML lowercases attribute names — use lowercase handler paths)`);
+        console.warn(fmt("VLN007", __DEV__ && `vln-watch:${subkey} did not resolve to a function (HTML lowercases attribute names — use lowercase handler paths)`, subkey));
         return;
       }
       handler(tracked);
@@ -618,11 +619,11 @@ function setupVelinStd(vln) {
           const j = oldIndex.get(items[i]);
           if (j !== undefined && j !== i) {
             pluginState.warnedMove = true;
-            console.warn(
-              `[VLN022] vln-loop:${subkey || "item"}="${expr}" moved items to different rows. ` +
+            console.warn(fmt("VLN022",
+              `vln-loop:${subkey || "item"}="${expr}" moved items to different rows. ` +
               `Unkeyed loops track rows by position, so later edits to a moved item won't update its row. ` +
               `Key the loop by a stable id: vln-loop:${subkey || "item"}="{ collection: ${expr}, key: 'id' }"`,
-            );
+            ));
             break;
           }
         }
@@ -643,15 +644,11 @@ function setupVelinStd(vln) {
         if (keyField) {
           if (item == null || typeof item !== 'object' ||
               !Object.prototype.hasOwnProperty.call(item, keyField)) {
-            throw new Error(
-              `[VLN020] vln-loop: item ${i} has no own '${keyField}' — required by { key: '${keyField}' }.`,
-            );
+            throw new Error(fmt("VLN020", __DEV__ && `vln-loop: item ${i} has no own '${keyField}' — required by { key: '${keyField}' }.`, keyField));
           }
           key = item[keyField];
           if (seen.has(key)) {
-            throw new Error(
-              `[VLN021] vln-loop: duplicate key ${JSON.stringify(key)} at ${i}.`,
-            );
+            throw new Error(fmt("VLN021", __DEV__ && `vln-loop: duplicate key ${JSON.stringify(key)} at ${i}.`, JSON.stringify(key)));
           }
           seen.add(key);
         }

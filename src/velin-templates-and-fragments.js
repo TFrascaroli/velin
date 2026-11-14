@@ -30,6 +30,9 @@ const VOID_ELEMENTS = new Set([
  */
 const templates = new Map();
 
+/** Set by setupTemplatesAndFragments from core; see ERROR_DOCS_URL there. */
+let fmt = (code, text, ctx) => `[${code}] ${text || code + (ctx ? " " + ctx : "")}`;
+
 /**
  * @param {string} id
  * @returns {{node: HTMLTemplateElement, transformers: Record<string, Function|null>} | null}
@@ -53,10 +56,10 @@ function lookupTemplate(id) {
  * @param {any} value
  */
 function undefinedIdError(directive, value) {
-  return (
-    `[Velin Templates] ${directive} id evaluated to ${value === undefined ? "undefined" : "null"}. ` +
-    `Did you forget quotes? Use ${directive}="'myId'" for a string literal, or a state expression that resolves to a string.`
-  );
+  return fmt("VLN008", __DEV__ &&
+    `${directive} id evaluated to ${value === undefined ? "undefined" : "null"}. ` +
+    `Did you forget quotes? Use ${directive}="'myId'" for a string literal, or a state expression that resolves to a string.`,
+    directive);
 }
 
 /** Scope key for the slot bag shared between a fragment and its outlets. */
@@ -80,19 +83,14 @@ function parseSlotName(raw, evaluate, directive) {
   try {
     value = evaluate(raw);
   } catch (err) {
-    if (__DEV__) {
-      const msg = err && /** @type {any} */(err).message ? /** @type {any} */(err).message : String(err);
-      console.error(`[Velin Templates] ${directive}: failed to evaluate name \`${raw}\`: ${msg}`);
-    }
+    const msg = err && /** @type {any} */(err).message ? /** @type {any} */(err).message : String(err);
+    console.error(fmt("VLN036", __DEV__ && `${directive}: failed to evaluate name \`${raw}\`: ${msg}`, directive));
     return null;
   }
   if (typeof value !== "string") {
-    if (__DEV__) {
-      console.error(
-        `[Velin Templates] ${directive} name must be a string. Got ${typeof value}. ` +
-        `Did you forget quotes? Use ${directive}="'name'".`
-      );
-    }
+    console.error(fmt("VLN036", __DEV__ &&
+      `${directive} name must be a string. Got ${typeof value}. ` +
+      `Did you forget quotes? Use ${directive}="'name'".`, directive));
     return null;
   }
   return value;
@@ -102,6 +100,7 @@ function parseSlotName(raw, evaluate, directive) {
  * @param {VelinCore} vln
  */
 function setupTemplatesAndFragments(vln) {
+  fmt = vln.ø__internal.fmt;
   /**
    * vln-template: Registers a <template> under an id, evaluating the sibling
    * `vln-vars` declaration in the scope where the template lives.
@@ -141,7 +140,7 @@ function setupTemplatesAndFragments(vln) {
         const msg = err && /** @type {any} */(err).message
           ? /** @type {any} */(err).message
           : String(err);
-        console.error(`[Velin Templates] vln-template: failed to evaluate id: ${msg}`);
+        console.error(fmt("VLN008", __DEV__ && `vln-template: failed to evaluate id: ${msg}`, "vln-template"));
         return { halt: true };
       }
       if (templateId === undefined || templateId === null) {
@@ -149,15 +148,11 @@ function setupTemplatesAndFragments(vln) {
         return { halt: true };
       }
       if (typeof templateId !== "string") {
-        console.error(
-          `[Velin Templates] vln-template id must be a string. Got ${typeof templateId}.`
-        );
+        console.error(fmt("VLN008", __DEV__ && `vln-template id must be a string. Got ${typeof templateId}.`, "vln-template"));
         return { halt: true };
       }
       if (!(node instanceof HTMLTemplateElement)) {
-        console.error(
-          `[Velin Templates] vln-template="${templateId}" must be on a <template> element. Found: <${node.tagName.toLowerCase()}>.`
-        );
+        console.error(fmt("VLN027", __DEV__ && `vln-template="${templateId}" must be on a <template> element. Found: <${node.tagName.toLowerCase()}>.`, templateId));
         return { halt: true };
       }
 
@@ -167,9 +162,7 @@ function setupTemplatesAndFragments(vln) {
       // disconnected) get replaced silently.
       const existing = lookupTemplate(templateId);
       if (existing && existing.node !== node && existing.node.isConnected) {
-        console.warn(
-          `[Velin Templates] Template "${templateId}" already registered — replacing.`
-        );
+        console.warn(fmt("VLN028", __DEV__ && `Template "${templateId}" already registered — replacing.`, templateId));
       }
 
       /** @type {Record<string, Function|null>} */
@@ -184,17 +177,13 @@ function setupTemplatesAndFragments(vln) {
           const msg = err && /** @type {any} */(err).message
             ? /** @type {any} */(err).message
             : String(err);
-          console.error(
-            `[Velin Templates] Template "${templateId}": failed to evaluate vln-vars \`${declRaw}\`: ${msg}`
-          );
+          console.error(fmt("VLN029", __DEV__ && `Template "${templateId}": failed to evaluate vln-vars \`${declRaw}\`: ${msg}`, templateId));
           return { halt: true };
         }
         if (Array.isArray(decl)) {
           for (const name of decl) {
             if (typeof name !== "string") {
-              console.error(
-                `[Velin Templates] Template "${templateId}": vln-vars array entries must be strings. Got ${JSON.stringify(name)}.`
-              );
+              console.error(fmt("VLN029", __DEV__ && `Template "${templateId}": vln-vars array entries must be strings. Got ${JSON.stringify(name)}.`, templateId));
               return { halt: true };
             }
             transformers[name] = null;
@@ -204,9 +193,7 @@ function setupTemplatesAndFragments(vln) {
             transformers[name] = typeof fn === "function" ? /** @type {Function} */(fn) : null;
           }
         } else {
-          console.error(
-            `[Velin Templates] Template "${templateId}": vln-vars must evaluate to an array or object. Got ${typeof decl}.`
-          );
+          console.error(fmt("VLN029", __DEV__ && `Template "${templateId}": vln-vars must evaluate to an array or object. Got ${typeof decl}.`, templateId));
           return { halt: true };
         }
       }
@@ -277,30 +264,25 @@ function setupTemplatesAndFragments(vln) {
         return { halt: true };
       }
       if (typeof templateId !== "string") {
-        console.error(
-          `[Velin Templates] vln-fragment id must be a string. Got ${typeof templateId}.`
-        );
+        console.error(fmt("VLN008", __DEV__ && `vln-fragment id must be a string. Got ${typeof templateId}.`, "vln-fragment"));
         return { halt: true };
       }
 
       // Void elements can't hold children. Catch it here rather than let
       // appendChild silently no-op or throw an opaque DOM error later.
       if (node instanceof HTMLElement && VOID_ELEMENTS.has(node.tagName.toLowerCase())) {
-        console.error(
-          `[Velin Templates] vln-fragment cannot be used on <${node.tagName.toLowerCase()}> — void elements cannot hold children. Use a container like <div> or <span>.`
-        );
+        console.error(fmt("VLN030", __DEV__ && `vln-fragment cannot be used on <${node.tagName.toLowerCase()}> — void elements cannot hold children. Use a container like <div> or <span>.`, node.tagName.toLowerCase()));
         return { halt: true };
       }
 
       const entry = lookupTemplate(templateId);
       if (!entry) {
-        console.error(
-          `[Velin Templates] Template "${templateId}" is not registered. Make sure a ` +
+        console.error(fmt("VLN031", __DEV__ &&
+          `Template "${templateId}" is not registered. Make sure a ` +
           `<template vln-template="'${templateId}'">…</template> appears BEFORE this ` +
           `<${node.tagName.toLowerCase()} vln-fragment=…> in the DOM AND inside the same ` +
-          `Velin.bind() root (Velin processes nodes in document order — earlier siblings ` +
-          `register first). Call Velin.debug.templates() to list what IS registered.`
-        );
+          `Velin.bind() root (Velin processes nodes in document order — earlier siblings register first).`,
+          templateId));
         return { halt: true };
       }
       const { node: template, transformers } = entry;
@@ -325,10 +307,10 @@ function setupTemplatesAndFragments(vln) {
         const typeHint = varsExpr && !providerIsObject
           ? ` (provider \`${varsExpr}\` evaluated to ${providedVars === null ? "null" : Array.isArray(providedVars) ? "an array" : typeof providedVars} — expected an object; did you mean \`{...${varsExpr}}\`?)`
           : "";
-        console.error(
-          `[Velin Templates] Template "${templateId}" requires missing variables: [${missing.join(", ")}]${typeHint}. ` +
-          `Add them to vln-vars, e.g. vln-vars="{ ${missing[0]}: yourValue, … }"`
-        );
+        console.error(fmt("VLN009", __DEV__ &&
+          `Template "${templateId}" requires missing variables: [${missing.join(", ")}]${typeHint}. ` +
+          `Add them to vln-vars, e.g. vln-vars="{ ${missing[0]}: yourValue, … }"`,
+          `${templateId}: ${missing.join(", ")}`));
         return { halt: true };
       }
 
@@ -364,12 +346,10 @@ function setupTemplatesAndFragments(vln) {
           const el = /** @type {Element} */(child);
           const isInletTemplate = el instanceof HTMLTemplateElement && el.hasAttribute("vln-inlet");
           if (!isInletTemplate) {
-            if (__DEV__) {
-              console.error(
-                `[Velin Templates] Direct children of <${node.tagName.toLowerCase()} vln-fragment="'${templateId}'"> must be <template vln-inlet[="'name'"]>. ` +
-                `Got <${el.tagName.toLowerCase()}${el.hasAttribute("vln-inlet") ? " vln-inlet" : ""}>. Element was dropped.`
-              );
-            }
+            console.error(fmt("VLN032", __DEV__ &&
+              `Direct children of <${node.tagName.toLowerCase()} vln-fragment="'${templateId}'"> must be <template vln-inlet[="'name'"]>. ` +
+              `Got <${el.tagName.toLowerCase()}${el.hasAttribute("vln-inlet") ? " vln-inlet" : ""}>. Element was dropped.`,
+              templateId));
             continue;
           }
           inletCtx.processNode(el);
@@ -408,41 +388,28 @@ function setupTemplatesAndFragments(vln) {
     priority: vln.plugins.priorities.STOPPER + 5,
     render: ({ node, expr, evaluate, state, triggerEffects }) => {
       if (!(node instanceof HTMLTemplateElement)) {
-        if (__DEV__) {
-          console.warn(
-            `[Velin Templates] vln-inlet must be on a <template>. Ignored on <${node.tagName.toLowerCase()}>.`
-          );
-        }
+        console.warn(fmt("VLN033", __DEV__ && `vln-inlet must be on a <template>. Ignored on <${node.tagName.toLowerCase()}>.`));
         return { halt: true };
       }
       const foreignVln = Array.from(node.attributes)
         .map(a => a.name)
         .filter(n => n.startsWith("vln-") && n !== "vln-inlet");
       if (foreignVln.length) {
-        if (__DEV__) {
-          console.error(
-            `[Velin Templates] <template vln-inlet> also carries [${foreignVln.join(", ")}]. ` +
-            `Move them inside the template. Element was dropped.`
-          );
-        }
+        console.error(fmt("VLN033", __DEV__ &&
+          `<template vln-inlet> also carries [${foreignVln.join(", ")}]. ` +
+          `Move them inside the template. Element was dropped.`));
         return { halt: true };
       }
       const bag = state && state[SLOTS_KEY];
       if (!bag) {
-        if (__DEV__) {
-          console.warn(
-            `[Velin Templates] vln-inlet must be on a <template> inside a <… vln-fragment=…> host. Ignored.`
-          );
-        }
+        console.warn(fmt("VLN033", __DEV__ && `vln-inlet must be on a <template> inside a <… vln-fragment=…> host. Ignored.`));
         return { halt: true };
       }
       const name = parseSlotName(expr, evaluate, "vln-inlet");
       if (name == null) return { halt: true };
       if (name in bag.slots) {
-        if (__DEV__) {
-          const label = name === "" ? "default slot" : `vln-inlet="'${name}'"`;
-          console.error(`[Velin Templates] ${label} is already filled — extras dropped.`);
-        }
+        const label = name === "" ? "default slot" : `vln-inlet="'${name}'"`;
+        console.error(fmt("VLN034", __DEV__ && `${label} is already filled — extras dropped.`, name));
         return { halt: true };
       }
       const df = document.createDocumentFragment();
@@ -496,12 +463,9 @@ function setupTemplatesAndFragments(vln) {
 
       const bag = state && state[SLOTS_KEY];
       if (!bag) {
-        if (__DEV__) {
-          console.warn(
-            `[Velin Templates] vln-outlet on <${node.tagName.toLowerCase()}> only works inside a ` +
-            `template mounted via vln-fragment. Ignored here.`
-          );
-        }
+        console.warn(fmt("VLN035", __DEV__ &&
+          `vln-outlet on <${node.tagName.toLowerCase()}> only works inside a ` +
+          `template mounted via vln-fragment. Ignored here.`));
         return { halt: true };
       }
 
@@ -543,45 +507,7 @@ function setupTemplatesAndFragments(vln) {
     },
   });
 
-  /**
-   * vln-var:*: Deprecated. Kept as an error-only plugin during beta so users
-   * migrating from the old sibling-attribute API get a loud message instead
-   * of silent no-op. Remove before 1.0.
-   */
-  vln.plugins.registerPlugin({
-    name: "var",
-    // STOPPER so the error fires BEFORE any sibling vln-fragment on the same
-    // element gets to run and drown out the deprecation message with its own
-    // "missing variables" error.
-    priority: vln.plugins.priorities.STOPPER,
-    render: ({ node, subkey }) => {
-      if (__DEV__) {
-        console.error(
-          `[Velin Templates] vln-var:${subkey ?? ""} was removed. Provide values via a single ` +
-          `vln-vars="{...}" attribute on the vln-fragment element, e.g. ` +
-          `<${node.tagName.toLowerCase()} vln-fragment="'myTpl'" vln-vars="{ ${subkey ?? "name"}: value }">.`
-        );
-      }
-      return { halt: true };
-    },
-  });
 
-  // Debug affordance — snapshot of live registrations. Not part of the
-  // public API surface people should build against; a convenience for
-  // console-driven debugging of "not registered" errors.
-  /** @type {any} */
-  const vlnAny = vln;
-  vlnAny.debug = vlnAny.debug || {};
-  vlnAny.debug.templates = () => {
-    /** @type {Array<{id: string, connected: boolean}>} */
-    const out = [];
-    for (const [id, entry] of templates) {
-      const node = entry.nodeRef.deref();
-      if (!node) continue;
-      out.push({ id, connected: node.isConnected });
-    }
-    return out;
-  };
 }
 
 // Auto-bootstrap in browser

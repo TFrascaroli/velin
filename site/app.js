@@ -155,6 +155,7 @@ const DOCS = [
   { id: 'plugins',         title: 'Creating Plugins',blurb: 'Extend Velin with custom directives.',           file: 'docs/plugins.md' },
   { id: 'bundles',         title: 'Choosing a Bundle', blurb: 'Which bundle to load for which use case.',     file: 'docs/bundles.md' },
   { id: 'devtools',        title: 'Devtools',        blurb: 'The in-page inspector for state and updates.',   file: 'docs/devtools.md' },
+  { id: 'errors',          title: 'Error codes',     blurb: 'What each VLNxxx message means and how to fix it.', file: 'docs/errors.md' },
 ];
 
 // Exposed for md-render.js to resolve links inside rendered docs:
