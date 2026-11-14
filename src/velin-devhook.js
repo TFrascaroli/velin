@@ -314,11 +314,11 @@ export function createDevHook() {
    * billed as overhead, so neither the effect nor the code that triggered
    * it is charged for the hook's bookkeeping.
    */
-  function runEffect(effect, seq, state, path) {
+  function runEffect(effect, seq, state, path, recapture) {
     const tIn = now();
     pushFrame({ kind: "effect", seq: seq || 0 });
     let r;
-    try { effect(); } finally { r = popFrame(); }
+    try { effect(recapture); } finally { r = popFrame(); }
     billingSuppressed++;
     try {
       const dbg = effect.ø__debug;

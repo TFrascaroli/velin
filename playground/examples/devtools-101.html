@@ -186,11 +186,6 @@ get debugLine() {
   const doneCount = this.tasks.filter((t) =&gt; t.done).length;
   return `${this.tasks.length} tasks · ${doneCount} done`;
 }</pre>
-        <p class="text-gray-500 text-xs">
-          Known Velin bug: the count doesn't notice checkbox changes on tasks
-          added after the page loaded (<strong>load 100</strong>, then tick a new
-          task). It's not in this code, and it's being fixed.
-        </p>
       </div>
     </details>
 

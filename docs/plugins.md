@@ -79,14 +79,18 @@ Velin.plugins.priorities.STOPPER = 50     // Run first, stop children
 
 Function called to set up dependency tracking. Return value is passed to `render` as `tracked`.
 
-> ⚠ **`track` runs exactly once per plugin instance.** Dependencies are
-> captured during this single call and never re-scanned on subsequent
-> renders. Any reactive property your tracker skips on this first pass
-> — via a ternary, `&&`, `??`, guard-clause, or any conditional read —
-> is not registered, and later mutations to it will not trigger
-> `render`. Touch every dep you might ever need up front (assign to a
-> local so the JIT keeps the read). See
-> [ADR-0003](./adr/0003-one-shot-dependency-capture.md).
+> ⚠ **`track` captures dependencies on its first run, then only after
+> structural writes.** `track` runs before every `render`, but its reads
+> are recorded on the first run and again only when the write that woke
+> the plugin replaced an object or array, or mutated an array. A change
+> to a plain value re-runs `track` and `render` without re-scanning. Any
+> reactive property your tracker skips on a capturing pass — via a
+> ternary, `&&`, `??`, guard-clause, or any conditional read — is not
+> registered, and later mutations to it will not trigger `render`. Touch
+> every dep you might ever need up front (assign to a local so the JIT
+> keeps the read). See
+> [ADR-0003](./adr/0003-one-shot-dependency-capture.md) and
+> [ADR-0006](./adr/0006-recapture-on-structural-writes.md).
 
 **Function signature:** receives the same args object as `render` (see below) — most commonly you only destructure `evaluate`, `evaluateAst`, `compiledExpression`, `expr`, `node`, `subkey`.
 
@@ -132,7 +136,8 @@ render: ({
   getSetter,          // (expr) => (value) => void
   compose,            // (init) => ChildContext (see below)
   consume,            // (node, attrName, value) => mark attribute as processed
-  triggerEffects,     // (prop) => manually fire reactive effects bound to a key
+  triggerEffects,     // (prop, recapture?) => manually fire reactive effects bound to a key;
+                      // pass true to make them re-capture their dependencies
 }) => {
   // Update the DOM
   node.textContent = tracked;
@@ -172,6 +177,8 @@ child.setInterpolation(k, i); // update an interpolation in place
 child.processNode(node);      // process a DOM subtree against this child
 child.cleanup(node?);         // tear down (call from destroy or when removing)
 child.triggerEffects(prop);   // manually fire effects on this child's bindings
+child.triggerEffects(prop, true); // same, and the fired effects re-capture their deps
+                                  // (use when the value at `prop` is now a different object)
 ```
 
 `compose()` also accepts the verbose `Map<string, Interpolation>` form for

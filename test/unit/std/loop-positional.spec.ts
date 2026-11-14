@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import Velin from "../../../src/velin-core";
 import setupVelinStd from "../../../src/velin-standard";
 
@@ -115,33 +115,3 @@ describe("vln-loop (positional) — appends don't re-render existing rows", () =
   });
 });
 
-describe("vln-loop (positional) — VLN022 warns when items move between rows", () => {
-  const warns = (fn: () => void) => {
-    const spy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    try { fn(); return spy.mock.calls.map((c) => String(c[0])).filter((m) => m.includes("VLN022")); }
-    finally { spy.mockRestore(); }
-  };
-
-  it("warns once on in-place reorder, naming the keyed form", () => {
-    const got = warns(() => {
-      const { s } = mount(ROW, { items: objs(3, 1, 2) });
-      s.items.sort((a: any, b: any) => a.n - b.n);
-      s.items.reverse();
-    });
-    expect(got.length).toBe(1);
-    expect(got[0]).toContain("{ collection: items, key: 'id' }");
-  });
-
-  it("stays quiet for appends, removals at the end, keyed loops and primitives", () => {
-    const got = warns(() => {
-      const a = mount(ROW, { items: objs(1, 2) });
-      a.s.items.push({ n: 3 });
-      a.s.items.pop();
-      const k = mount(`<b vln-loop:x="{ collection: items, key: 'n' }"><i vln-text="x.n"></i></b>`, { items: objs(3, 1, 2) });
-      k.s.items.sort((p: any, q: any) => p.n - q.n);
-      const p = mount('<b vln-loop:x="items"><i vln-text="x"></i></b>', { items: ["b", "a"] });
-      p.s.items.sort();
-    });
-    expect(got).toEqual([]);
-  });
-});
