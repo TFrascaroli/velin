@@ -713,107 +713,24 @@ function processPlugin(
  * @type {Tokenizer}
  */
 function tokenize(expr) {
-  /**
-   * @type {Array<ASTToken>}
-   */
+  /** @type {Array<ASTToken>} */
   const tokens = [];
-  let i = 0;
-
-  while (i < expr.length) {
-    let char = expr[i];
-
-    // Skip whitespace
-    if (/\s/.test(char)) {
-      i++;
-      continue;
-    }
-
-    // Numbers
-    if (/[0-9]/.test(char)) {
-      let num = "";
-      while (i < expr.length && /[0-9.]/.test(expr[i])) {
-        num += expr[i++];
-      }
-      tokens.push({ type: "NUMBER", value: parseFloat(num) });
-      continue;
-    }
-
-    // Strings
-    if (char === '"' || char === "'") {
-      const quote = char;
-      let str = "";
-      i++; // skip opening quote
-      while (i < expr.length && expr[i] !== quote) {
-        if (expr[i] === "\\") {
-          i++; // skip escape
-          if (i < expr.length) str += expr[i++];
-        } else {
-          str += expr[i++];
-        }
-      }
-      i++; // skip closing quote
-      tokens.push({ type: "STRING", value: str });
-      continue;
-    }
-
-    // Identifiers
-    if (/[a-zA-Z_$]/.test(char)) {
-      let ident = "";
-      while (i < expr.length && /[a-zA-Z0-9_$]/.test(expr[i])) {
-        ident += expr[i++];
-      }
-      // Handle keywords/literals
-      if (ident === "true") tokens.push({ type: "BOOLEAN", value: true });
-      else if (ident === "false")
-        tokens.push({ type: "BOOLEAN", value: false });
-      else if (ident === "null") tokens.push({ type: "NULL", value: null });
-      else if (ident === "undefined")
-        tokens.push({ type: "UNDEFINED", value: undefined });
-      else tokens.push({ type: "IDENTIFIER", value: ident });
-      continue;
-    }
-
-    // Multi-char punctuation (must come before single-char + operator handling)
-    if (expr.slice(i, i + 3) === "...") {
-      tokens.push({ type: "PUNCTUATION", value: "..." });
-      i += 3;
-      continue;
-    }
-
-    // Multi-char operators
-    const ops = ["===", "!==", "&&", "||", ">=", "<=", "==", "!="];
-    let matched = false;
-    for (const op of ops) {
-      if (expr.slice(i, i + op.length) === op) {
-        tokens.push({ type: "OPERATOR", value: op });
-        i += op.length;
-        matched = true;
-        break;
-      }
-    }
-    if (matched) continue;
-
-    // Single = for assignment
-    if (char === "=") {
-      tokens.push({ type: "ASSIGNMENT", value: "=" });
-      i++;
-      continue;
-    }
-
-    // Single-char tokens
-    if ("+-*/%><()[]{}.,?:!".includes(char)) {
-      if ("+-*/%><!=".includes(char)) {
-        tokens.push({ type: "OPERATOR", value: char });
-      } else {
-        tokens.push({ type: "PUNCTUATION", value: char });
-      }
-      i++;
-      continue;
-    }
-
-    throw new Error(fmt("VLN015", __DEV__ && `Unexpected character '${char}' in expression`));
+  // whitespace | number | string | identifier | operator | punctuation | assignment
+  const re = /\s+|(\d+(?:\.\d*)?)|(["'])((?:\\.|(?!\2)[^\\])*)\2|([A-Za-z_$][\w$]*)|([=!]==?|&&|\|\||[<>]=?|[-+*\/%!])|(\.\.\.|[()[\]{}.,?:])|=/y;
+  // Keyword literals → [token type, value]
+  const KW = { __proto__: null, true: ["BOOLEAN", true], false: ["BOOLEAN", false], null: ["NULL", null], undefined: ["UNDEFINED", undefined] };
+  while (re.lastIndex < expr.length) {
+    const i = re.lastIndex;
+    const m = re.exec(expr);
+    if (!m) throw new Error(fmt("VLN015", __DEV__ && `Unexpected character '${expr[i]}' in expression`));
+    const [, num, quote, str, id, op, punc] = m;
+    if (num) tokens.push({ type: "NUMBER", value: parseFloat(num) });
+    else if (quote) tokens.push({ type: "STRING", value: str.replace(/\\(.)/g, "$1") });
+    else if (id) tokens.push(KW[id] ? { type: KW[id][0], value: KW[id][1] } : { type: "IDENTIFIER", value: id });
+    else if (op) tokens.push({ type: "OPERATOR", value: op });
+    else if (punc) tokens.push({ type: "PUNCTUATION", value: punc });
+    else if (m[0] === "=") tokens.push({ type: "ASSIGNMENT", value: "=" });
   }
-
   return tokens;
 }
 
@@ -823,445 +740,227 @@ function tokenize(expr) {
  */
 function parse(tokens) {
   let pos = 0;
-
-  function peek() {
-    return tokens[pos];
-  }
-
-  function next() {
-    return tokens[pos++];
-  }
-
-  function expect(type, value) {
-    const token = next();
-    if (
-      !token ||
-      token.type !== type ||
-      (value !== undefined && token.value !== value)
-    ) {
-      throw new Error(fmt("VLN015", __DEV__ && `Expected ${type} ${value || ""}, got ${token ? token.type : "EOF"}`));
-    }
-    return token;
-  }
-
-  // Helper to check if current token matches criteria
-  const match = (type, val) => {
+  const peek = () => tokens[pos];
+  const next = () => tokens[pos++];
+  // Is the current token of this type (and value)?
+  const at = (type, value) => {
     const t = peek();
-    return (
-      t &&
-      t.type === type &&
-      (!val || t.value === val || val.includes?.(t.value))
-    );
+    return !!t && t.type === type && (value === undefined || t.value === value);
   };
+  // Consume the current token if it matches; returns it (or undefined)
+  const eat = (type, value) => (at(type, value) ? next() : undefined);
+  const bad = (msg) => {
+    throw new Error(fmt("VLN015", msg));
+  };
+  const expect = (type, value) =>
+    eat(type, value) || bad(__DEV__ && `Expected ${type} ${value || ""}, got ${peek() ? peek().type : "EOF"}`);
 
-  // Precedence table for binary operators
-  const prec = [
-    [["||"]],
-    [["&&"]],
-    [["===", "!==", "==", "!="]],
-    [[">", "<", ">=", "<="]],
-    [["+", "-"]],
-    [["*", "/", "%"]],
-  ];
+  // Binary operator precedence (higher binds tighter)
+  const PREC = { "||": 1, "&&": 2, "===": 3, "!==": 3, "==": 3, "!=": 3, ">": 4, "<": 4, ">=": 4, "<=": 4, "+": 5, "-": 5, "*": 6, "/": 6, "%": 6 };
 
   function parseSequence() {
-    let expressions = [parseAssignment()];
-
-    while (match("PUNCTUATION", ",")) {
-      next();
-      expressions.push(parseAssignment());
-    }
-
-    return expressions.length === 1
-      ? expressions[0]
-      : { type: "Sequence", expressions };
+    const expressions = [parseAssignment()];
+    while (eat("PUNCTUATION", ",")) expressions.push(parseAssignment());
+    return expressions.length === 1 ? expressions[0] : { type: "Sequence", expressions };
   }
 
   function parseAssignment() {
-    let node = parseTernary();
-
-    if (match("ASSIGNMENT", "=")) {
-      next();
-      const right = parseAssignment(); // Right-associative
-      return { type: "Assignment", left: node, right };
-    }
-
-    return node;
+    const node = parseTernary();
+    // Right-associative
+    return eat("ASSIGNMENT") ? { type: "Assignment", left: node, right: parseAssignment() } : node;
   }
 
   function parseTernary() {
-    let node = parseBinary(0);
-
-    if (match("PUNCTUATION", "?")) {
-      next();
-      const consequent = parseTernary();
-      expect("PUNCTUATION", ":");
-      const alternate = parseTernary();
-      return { type: "Ternary", test: node, consequent, alternate };
-    }
-
-    return node;
+    const node = parseBinary(0);
+    if (!eat("PUNCTUATION", "?")) return node;
+    const consequent = parseTernary();
+    expect("PUNCTUATION", ":");
+    return { type: "Ternary", test: node, consequent, alternate: parseTernary() };
   }
 
-  // Consolidated binary operator parser with precedence levels
-  function parseBinary(p) {
-    let left = p === 5 ? parseUnary() : parseBinary(p + 1);
-
-    if (p < 6) {
-      while (match("OPERATOR", prec[p][0])) {
-        const op = next().value;
-        const right = p === 5 ? parseUnary() : parseBinary(p + 1);
-        left = { type: "Binary", operator: op, left, right };
-      }
+  // Precedence climbing: consumes operators binding tighter than `min`
+  function parseBinary(min) {
+    let left = parseUnary();
+    for (let t, p; (t = peek()) && t.type === "OPERATOR" && (p = PREC[t.value]) > min; ) {
+      next();
+      left = { type: "Binary", operator: t.value, left, right: parseBinary(p) };
     }
-
     return left;
   }
 
   function parseUnary() {
-    if (match("OPERATOR", ["!", "-", "+"])) {
-      const op = next().value;
-      const argument = parseUnary();
-      return { type: "Unary", operator: op, argument };
+    const t = peek();
+    if (t && t.type === "OPERATOR" && "!-+".includes(String(t.value))) {
+      next();
+      return { type: "Unary", operator: t.value, argument: parseUnary() };
     }
-
     return parsePostfix();
+  }
+
+  // Comma-separated items up to and including `close`
+  function parseList(close) {
+    const items = [];
+    while (!eat("PUNCTUATION", close)) {
+      items.push(parseAssignment());
+      eat("PUNCTUATION", ",");
+    }
+    return items;
   }
 
   function parsePostfix() {
     let node = parsePrimary();
-
-    while (true) {
-      if (match("PUNCTUATION", ".")) {
-        next();
-        const property = expect("IDENTIFIER");
-        node = {
-          type: "Member",
-          object: node,
-          property: property.value,
-          computed: false,
-        };
-      } else if (match("PUNCTUATION", "[")) {
-        next();
+    for (;;) {
+      if (eat("PUNCTUATION", ".")) {
+        node = { type: "Member", object: node, property: expect("IDENTIFIER").value, computed: false };
+      } else if (eat("PUNCTUATION", "[")) {
         const property = parseAssignment();
         expect("PUNCTUATION", "]");
         node = { type: "Member", object: node, property, computed: true };
-      } else if (match("PUNCTUATION", "(")) {
-        next();
-        const args = [];
-        while (!match("PUNCTUATION", ")")) {
-          args.push(parseAssignment());
-          if (match("PUNCTUATION", ",")) next();
-        }
-        expect("PUNCTUATION", ")");
-        node = { type: "Call", callee: node, arguments: args };
-      } else {
-        break;
-      }
+      } else if (eat("PUNCTUATION", "(")) {
+        node = { type: "Call", callee: node, arguments: parseList(")") };
+      } else return node;
     }
-
-    return node;
   }
 
   function parsePrimary() {
-    const token = peek();
-
-    if (!token) {
-      throw new Error(fmt("VLN015", __DEV__ && "Unexpected end of expression"));
+    const token = next();
+    if (!token) bad(__DEV__ && "Unexpected end of expression");
+    switch (token.type) {
+      case "NUMBER":
+      case "STRING":
+      case "BOOLEAN":
+      case "NULL":
+      case "UNDEFINED":
+        return { type: "Literal", value: token.value };
+      case "IDENTIFIER":
+        return { type: "Identifier", name: token.value };
     }
-
-    if (
-      ["NUMBER", "STRING", "BOOLEAN", "NULL", "UNDEFINED"].includes(token.type)
-    ) {
-      next();
-      return { type: "Literal", value: token.value };
-    }
-
-    if (token.type === "IDENTIFIER") {
-      next();
-      return { type: "Identifier", name: token.value };
-    }
-
-    if (match("PUNCTUATION", "(")) {
-      next();
-      const node = parseSequence();
-      expect("PUNCTUATION", ")");
-      return node;
-    }
-
-    // Array literal
-    if (match("PUNCTUATION", "[")) {
-      next();
-      const elements = [];
-
-      while (!match("PUNCTUATION", "]")) {
-        elements.push(parseAssignment());
-        if (match("PUNCTUATION", ",")) next();
+    if (token.type === "PUNCTUATION") {
+      if (token.value === "(") {
+        const node = parseSequence();
+        expect("PUNCTUATION", ")");
+        return node;
       }
-
-      expect("PUNCTUATION", "]");
-      return { type: "ArrayLiteral", elements };
-    }
-
-    // Object literal
-    if (match("PUNCTUATION", "{")) {
-      next();
-      const properties = [];
-
-      while (!match("PUNCTUATION", "}")) {
-        // Spread property: { ...expr }
-        if (match("PUNCTUATION", "...")) {
-          next();
-          const argument = parseAssignment();
-          properties.push({ spread: true, argument });
-          if (match("PUNCTUATION", ",")) next();
-          continue;
-        }
-
-        // Parse property key
-        let key;
-        const keyToken = peek();
-        if (keyToken.type === "IDENTIFIER") {
-          key = next().value;
-        } else if (keyToken.type === "STRING") {
-          key = next().value;
-        } else {
-          throw new Error(fmt("VLN015", __DEV__ && "Bad property name in object literal"));
-        }
-
-        // Check for shorthand property syntax: { foo } instead of { foo: foo }
-        let value;
-        if (match("PUNCTUATION", [",", "}"])) {
-          // Shorthand syntax: use key as identifier
-          if (keyToken.type !== "IDENTIFIER") {
-            throw new Error(fmt("VLN015", __DEV__ && "Shorthand object property must be an identifier"));
+      if (token.value === "[") return { type: "ArrayLiteral", elements: parseList("]") };
+      if (token.value === "{") {
+        const properties = [];
+        while (!eat("PUNCTUATION", "}")) {
+          if (eat("PUNCTUATION", "...")) {
+            properties.push({ spread: true, argument: parseAssignment() });
+          } else {
+            const keyToken = next();
+            if (!keyToken || (keyToken.type !== "IDENTIFIER" && keyToken.type !== "STRING"))
+              bad(__DEV__ && "Bad property name in object literal");
+            const key = keyToken.value;
+            let value;
+            if (eat("PUNCTUATION", ":")) value = parseAssignment();
+            else if (keyToken.type === "IDENTIFIER") value = { type: "Identifier", name: key }; // shorthand { foo }
+            else bad(__DEV__ && "Shorthand object property must be an identifier");
+            properties.push({ key, value });
           }
-          value = { type: "Identifier", name: key };
-        } else {
-          // Regular syntax: expect colon and value
-          expect("PUNCTUATION", ":");
-          value = parseAssignment();
+          eat("PUNCTUATION", ",");
         }
-
-        properties.push({ key, value });
-
-        if (match("PUNCTUATION", ",")) next();
+        return { type: "ObjectLiteral", properties };
       }
-
-      expect("PUNCTUATION", "}");
-      return { type: "ObjectLiteral", properties };
     }
-
-    const contextTokens = tokens
-      .slice(Math.max(0, pos - 3), pos + 4)
-      .map((t) => `${t.type}:${t.value}`)
-      .join(" ");
-    throw new Error(fmt("VLN015", __DEV__ && `Unexpected token in expression: ${token.type} "${token.value}" at position ${pos}. Context: ${contextTokens}`));
+    if (__DEV__) {
+      const contextTokens = tokens
+        .slice(Math.max(0, pos - 4), pos + 3)
+        .map((t) => `${t.type}:${t.value}`)
+        .join(" ");
+      bad(`Unexpected token in expression: ${token.type} "${token.value}" at position ${pos - 1}. Context: ${contextTokens}`);
+    }
+    bad();
   }
 
   return parseSequence();
 }
 
 /**
- * Evaluates AST with given context
- * @type {EvaluateAST}
- */
-/**
- * @param {ASTLiteralNode} ast
- */
-function evalLiteral(ast) {
-  return ast.value;
-}
-
-/**
- * @param {ASTIdentifierNode} ast
+ * Evaluates an AST node against a context (the scope proxy).
+ * @param {any} ast  AST node (the union is not discriminated for narrowing, so `any` here)
  * @param {Record<string, any>} context
  */
-function evalIdentifier(ast, context) {
-  return context[ast.name];
-}
-
-/**
- * @param {ASTMemberNode} ast
- * @param {Record<string, any>} context
- * @param {any} reactiveState
- */
-function evalMember(ast, context, reactiveState) {
-  const obj = evalAst(ast.object, context, reactiveState);
-  if (obj == null) return undefined;
-  const key = ast.computed
-    ? evalAst(ast.property, context, reactiveState)
-    : ast.property;
-  return obj[key];
-}
-
-/**
- * @param {ASTCallNode} ast
- * @param {Record<string, any>} context
- * @param {any} reactiveState
- */
-function evalCall(ast, context, reactiveState) {
-  const fn = evalAst(ast.callee, context, reactiveState);
-  if (typeof fn !== "function") throw new TypeError("Not a function");
-  const args = ast.arguments.map((arg) => evalAst(arg, context, reactiveState));
-  const thisArg =
-    ast.callee.type === "Member"
-      ? evalAst(ast.callee.object, context, reactiveState)
-      : context;
-  return fn.apply(thisArg, args);
-}
-
-/**
- * @param {ASTBinaryNode} ast
- * @param {Record<string, any>} context
- * @param {any} reactiveState
- */
-function evalBinary(ast, context, reactiveState) {
-  const left = evalAst(ast.left, context, reactiveState);
-  const right = evalAst(ast.right, context, reactiveState);
-  const ops = {
-    "+": (a, b) => a + b,
-    "-": (a, b) => a - b,
-    "*": (a, b) => a * b,
-    "/": (a, b) => a / b,
-    "%": (a, b) => a % b,
-    ">": (a, b) => a > b,
-    "<": (a, b) => a < b,
-    ">=": (a, b) => a >= b,
-    "<=": (a, b) => a <= b,
-    "===": (a, b) => a === b,
-    "!==": (a, b) => a !== b,
-    "==": (a, b) => a == b,
-    "!=": (a, b) => a != b,
-    "&&": (a, b) => a && b,
-    "||": (a, b) => a || b,
-  };
-  return (ops[ast.operator] || (() => undefined))(left, right);
-}
-
-/**
- * @param {ASTUnaryNode} ast
- * @param {Record<string, any>} context
- * @param {any} reactiveState
- */
-function evalUnary(ast, context, reactiveState) {
-  const arg = evalAst(ast.argument, context, reactiveState);
-  const ops = {
-    "!": (a) => !a,
-    "-": (a) => -a,
-  };
-  return (ops[ast.operator] || (() => undefined))(arg);
-}
-
-/**
- * @param {ASTTernaryNode} ast
- * @param {Record<string, any>} context
- * @param {any} reactiveState
- */
-function evalTernary(ast, context, reactiveState) {
-  const test = evalAst(ast.test, context, reactiveState);
-  return test
-    ? evalAst(ast.consequent, context, reactiveState)
-    : evalAst(ast.alternate, context, reactiveState);
-}
-
-/**
- * @param {ASTObjectLiteralNode} ast
- * @param {Record<string, any>} context
- * @param {any} reactiveState
- */
-function evalObjectLiteral(ast, context, reactiveState) {
-  const result = {};
-  for (const p of ast.properties) {
-    /** @type {any} */
-    const prop = p;
-    if (prop.spread) {
-      const spreadVal = evalAst(prop.argument, context, reactiveState);
-      if (spreadVal != null && typeof spreadVal === "object") {
-        Object.assign(result, spreadVal);
-      }
-      continue;
+function evalAst(ast, context) {
+  const ev = (n) => evalAst(n, context);
+  // Property key of a Member node
+  const keyOf = (m) => (m.computed ? ev(m.property) : m.property);
+  switch (ast.type) {
+    case "Literal":
+      return ast.value;
+    case "Identifier":
+      return context[ast.name];
+    case "Member": {
+      const obj = ev(ast.object);
+      return obj == null ? undefined : obj[keyOf(ast)];
     }
-    const value = evalAst(prop.value, context, reactiveState);
-    result[prop.key] =
-      value && typeof value === "object" && value.constructor === Object
-        ? { ...value, constructor: undefined } // Unwrap the object
-        : value;
+    case "Call": {
+      const c = ast.callee;
+      // Method calls bind `this` to the receiver, which is evaluated once
+      const thisArg = c.type === "Member" ? ev(c.object) : context;
+      const fn = c.type === "Member" ? (thisArg == null ? undefined : thisArg[keyOf(c)]) : ev(c);
+      if (typeof fn !== "function") throw new TypeError("Not a function");
+      return fn.apply(thisArg, ast.arguments.map(ev));
+    }
+    case "Unary": {
+      const a = ev(ast.argument);
+      return ast.operator === "!" ? !a : ast.operator === "-" ? -a : +a;
+    }
+    case "Binary": {
+      // Eager on purpose: one-shot dependency capture (ADR-0003) relies on both sides being read
+      const l = ev(ast.left), r = ev(ast.right);
+      switch (ast.operator) {
+        case "&&": return l && r;
+        case "||": return l || r;
+        case "+": return l + r;
+        case "-": return l - r;
+        case "*": return l * r;
+        case "/": return l / r;
+        case "%": return l % r;
+        case ">": return l > r;
+        case "<": return l < r;
+        case ">=": return l >= r;
+        case "<=": return l <= r;
+        case "===": return l === r;
+        case "!==": return l !== r;
+        case "==": return l == r;
+        case "!=": return l != r;
+      }
+      return;
+    }
+    case "Ternary":
+      return ev(ast.test) ? ev(ast.consequent) : ev(ast.alternate);
+    case "ArrayLiteral":
+      return ast.elements.map(ev);
+    case "ObjectLiteral": {
+      const result = {};
+      for (const p of ast.properties) {
+        if (p.spread) {
+          const s = ev(p.argument);
+          if (s != null && typeof s === "object") Object.assign(result, s);
+          continue;
+        }
+        result[p.key] = ev(p.value);
+      }
+      return result;
+    }
+    case "Assignment": {
+      const value = ev(ast.right), l = ast.left;
+      if (l.type === "Identifier") context[l.name] = value;
+      else if (l.type === "Member") {
+        const obj = ev(l.object);
+        if (obj == null) throw new TypeError("Cannot set property on null or undefined");
+        obj[keyOf(l)] = value;
+      } else throw new Error(fmt("VLN016", __DEV__ && "Invalid assignment target"));
+      return value;
+    }
+    case "Sequence": {
+      let r;
+      for (const e of ast.expressions) r = ev(e);
+      return r;
+    }
   }
-  return result;
-}
-
-/**
- * @param {any} ast
- * @param {Record<string, any>} context
- * @param {any} reactiveState
- */
-function evalArrayLiteral(ast, context, reactiveState) {
-  return ast.elements.map((elem) => evalAst(elem, context, reactiveState));
-}
-
-/**
- * @param {ASTAssignmentNode} ast
- * @param {Record<string, any>} context
- * @param {any} reactiveState
- */
-function evalAssignment(ast, context, reactiveState) {
-  const value = evalAst(ast.right, context, reactiveState);
-
-  if (ast.left.type === "Identifier") {
-    context[ast.left.name] = value;
-  } else if (ast.left.type === "Member") {
-    const obj = evalAst(ast.left.object, context, reactiveState);
-    if (obj == null)
-      throw new TypeError("Cannot set property on null or undefined");
-    const key = ast.left.computed
-      ? evalAst(ast.left.property, context, reactiveState)
-      : ast.left.property;
-    obj[key] = value;
-  } else {
-    throw new Error(fmt("VLN016", __DEV__ && "Invalid assignment target"));
-  }
-
-  return value;
-}
-
-/**
- * @param {ASTSequenceNode} ast
- * @param {Record<string, any>} context
- * @param {any} reactiveState
- */
-function evalSequence(ast, context, reactiveState) {
-  let result;
-  for (const expr of ast.expressions) {
-    result = evalAst(expr, context, reactiveState);
-  }
-  return result;
-}
-
-/**
- * @param {ASTNode} ast
- * @param {Record<string, any>} context
- * @param {any} [reactiveState]
- */
-function evalAst(ast, context, reactiveState = null) {
-  const evalVisitors = {
-    Literal: (ast, context, reactiveState) => evalLiteral(/** @type {ASTLiteralNode} */ (ast)),
-    Identifier: (ast, context, reactiveState) => evalIdentifier(/** @type {ASTIdentifierNode} */ (ast), context),
-    Member: (ast, context, reactiveState) => evalMember(/** @type {ASTMemberNode} */ (ast), context, reactiveState),
-    Call: (ast, context, reactiveState) => evalCall(/** @type {ASTCallNode} */ (ast), context, reactiveState),
-    Binary: (ast, context, reactiveState) => evalBinary(/** @type {ASTBinaryNode} */ (ast), context, reactiveState),
-    Unary: (ast, context, reactiveState) => evalUnary(/** @type {ASTUnaryNode} */ (ast), context, reactiveState),
-    Ternary: (ast, context, reactiveState) => evalTernary(/** @type {ASTTernaryNode} */ (ast), context, reactiveState),
-    ObjectLiteral: (ast, context, reactiveState) => evalObjectLiteral(/** @type {ASTObjectLiteralNode} */ (ast), context, reactiveState),
-    ArrayLiteral: (ast, context, reactiveState) => evalArrayLiteral(/** @type {ASTNode} */ (ast), context, reactiveState),
-    Assignment: (ast, context, reactiveState) => evalAssignment(/** @type {ASTAssignmentNode} */ (ast), context, reactiveState),
-    Sequence: (ast, context, reactiveState) => evalSequence(/** @type {ASTSequenceNode} */ (ast), context, reactiveState),
-  };
-  const visitor = evalVisitors[ast.type];
-  if (!visitor) {
-    throw new Error(fmt("VLN016", __DEV__ && `Bad AST node: ${ast.type}`));
-  }
-  return visitor(ast, context, reactiveState);
+  throw new Error(fmt("VLN016", __DEV__ && `Bad AST node: ${ast.type}`));
 }
 
 /**
@@ -1341,7 +1040,7 @@ function evaluateAst(ast, reactiveState) {
     const opened = hook.ø__enterSource(src);
     const t0 = hook.ø__now();
     try {
-      const r = evalAst(ast, contextualizedProxy, reactiveState);
+      const r = evalAst(ast, contextualizedProxy);
       const dt = hook.ø__now() - t0;
       hook.ø__recordExpressionEval(src, dt);
       hook.ø__emit({ kind: "evaluate", state: reactiveState, expr: src, durationMs: dt, ok: true });
@@ -1354,7 +1053,7 @@ function evaluateAst(ast, reactiveState) {
       hook.ø__exitSource(opened);
     }
   }
-  return evalAst(ast, contextualizedProxy, reactiveState);
+  return evalAst(ast, contextualizedProxy);
 }
 
 /**

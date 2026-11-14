@@ -316,8 +316,8 @@ results aren't cached — call once and reuse the AST if you need it on a hot
 path.
 
 **Parameters:**
-- `expr` (string): JavaScript-like expression (see Evaluator section for the
-  supported subset).
+- `expr` (string): JavaScript-like expression. The supported subset is listed
+  under [Expressions are JavaScript](./getting-started.md#3-expressions-are-javascript).
 
 **Returns:** AST node compatible with `Velin.evaluateAst`.
 
