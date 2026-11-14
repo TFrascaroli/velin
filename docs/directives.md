@@ -35,9 +35,6 @@ Sets the text content of an element.
 <!-- String concatenation -->
 <p vln-text="'Hello, ' + name + '!'"></p>
 
-<!-- Template literal -->
-<div vln-text="`Welcome ${name}`"></div>
-
 <!-- Expressions -->
 <div vln-text="count * 2"></div>
 <div vln-text="items.length + ' items'"></div>
@@ -506,7 +503,7 @@ get fullName() {
 
 **Avoid:**
 ```html
-<button vln-on:click="loading = true; fetch('/api').then(r => r.json()).then(d => { vln.data = d; vln.loading = false; })">
+<button vln-on:click="errors = validate(form), errors.length || save(form), saved = !errors.length">Submit</button>
 ```
 
 ### 3. Use getters for computed values

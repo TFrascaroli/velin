@@ -35,7 +35,7 @@ All notable changes to `@velinjs/all`. Follows
   (`[VLN014] https://tfrascaroli.github.io/velin/e/VLN014`) instead of
   the full text. Development builds still print the explanation. The
   catalog is [docs/errors.md](docs/errors.md). `velin-all` drops from
-  11.9 KB to 10.5 KB gzipped; sizes in the README and docs are updated
+  11.9 KB to 10.2 KB gzipped; sizes in the README and docs are updated
   to measured values.
 - Development builds no longer `console.log` every processed node, plugin
   application and dependency set (about 16 lines per list row).
@@ -48,6 +48,15 @@ All notable changes to `@velinjs/all`. Follows
   batched loops and writes nobody reads no longer trigger it.
 - Devtools inbox: one entry per long task (they were merged per second),
   every signal carries a time, and W003 no longer duplicates `thrash`.
+
+### Fixed
+
+- Expressions: a method call's receiver ran twice (`api.get().run()`
+  called `get()` twice), unary `+` returned `undefined`, and a nested
+  object inside an object literal (`{ u: user }`) was a copy with an extra
+  `constructor` key, so later writes to `user` didn't show through it. All
+  three now match JavaScript. The rewritten evaluator is also 260 B
+  smaller gzipped.
 
 ### Removed
 
