@@ -606,28 +606,6 @@ function setupVelinStd(vln) {
       }
 
       const items = Array.from(collection);
-      if (__DEV__ && !keyField && !pluginState.warnedMove && oldItems.length && items.length) {
-        // Unkeyed rows capture their deps against whatever item first sat in
-        // their slot. Once an item moves to another slot, edits to it trigger
-        // its old row — the one it no longer renders in. Say so once.
-        const oldIndex = new Map();
-        for (let j = 0; j < oldItems.length; j++) {
-          const o = oldItems[j];
-          if (o && typeof o === "object" && !oldIndex.has(o)) oldIndex.set(o, j);
-        }
-        for (let i = 0; i < items.length; i++) {
-          const j = oldIndex.get(items[i]);
-          if (j !== undefined && j !== i) {
-            pluginState.warnedMove = true;
-            console.warn(fmt("VLN022",
-              `vln-loop:${subkey || "item"}="${expr}" moved items to different rows. ` +
-              `Unkeyed loops track rows by position, so later edits to a moved item won't update its row. ` +
-              `Key the loop by a stable id: vln-loop:${subkey || "item"}="{ collection: ${expr}, key: 'id' }"`,
-            ));
-            break;
-          }
-        }
-      }
       const newChildren = new Array(items.length);
       const newSubstates = new Array(items.length);
       const newKeys = new Array(items.length);
@@ -692,11 +670,12 @@ function setupVelinStd(vln) {
             if (oldIdx !== i) refreshSubstateEffects(reusedChild);
           } else if (!Object.is(oldItems[i], item)) {
             // Positional: re-evaluate the row only when its slot now holds a
-            // different item (unshift, splice, sort, replacement). Same item
+            // different item (unshift, splice, sort, replacement), and make
+            // it re-capture so it follows the new item's fields. Same item
             // in the same slot is already subscribed to its own fields, and
             // $index of a positional slot never changes — re-firing every
             // row on each push made appends O(rows).
-            reusedChild.triggerEffects(`${expr}[${i}]`);
+            reusedChild.triggerEffects(`${expr}[${i}]`, true);
           }
 
           // Only move DOM when the node isn't already in position.

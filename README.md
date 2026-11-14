@@ -27,7 +27,7 @@ That's the whole setup story: one script tag, one `bind` call, one plain object.
 
 I also dislike magic. Naming conventions that decide routing behavior, component I/O by convention, obscure attribute syntax you have to Google — all of it makes code harder to read for anyone who wasn't there the day it was written. And state doesn't belong in your HTML: the template is the **V**, not the **M**. Velin keeps state in JavaScript objects and directives short, declarative, and boring.
 
-And the bloat. Velin ships a full CSP-compliant AST evaluator instead of leaning on `eval()` or `new Function()` — and it's *still* smaller than the alternatives. **10.2 KB gzipped for the everything bundle, 7.9 KB gzipped for the everyday combo** (core + directives). Load only what you use — see [bundles](docs/bundles.md).
+And the bloat. Velin ships a full CSP-compliant AST evaluator instead of leaning on `eval()` or `new Function()` — and it's *still* smaller than the alternatives. **10.4 KB gzipped for the everything bundle, 8.1 KB gzipped for the everyday combo** (core + directives). Load only what you use — see [bundles](docs/bundles.md).
 
 **Status:** Velin core is in **beta** (`1.0.0-beta.0`) — the API surface is mostly settled, performance and usability are where I want them, only a few remaining edges to smooth. The companion **Velin devtools is in alpha** (`0.1.0-alpha.0`) — it works and answers the questions it claims to, but expect rough visuals and shifting user journeys.
 
@@ -82,11 +82,11 @@ Velin is under active development. Current priorities:
 
 Velin is split into modules for optimal bundle size:
 
--   **`velin-core.js`** (~5.5 KB gzipped) - Core reactivity, expression evaluator, plugin system.
+-   **`velin-core.js`** (~5.7 KB gzipped) - Core reactivity, expression evaluator, plugin system.
 -   **`velin-standard.js`** (~2.9 KB gzipped) - Standard directives (text, if, loop, input, on, attr, class, use, watch).
 -   **`velin-templates-and-fragments.js`** (~2.3 KB gzipped) - Template and Fragment support.
 -   **`velin-router.js`** (~1.0 KB gzipped) - Optional state-driven hash router.
--   **`velin-all.js`** (~10.2 KB gzipped) - Everything bundled.
+-   **`velin-all.js`** (~10.4 KB gzipped) - Everything bundled.
 
 ## Development
 

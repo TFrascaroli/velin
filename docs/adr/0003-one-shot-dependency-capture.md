@@ -1,6 +1,9 @@
 # ADR 0003 — One-shot dependency capture
 
-Status: **Accepted** (2026-07-01; documents existing behavior)
+Status: **Accepted** (2026-07-01; documents existing behavior). Amended by
+[ADR 0006](./0006-recapture-on-structural-writes.md): writes that replace
+an object or array, or mutate an array, re-capture the dependencies of the
+effects they wake. Primitive writes keep the one-shot behavior below.
 
 ## Context
 
