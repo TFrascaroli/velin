@@ -43,7 +43,7 @@ A `<template vln-template="…">` registers when Velin walks it during
 any consumer in DOM order. Otherwise the fragment errors:
 
 ```
-[Velin Templates] Template "foo" is not registered. Make sure a
+[VLN031] Template "foo" is not registered. Make sure a
 <template vln-template="'foo'">…</template> appears BEFORE this
 <div vln-fragment=…> in the DOM AND inside the same Velin.bind() root.
 ```
@@ -116,7 +116,7 @@ Spread works:
 Missing keys error clearly:
 
 ```
-[Velin Templates] Template "userCard" requires missing variables: [onSave].
+[VLN009] Template "userCard" requires missing variables: [onSave].
 Add them to vln-vars, e.g. vln-vars="{ onSave: yourValue, … }"
 ```
 
@@ -284,7 +284,7 @@ If two templates register under the same id, the **later one wins** and
 Velin warns:
 
 ```
-[Velin Templates] Template "foo" already registered — replacing.
+[VLN028] Template "foo" already registered — replacing.
 ```
 
 Fine for hot-reload. If unintentional, the warning is your cue.

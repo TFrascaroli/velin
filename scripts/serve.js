@@ -66,6 +66,16 @@ app.use('/playground', (req, res, next) => {
 app.use('/playground', serveHtml(playgroundDir));
 app.use('/playground', express.static(playgroundDir));
 
+// Error-code pages, rendered from docs/errors.md on every request so edits
+// show up without a restart. Deployed as static files by stage-site.js.
+const errorPages = require('./error-pages');
+app.get(['/e', '/e/'], (req, res) => res.type('html').send(errorPages.renderIndex(errorPages.readCatalog())));
+app.get('/e/:code', (req, res, next) => {
+  const entry = errorPages.readCatalog().find((e) => e.code === req.params.code.toUpperCase());
+  if (!entry) return next();
+  res.type('html').send(errorPages.renderCode(entry));
+});
+
 // Site: transform html at the root, then static.
 app.use('/', serveHtml(siteDir));
 app.use('/', express.static(siteDir));
