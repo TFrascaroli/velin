@@ -7,12 +7,12 @@ Sizes are minified / gzipped, current as of the last release.
 
 | Bundle | Min | Gzip | Contents | Common use |
 |---|---:|---:|---|---|
-| **velin-core** | 16.6 KB | 6.2 KB | Reactive state, expression evaluator, plugin machinery — no directives. | You're writing your own plugins and don't need built-ins. |
-| **velin-standard** | 6.9 KB | 2.7 KB | The nine everyday directives: `vln-text`, `vln-if`, `vln-attr`, `vln-class`, `vln-on`, `vln-input`, `vln-watch`, `vln-loop`, `vln-use`. **Requires core.** | Never used on its own — see `velin-common`. |
-| **velin-common** | 23.5 KB | 8.4 KB | `velin-core` + `velin-standard`, prebundled. | **The default for most apps** — everyday interactive HTML without fragments/router/events. |
-| **velin-templates-and-fragments** | 1.8 KB | 1.0 KB | `<template>` support and `vln-fragment` — reusable render islands. **Requires core.** | You have repeated sub-trees you want to keep in one place. |
+| **velin-core** | 15.7 KB | 5.8 KB | Reactive state, expression evaluator, plugin machinery — no directives. | You're writing your own plugins and don't need built-ins. |
+| **velin-standard** | 7.6 KB | 2.9 KB | The nine everyday directives: `vln-text`, `vln-if`, `vln-attr`, `vln-class`, `vln-on`, `vln-input`, `vln-watch`, `vln-loop`, `vln-use`. **Requires core.** | Never used on its own — see `velin-common`. |
+| **velin-common** | 23.3 KB | 8.2 KB | `velin-core` + `velin-standard`, prebundled. | **The default for most apps** — everyday interactive HTML without fragments/router/events. |
+| **velin-templates-and-fragments** | 5.8 KB | 2.3 KB | `<template>` support and `vln-fragment` — reusable render islands. **Requires core.** | You have repeated sub-trees you want to keep in one place. |
 | **velin-router** | 2.1 KB | 1.0 KB | `vln-router` and `vln-route` — hash-based SPA routing. **Requires core.** | You're building a single-page app with URL-driven views. |
-| **velin-all** | 28.3 KB | 9.8 KB | Everything above in one file. | You want a single script tag and don't want to think about it. |
+| **velin-all** | 31.1 KB | 10.5 KB | Everything above in one file. | You want a single script tag and don't want to think about it. |
 
 ## Sizing rules of thumb
 

@@ -490,24 +490,10 @@ destroy: ({ pluginState }) => {
 
 ## Error Codes
 
-Velin uses error codes in console messages:
-
-- `[VLN001]`: Cannot set attributes on non-HTML elements
-- `[VLN002]`: No attribute specified for `vln-attr`
-- `[VLN003]`: Cannot set classes on non-HTML elements
-- `[VLN004]`: No event handler found
-- `[VLN005]`: No event name specified for `vln-on`
-- `[VLN006]`: Target is not a valid input element
-- `[VLN008]`: Template name not provided
-- `[VLN009]`: Missing required template parameters
-- `[VLN010]`: Attempted to set value during evaluation (use `Velin.getSetter`)
-- `[VLN011]`: Failed to delete inner state from parent (state graph corruption)
-- `[VLN012]`: Multiple plugins on the same node attempted to create a scoped state
-- `[VLN013]`: Duplicate plugin application
-- `[VLN014]`: Async mutation attempted after cleanup
-- `[VLN020]`: Keyed `vln-loop` item is missing its key property
-- `[VLN021]`: Keyed `vln-loop` has two items with the same key
-- `[VLN022]`: Unkeyed `vln-loop` moved items between rows (dev builds only; key the loop, see [vln-loop](./directives.md#vln-loop))
+Every message starts with a code (`[VLN014] …`). Development builds print
+the full explanation; production builds print the code and a link to its
+page. The catalog, one section per code with the fix, is
+[Error codes](./errors.md).
 
 ## TypeScript Support
 

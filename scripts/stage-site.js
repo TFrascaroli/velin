@@ -41,4 +41,7 @@ copyFile(path.join(repoRoot, 'logo.svg'), path.join(outDir, 'logo.svg'));
 copyDir(path.join(repoRoot, 'docs'), path.join(outDir, 'docs'));
 copyDir(path.join(repoRoot, 'playground'), path.join(outDir, 'playground'));
 
-console.log(`[stage-site] wrote ${path.relative(repoRoot, outDir)}`);
+// /e/<CODE> pages that production error messages link to.
+const pages = require('./error-pages').writePages(outDir);
+
+console.log(`[stage-site] wrote ${path.relative(repoRoot, outDir)} (${pages} error pages)`);
