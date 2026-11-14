@@ -232,6 +232,7 @@ const DefaultPluginPriorities = {
  * @property {(state: any) => ReactiveState | undefined} getWrapper Test/introspection helper: look up the ReactiveState wrapper for a proxy previously returned by Velin.bind().
  * @property {(node: Element, attr: string, expr: string) => void} consumeAttribute
  * @property {(prop: string, reactiveState: ReactiveState) => void} triggerEffects
+ * @property {(code: string, text: string | false, ctx?: string) => string} fmt Formats a coded message; full text in dev builds, code + docs link in production. Pass the text as `__DEV__ && \`…\`` so it is dropped from production bundles.
  */
 
 /**
@@ -304,6 +305,26 @@ const DefaultPluginPriorities = {
  * @property {VelinInternal} ø__internal
  */
 
+// ── Error messages ────────────────────────────────────────────────────────
+// Development builds carry the full text. Production builds carry only the
+// code and a link, so the text doesn't ship:
+//   dev:  [VLN014] Async mutation error: Property 'x' was mutated after …
+//   prod: [VLN014] https://tfrascaroli.github.io/velin/e/VLN014
+// This constant is the one place the link lives. The pages it points to are
+// generated from docs/errors.md by scripts/stage-site.js, which must use the
+// same base path.
+const ERROR_DOCS_URL = "https://tfrascaroli.github.io/velin/e/";
+
+/**
+ * @param {string} code VLNxxx
+ * @param {string|false} text full message; write it as `__DEV__ && \`…\`` so the
+ *   literal is dropped from production builds
+ * @param {string} [ctx] short dynamic detail kept in production too
+ */
+function fmt(code, text, ctx) {
+  return `[${code}] ${text || ERROR_DOCS_URL + code + (ctx ? " " + ctx : "")}`;
+}
+
 /** @type {Map<string, VelinPlugin<any>>} */
 const plugins = new Map();
 /** @type {WeakMap<Node, any>} */
@@ -346,8 +367,8 @@ function wrapE(fn, expr) {
     return fn();
   } catch (error) {
     const exprStr = typeof expr === 'string' ? expr : (expr && expr.type ? `AST:${expr.type}` : JSON.stringify(expr));
-    console.error(`Error evaluating expression '${exprStr}':`, error.message);
-    if (error.stack) {
+    console.error(fmt("VLN017", __DEV__ && `Error evaluating expression '${exprStr}':`, exprStr), error.message);
+    if (__DEV__ && error.stack) {
       console.error('Stack:', error.stack.split('\n').slice(0, 5).join('\n'));
     }
     return undefined;
@@ -536,10 +557,7 @@ function processPlugin(
     compiledExpression = compile(expr);
   } catch (error) {
     if (__DEV__) hook.ø__emit({ kind: "warn", code: "W007", state: reactiveState, message: `compile-throw in ${plugin.name}: ${error && error.message}`, ref: { expr, node } });
-    console.error(
-      `Error occurred while compiling expression '${expr}' in plugin '${plugin.name}':`,
-      error,
-    );
+    console.error(fmt("VLN017", __DEV__ && `Error occurred while compiling expression '${expr}' in plugin '${plugin.name}':`, `${plugin.name}: ${expr}`), error);
     reactiveState.ø__depCaptures.pop();
     return { halt: true };
   }
@@ -594,10 +612,7 @@ function processPlugin(
       track();
     } catch (error) {
       if (__DEV__) hook.ø__emit({ kind: "warn", code: "W004", state: reactiveState, message: `track-throw in ${plugin.name}: ${error && error.message}`, ref: { expr, node } });
-      console.error(
-        `Error occurred while tracking expression '${expr}' in plugin '${plugin.name}':`,
-        error,
-      );
+      console.error(fmt("VLN017", __DEV__ && `Error occurred while tracking expression '${expr}' in plugin '${plugin.name}':`, `${plugin.name}: ${expr}`), error);
     }
     depCapture.capturingDeps = false;
     /** @type {VelinBindingEffect} */
@@ -635,10 +650,7 @@ function processPlugin(
         });
       } catch (error) {
         if (__DEV__) hook.ø__emit({ kind: "warn", code: "W006", state: reactiveState, message: `render-throw in ${plugin.name}: ${error && error.message}`, ref: { expr, node } });
-        console.error(
-          `Error occurred while rendering expression '${expr}' in plugin '${plugin.name}':`,
-          error,
-        );
+        console.error(fmt("VLN017", __DEV__ && `Error occurred while rendering expression '${expr}' in plugin '${plugin.name}':`, `${plugin.name}: ${expr}`), error);
         // Treat as halt: skip the subtree of this node, keep processing siblings.
         return { halt: true };
       }
@@ -799,7 +811,7 @@ function tokenize(expr) {
       continue;
     }
 
-    throw new Error(`Unexpected: ${char}`);
+    throw new Error(fmt("VLN015", __DEV__ && `Unexpected character '${char}' in expression`));
   }
 
   return tokens;
@@ -827,9 +839,7 @@ function parse(tokens) {
       token.type !== type ||
       (value !== undefined && token.value !== value)
     ) {
-      throw new Error(
-        `Expected ${type} ${value || ""}, got ${token ? token.type : "EOF"}`,
-      );
+      throw new Error(fmt("VLN015", __DEV__ && `Expected ${type} ${value || ""}, got ${token ? token.type : "EOF"}`));
     }
     return token;
   }
@@ -957,7 +967,7 @@ function parse(tokens) {
     const token = peek();
 
     if (!token) {
-      throw new Error("Unexpected end of expression");
+      throw new Error(fmt("VLN015", __DEV__ && "Unexpected end of expression"));
     }
 
     if (
@@ -1016,7 +1026,7 @@ function parse(tokens) {
         } else if (keyToken.type === "STRING") {
           key = next().value;
         } else {
-          throw new Error(`Bad property name`);
+          throw new Error(fmt("VLN015", __DEV__ && "Bad property name in object literal"));
         }
 
         // Check for shorthand property syntax: { foo } instead of { foo: foo }
@@ -1024,7 +1034,7 @@ function parse(tokens) {
         if (match("PUNCTUATION", [",", "}"])) {
           // Shorthand syntax: use key as identifier
           if (keyToken.type !== "IDENTIFIER") {
-            throw new Error(`Bad shorthand`);
+            throw new Error(fmt("VLN015", __DEV__ && "Shorthand object property must be an identifier"));
           }
           value = { type: "Identifier", name: key };
         } else {
@@ -1046,9 +1056,7 @@ function parse(tokens) {
       .slice(Math.max(0, pos - 3), pos + 4)
       .map((t) => `${t.type}:${t.value}`)
       .join(" ");
-    throw new Error(
-      `Unexpected token in expression: ${token.type} "${token.value}" at position ${pos}. Context: ${contextTokens}`,
-    );
+    throw new Error(fmt("VLN015", __DEV__ && `Unexpected token in expression: ${token.type} "${token.value}" at position ${pos}. Context: ${contextTokens}`));
   }
 
   return parseSequence();
@@ -1211,7 +1219,7 @@ function evalAssignment(ast, context, reactiveState) {
       : ast.left.property;
     obj[key] = value;
   } else {
-    throw new Error("Invalid assignment target");
+    throw new Error(fmt("VLN016", __DEV__ && "Invalid assignment target"));
   }
 
   return value;
@@ -1251,7 +1259,7 @@ function evalAst(ast, context, reactiveState = null) {
   };
   const visitor = evalVisitors[ast.type];
   if (!visitor) {
-    throw new Error(`Bad AST: ${ast.type}`);
+    throw new Error(fmt("VLN016", __DEV__ && `Bad AST node: ${ast.type}`));
   }
   return visitor(ast, context, reactiveState);
 }
@@ -1307,11 +1315,11 @@ function evaluateAst(ast, reactiveState) {
         if (lower !== prop) {
           const lowerVal = Reflect.get(target, lower, receiver);
           if (lowerVal !== undefined || Reflect.has(target, lower)) {
-            console.warn(
-              `[Velin] Identifier '${prop}' not found in scope. Did you mean '${lower}'? ` +
+            console.warn(fmt("VLN018",
+              `Identifier '${prop}' not found in scope. Did you mean '${lower}'? ` +
               `HTML lowercases attribute names, so vln-loop:${prop}="..." (or similar) ` +
               `binds as '${lower}'. Use lowercase or kebab-case in HTML attribute names.`
-            );
+            ));
           }
         }
       }
@@ -1319,14 +1327,10 @@ function evaluateAst(ast, reactiveState) {
     },
     set(target, prop, value, receiver) {
       if (!reactiveState.ø__control) {
-        throw new Error(
-          `[VLN014] Async mutation error: Property '${String(prop)}' was mutated after the evaluation context was cleaned up. This usually happens when an async operation in an event handler (or similar) tries to update state after the element has been removed or the scope destroyed.`,
-        );
+        throw new Error(fmt("VLN014", __DEV__ && `Async mutation error: Property '${String(prop)}' was mutated after the evaluation context was cleaned up. This usually happens when an async operation in an event handler (or similar) tries to update state after the element has been removed or the scope destroyed.`));
       }
       if (reactiveState.ø__control.evaluating)
-        throw new Error(
-          "[VLN010] Setting values during evaluation is forbidden. Use Velin.getSetter",
-        );
+        throw new Error(fmt("VLN010", __DEV__ && "Setting values during evaluation is forbidden. Use Velin.getSetter"));
       return Reflect.set(target, prop, value, receiver);
     },
   });
@@ -1384,16 +1388,14 @@ function evaluateAst(ast, reactiveState) {
  */
 function evaluate(reactiveState, expr, allowMutations = false) {
   if (!reactiveState.ø__control) {
-    throw new Error(
-      `[VLN014] Async mutation error: Expression "${expr}" evaluation was attempted after the state was cleaned up.`,
-    );
+    throw new Error(fmt("VLN014", __DEV__ && `Async mutation error: Expression "${expr}" evaluation was attempted after the state was cleaned up.`));
   }
   reactiveState.ø__control.evaluating = !allowMutations;
   try {
     const ast = compile(expr);
     return evaluateAst(ast, reactiveState);
   } catch (err) {
-    console.error(`Velin evaluate() error in expression "${expr}".`);
+    console.error(fmt("VLN017", __DEV__ && `Velin evaluate() error in expression "${expr}".`, expr));
     throw err;
   } finally {
     if (reactiveState.ø__control) {
@@ -1516,10 +1518,10 @@ function getController(state) {
     ? (states.get(state) || /** @type {any} */ (state)[ø__SCOPE])
     : null;
   if (!wrapper) {
-    throw new Error("[Velin] getController: argument is not a Velin state. Pass the object returned by Velin.bind(), or `this` inside a state method.");
+    throw new Error(fmt("VLN023", __DEV__ && "getController: argument is not a Velin state. Pass the object returned by Velin.bind(), or `this` inside a state method."));
   }
   if (!wrapper.ø__control) {
-    throw new Error("[Velin] getController: this scope was torn down (its element was removed or the state unbound).");
+    throw new Error(fmt("VLN024", __DEV__ && "getController: this scope was torn down (its element was removed or the state unbound)."));
   }
   return wrapper.ø__control;
 }
@@ -1605,9 +1607,7 @@ function setupState(obj) {
       },
       set(target, prop, value, receiver) {
         if (!init && ø__control.evaluating && !ø__control.wrapping)
-          throw new Error(
-            "[VLN010] Setting values during evaluation is forbidden. Use Velin.getSetter",
-          );
+          throw new Error(fmt("VLN010", __DEV__ && "Setting values during evaluation is forbidden. Use Velin.getSetter"));
 
         const desc = Object.getOwnPropertyDescriptor(target, prop);
         if (desc?.set) {
@@ -1694,9 +1694,7 @@ function setupState(obj) {
       },
       set(target, prop, value, receiver) {
         if (!init && ø__control.evaluating && !ø__control.wrapping)
-          throw new Error(
-            "[VLN010] Setting values during evaluation is forbidden. Use Velin.getSetter",
-          );
+          throw new Error(fmt("VLN010", __DEV__ && "Setting values during evaluation is forbidden. Use Velin.getSetter"));
 
         const old = target[prop];
 
@@ -1784,13 +1782,10 @@ function setupState(obj) {
  */
 function composeState(reactiveState, init) {
   if (!reactiveState) {
-    throw new Error("[Velin] composeState requires an enclosing reactiveState");
+    throw new Error(fmt("VLN019", __DEV__ && "composeState requires an enclosing reactiveState"));
   }
   if (!init || typeof init !== "object" || init instanceof Map) {
-    throw new Error(
-      "[Velin] composeState() expects a plain object like { key: { expr: '…' } | { literal: … } }. " +
-      "The Map form was removed in v1.0.0-beta.4."
-    );
+    throw new Error(fmt("VLN019", __DEV__ && "composeState() expects a plain object like { key: { expr: '…' } | { literal: … } }."));
   }
   /** @type {Map<string, Interpolation>} */
   const lerps = new Map();
@@ -1804,9 +1799,7 @@ function composeState(reactiveState, init) {
     } else if (entry && typeof entry === "object" && "literal" in entry) {
       lerps.set(key, /** @type {Interpolation} */({ type: "LITERAL", value: entry.literal }));
     } else {
-      throw new Error(
-        `[Velin] composeState(): each entry must be { expr: '...' } or { literal: ... }. Got ${JSON.stringify(entry)} for key "${key}".`
-      );
+      throw new Error(fmt("VLN019", __DEV__ && `composeState(): each entry must be { expr: '...' } or { literal: ... }. Got ${JSON.stringify(entry)} for key "${key}".`));
     }
   }
 
@@ -1909,9 +1902,7 @@ function cleanupState(parentState, innerState, node = null) {
   // the proxy→wrapper lookup is dropped at the end of this function.
   if (parentState) {
     if (!parentState.ø__innerStates.delete(innerState)) {
-      throw new Error(
-        "[VLN011] Failed to delete inner state from parent. This indicates a state management corruption.",
-      );
+      throw new Error(fmt("VLN011", __DEV__ && "Failed to delete inner state from parent. This indicates a state management corruption."));
     }
   }
   // Drop from the global proxy→wrapper map before nulling .state — after
@@ -1947,11 +1938,7 @@ function unbind(state) {
   const rs = states.get(state);
   if (!rs) return; // unknown or already-unbound — no-op
   if (rs.ø__enclosing) {
-    throw new Error(
-      "[Velin] unbind: this is a child state (from compose / vln-loop / " +
-      "vln-if / vln-fragment). Child states are owned by their parent and " +
-      "tear down when the parent does. Call unbind on the root instead.",
-    );
+    throw new Error(fmt("VLN025", __DEV__ && "unbind: this is a child state (from compose / vln-loop / vln-if / vln-fragment). Child states are owned by their parent and tear down when the parent does. Call unbind on the root instead."));
   }
   cleanupState(null, rs, rs.ø__rootNode || null);
 }
@@ -2020,11 +2007,8 @@ function parsePluginFromAttribute(name, value) {
       name: "__error__",
       priority: -Infinity,
       render: () => {
-        const availablePlugins = Array.from(plugins.keys()).join(", ");
-        throw new Error(
-          `[Velin] Plugin '${pluginKey}' is not registered. ` +
-            `Available plugins: ${availablePlugins}`,
-        );
+        const availablePlugins = __DEV__ ? Array.from(plugins.keys()).join(", ") : "";
+        throw new Error(fmt("VLN026", __DEV__ && `Plugin '${pluginKey}' is not registered. Available plugins: ${availablePlugins}`, pluginKey));
       },
     },
   };
@@ -2065,11 +2049,9 @@ function processNode(node, reactiveState) {
       if (parsed.pluginKey !== null) {
         const uniqueKey = parsed.pluginKey + (parsed.subcommand ? ":" + parsed.subcommand : "");
         if (seenPlugins.has(uniqueKey)) {
-          throw new Error(
-            `[VLN013] Duplicate plugin application: '${parsed.plugin.name}' ${
+          throw new Error(fmt("VLN013", __DEV__ && `Duplicate plugin application: '${parsed.plugin.name}' ${
               parsed.subcommand ? "with subcommand '" + parsed.subcommand + "' " : ""
-            }is applied multiple times to the same node. Each plugin/subcommand pair must be unique per element.`,
-          );
+            }is applied multiple times to the same node. Each plugin/subcommand pair must be unique per element.`, uniqueKey));
         }
         seenPlugins.add(uniqueKey);
       }
@@ -2114,9 +2096,7 @@ function processNode(node, reactiveState) {
         scopedReactiveState = scoped;
         if (__DEV__) hook.ø__registerStateNode(scoped, node);
       } else
-        throw new Error(
-          `[VLN012] Multiple plugins on the same node cannot create scoped states. Plugin '${plugin.name}' attempted to create a scoped state, but one already exists from a previous plugin.`,
-        );
+        throw new Error(fmt("VLN012", __DEV__ && `Multiple plugins on the same node cannot create scoped states. Plugin '${plugin.name}' attempted to create a scoped state, but one already exists from a previous plugin.`, plugin.name));
     }
     if (control && control.plugins && control.plugins.length > 0) {
       const injectedEntries = parsePlugins(control.plugins, true);
@@ -2189,6 +2169,7 @@ const Velin = {
   trackers,
   ø__internal: {
     pluginStates,
+    fmt,
     getWrapper: (state) => states.get(state),
     consumeAttribute,
     triggerEffects: (prop, reactiveState) => {

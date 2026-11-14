@@ -30,6 +30,13 @@ All notable changes to `@velinjs/all`. Follows
 
 ### Changed
 
+- Every error and warning now carries a code (`VLN001`–`VLN036`), and
+  production builds print only the code and a link to its page
+  (`[VLN014] https://tfrascaroli.github.io/velin/e/VLN014`) instead of
+  the full text. Development builds still print the explanation. The
+  catalog is [docs/errors.md](docs/errors.md). `velin-all` drops from
+  11.9 KB to 10.5 KB gzipped; sizes in the README and docs are updated
+  to measured values.
 - Development builds no longer `console.log` every processed node, plugin
   application and dependency set (about 16 lines per list row).
 - `Velin.getController()` accepts `this` inside a state method, including
@@ -44,6 +51,8 @@ All notable changes to `@velinjs/all`. Follows
 
 ### Removed
 
+- The `vln-var:*` migration error plugin (removed in beta.4, kept as a
+  loud error since) and the `Velin.debug.templates()` console helper.
 - Devtools: `long-effect` signal and W002 `slow-expression` warning.
   Both were per-expression thresholds standing in for frame-level jank;
   `long-task` measures it and names the cause. Signal consumers filtering

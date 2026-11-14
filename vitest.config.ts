@@ -4,7 +4,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
-    exclude: ['tooling/**', 'node_modules/**', 'dist/**'],
+    exclude: ['tooling/**', 'node_modules/**', 'dist/**', '.plans/**'],
   },
   define: {
     __DEV__: true,
