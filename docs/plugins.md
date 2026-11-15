@@ -82,7 +82,8 @@ Function called to set up dependency tracking. Return value is passed to `render
 > ⚠ **`track` captures dependencies on its first run, then only after
 > structural writes.** `track` runs before every `render`, but its reads
 > are recorded on the first run and again only when the write that woke
-> the plugin replaced an object or array, or mutated an array. A change
+> the plugin changed the shape of an object or array it read (replaced
+> it, added or deleted a key, mutated an array). A change
 > to a plain value re-runs `track` and `render` without re-scanning. Any
 > reactive property your tracker skips on a capturing pass — via a
 > ternary, `&&`, `??`, guard-clause, or any conditional read — is not
