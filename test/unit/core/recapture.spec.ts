@@ -99,6 +99,70 @@ describe("re-capture on structural change — replaced objects", () => {
   });
 });
 
+describe("re-capture on structural change — keys added or removed in place", () => {
+  const enumerating = () => ({
+    user: { name: "a" },
+    describe() {
+      return Object.keys(this.user).map((k) => k + "=" + this.user[k]).join(";");
+    },
+  });
+
+  it("adding a key to an object wakes readers of that object and tracks the key", () => {
+    const { s, text } = mount('<i vln-text="describe()"></i>', enumerating());
+    s.user.age = 3;
+    expect(text()).toBe("name=a;age=3");
+    s.user.age = 4;
+    expect(text()).toBe("name=a;age=4");
+  });
+
+  it("deleting a key wakes readers of that object", () => {
+    const { s, text } = mount('<i vln-text="describe()"></i>', enumerating());
+    delete s.user.name;
+    expect(text()).toBe("");
+    s.user.name = "z";
+    expect(text()).toBe("name=z");
+  });
+
+  it("a reader that never touched the object is not woken", () => {
+    let runs = 0;
+    const { s } = mount('<i vln-text="tick()"></i>', {
+      user: { name: "a" },
+      other: 1,
+      tick() {
+        runs++;
+        return this.other;
+      },
+    });
+    runs = 0;
+    s.user.age = 3;
+    delete s.user.name;
+    expect(runs).toBe(0);
+  });
+
+  it("writing past the end of an array wakes readers of the array and tracks the slot", () => {
+    const { s, text } = mount('<i vln-text="names.join(\',\')"></i>', { names: ["a", "b"] });
+    s.names[3] = "d";
+    expect(text()).toBe("a,b,,d");
+    s.names[3] = "e";
+    expect(text()).toBe("a,b,,e");
+  });
+
+  it("a dictionary filled key by key updates a count of its keys", () => {
+    const { s, text } = mount('<i vln-text="size()"></i>', {
+      cache: {},
+      size() {
+        return Object.keys(this.cache).length;
+      },
+    });
+    expect(text()).toBe("0");
+    s.cache.a = 1;
+    s.cache.b = 2;
+    expect(text()).toBe("2");
+    delete s.cache.a;
+    expect(text()).toBe("1");
+  });
+});
+
 describe("re-capture on structural change — primitive writes stay one-shot (ADR 0003)", () => {
   it("a primitive write does not re-capture", () => {
     const { s, text, bound } = mount('<i vln-text="flag ? a : b"></i>', { flag: true, a: "A", b: "B" });

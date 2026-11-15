@@ -1356,15 +1356,34 @@ function setupState(obj) {
         }
 
         const old = target[prop];
+        const added = !(prop in target);
         const result = Reflect.set(target, prop, value);
 
-        if (old !== value && !init && !ø__control.wrapping) {
+        if ((old !== value || added) && !init && !ø__control.wrapping) {
           let seq;
           if (__DEV__) {
             const ev = hook.ø__emit({ kind: "mutate", state: reactiveState, path: path + "." + prop.toString(), op: "set", from: old, to: value });
             seq = ev && ev.mutationSeq;
           }
           triggerEffects(path + "." + prop.toString(), reactiveState, seq, isStructural(old, value));
+          // A new key changes the object's shape: wake and re-capture
+          // everything that read the object (ADR-0006).
+          if (added) triggerEffects(path, reactiveState, seq, true);
+        }
+        return result;
+      },
+      deleteProperty(target, prop) {
+        const had = prop in target;
+        const old = target[prop];
+        const result = Reflect.deleteProperty(target, prop);
+        if (had && !init) {
+          let seq;
+          if (__DEV__) {
+            const ev = hook.ø__emit({ kind: "mutate", state: reactiveState, path: path + "." + prop.toString(), op: "delete", from: old, to: undefined });
+            seq = ev && ev.mutationSeq;
+          }
+          triggerEffects(path + "." + prop.toString(), reactiveState, seq, isStructural(old, undefined));
+          triggerEffects(path, reactiveState, seq, true);
         }
         return result;
       },
@@ -1437,6 +1456,7 @@ function setupState(obj) {
           throw new Error(fmt("VLN010", __DEV__ && "Setting values during evaluation is forbidden. Use Velin.getSetter"));
 
         const old = target[prop];
+        const added = !(prop in target);
 
         const desc = Object.getOwnPropertyDescriptor(target, prop);
         let result;
@@ -1452,13 +1472,16 @@ function setupState(obj) {
           /^\d+$/.test(prop.toString())
         ) {
           const innerPath = path + "[" + prop.toString() + "]";
-          if (old !== value && !init) {
+          if ((old !== value || added) && !init) {
             let seq;
             if (__DEV__) {
               const ev = hook.ø__emit({ kind: "mutate", state: reactiveState, path: innerPath, op: "set", from: old, to: value });
               seq = ev && ev.mutationSeq;
             }
             triggerEffects(innerPath, reactiveState, seq, isStructural(old, value));
+            // A slot past the end grows the array: wake and re-capture
+            // everything that read it (ADR-0006).
+            if (added) triggerEffects(path, reactiveState, seq, true);
           }
         } else if (old !== value && !init && !ø__control.wrapping) {
           let seq;
