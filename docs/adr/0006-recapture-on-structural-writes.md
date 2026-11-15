@@ -109,7 +109,8 @@ Positive:
 - `bindings` no longer accumulates dead paths from removed items.
 
 Negative:
-- `velin-all` grows 161 B gzipped (10,190 → 10,351).
+- `velin-all` grows 261 B gzipped (10,190 → 10,451), of which 100 B are the
+  added/deleted-key and past-the-end handling.
 - Effects woken by a structural write pay a capture (Set adds during the
   tracker run) plus a Set diff. Those runs already re-evaluate a
   collection, so the capture is a fraction of the run. Not measured in a
