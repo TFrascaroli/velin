@@ -10,8 +10,9 @@ All directive values are **JavaScript expressions** evaluated in the context of 
 
 > ⚠ **Eager-touch your deps.** Velin captures an expression's reactive
 > dependencies when it first runs, and again whenever an object or array it
-> read is replaced or an array is mutated (`push`, `splice`, `sort`, …), so
-> items and fields added later are picked up. A change to a plain value
+> read changes shape: replaced, a key added or deleted, an array mutated
+> (`push`, `splice`, `sort`, …). Items and fields added later are picked
+> up. A change to a plain value
 > (string, number, boolean) does not re-capture: anything a ternary or
 > short-circuit skipped on the last capture is **not** tracked, and later
 > changes to it won't trigger updates. If your expression reads a value
@@ -509,17 +510,48 @@ get fullName() {
 <button vln-on:click="errors = validate(form), errors.length || save(form), saved = !errors.length">Submit</button>
 ```
 
-### 3. Use getters for computed values
+### 3. Getters format; state holds the data
+
+A getter is a good home for presentation: a label, a total, a class name,
+a formatted date. It is a bad home for data other bindings build on. A
+getter that filters or reshapes a collection has no state of its own, so
+every row that reads through it depends on everything the getter reads,
+and every write to any item re-renders every row.
+
+Keep the data you render as real state and update it when its inputs
+change. Then each row depends only on its own item.
 
 **Good:**
 ```javascript
-get filteredItems() {
-  return this.items.filter(i => i.active);
+{
+  items: [...],
+  visible: [],
+  filter: '',
+  applyFilter(filter) {
+    this.filter = filter;
+    this.visible = this.items.filter(i => i.name.includes(filter));
+  },
+  get summary() {
+    return `${this.visible.length} of ${this.items.length}`;
+  },
 }
 ```
 
 ```html
-<div vln-loop:item="filteredItems">...</div>
+<input vln-on:input="applyFilter($event.target.value)">
+<p vln-text="summary"></p>
+<div vln-loop:item="{ collection: visible, key: 'id' }">...</div>
+```
+
+**Avoid:**
+```javascript
+get visible() {
+  return this.items.filter(i => i.name.includes(this.filter));
+}
+```
+
+```html
+<div vln-loop:item="visible">...</div>
 ```
 
 ## Routing

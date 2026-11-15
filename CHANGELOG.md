@@ -44,8 +44,10 @@ All notable changes to `@velinjs/all`. Follows
   `sort`, …). A getter over a list now follows items added after first
   render (`get doneCount() { return this.tasks.filter(t => t.done).length }`
   updates when a new task is ticked), rows of an unkeyed `vln-loop` follow
-  the item that moved into them, and readers of a replaced object pick up
-  its new fields. Writes to primitives stay one-shot, so the rule from
+  the item that moved into them, and readers of an object pick up keys
+  added to it (`user.age = 3`), keys deleted from it (`delete user.name`,
+  which was invisible to reactivity before) and slots written past the end
+  of an array. Writes to primitives stay one-shot, so the rule from
   [ADR 0003](docs/adr/0003-one-shot-dependency-capture.md) still applies
   to branches guarded by a primitive: read what you depend on up front.
   Decision record: [ADR 0006](docs/adr/0006-recapture-on-structural-writes.md).

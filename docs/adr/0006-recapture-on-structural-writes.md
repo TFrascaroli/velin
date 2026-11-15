@@ -42,6 +42,14 @@ mutating array method (`push`, `pop`, `shift`, `unshift`, `splice`,
 `sort`, `reverse`), or when it sets an array's `length`. A write of a
 primitive over a primitive is not.
 
+Adding a key an object did not have, deleting a key, or writing to an
+array slot past its end also changes the *container's* shape. Those
+writes trigger the field path as usual and additionally trigger the
+container path as structural, so everything that read the object or
+array re-captures and picks up the new key. (`delete` was not trapped at
+all before; it is now.) Readers that never touched the container are not
+woken.
+
 `triggerEffects` carries a `recapture` flag. An effect run with it pushes
 its capture frame again, runs its tracker, then rebinds: paths it no
 longer reads are dropped from `bindings` (and the state's
@@ -106,11 +114,14 @@ Negative:
   tracker run) plus a Set diff. Those runs already re-evaluate a
   collection, so the capture is a fraction of the run. Not measured in a
   browser yet; the jsdom suite including the loop-cost tests is unchanged.
-- Adding a field *in place* to an object (`user.city = 'x'`) is still
-  unobservable to a binding that enumerated `user`: nothing listens to
-  `root.user.city`. Replace the object instead.
+- An object used as a dictionary (`cache[id] = …` in a loop) wakes and
+  re-captures every reader of `cache` once per added key. Correct, and
+  the same as other reactive systems, but a place where `batch()` pays.
 
 Neutral:
 - Each effect now holds its current dep set (one `Set` per binding).
 - Loops over a filtering getter still fan out every row on every write
-  (symptom 2 of `.plans/loop-row-deps.md`, perf only). Separate decision.
+  (symptom 2 of `.plans/loop-row-deps.md`). Not a bug to fix: a getter
+  holding derived *data* is a Velin anti-pattern. State is materialized
+  and the UI follows it; getters are for presentation (labels, totals,
+  formatting). The directives doc says so under best practices.
