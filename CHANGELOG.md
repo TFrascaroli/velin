@@ -51,7 +51,7 @@ All notable changes to `@velinjs/all`. Follows
   [ADR 0003](docs/adr/0003-one-shot-dependency-capture.md) still applies
   to branches guarded by a primitive: read what you depend on up front.
   Decision record: [ADR 0006](docs/adr/0006-recapture-on-structural-writes.md).
-  Costs 160 B gzipped on `velin-all` (10.2 → 10.4 KB).
+  Costs 260 B gzipped on `velin-all` (10.2 → 10.5 KB).
 - Plugin helpers: `triggerEffects(prop, recapture)` takes an optional
   second argument; `true` makes the woken bindings re-capture.
 - Unkeyed `vln-loop` re-renders only rows whose item changed. Appending
