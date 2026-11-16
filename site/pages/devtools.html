@@ -33,16 +33,23 @@
 
   <h2>Attaching to your own page</h2>
   <p>
-    Build Velin with <code>__DEV__=true</code> and load
-    <code>velin-devtools.dev.js</code> after your Velin bundle. The companion
-    tree-shakes to zero in production builds.
+    Devtools works on the development build of Velin
+    (<code>velin-*.dev.js</code>); production bundles have nothing for it
+    to attach to. Load the development build, then the companion. Both ship
+    in the <code>@velinjs/all</code> package.
   </p>
-  <pre><code>&lt;script src="velin.dev.js"&gt;&lt;/script&gt;
-&lt;script src="velin-devtools.dev.js"&gt;&lt;/script&gt;</code></pre>
+  <pre><code>&lt;script src="https://unpkg.com/@velinjs/all/velin-all.dev.js"&gt;&lt;/script&gt;
+&lt;script src="https://unpkg.com/@velinjs/all/velin-devtools.min.js"&gt;&lt;/script&gt;</code></pre>
+  <p>
+    From npm the same two files are <code>@velinjs/all/dev</code> and
+    <code>@velinjs/all/devtools</code>.
+  </p>
 
   <h2>Status</h2>
   <p>
-    Devtools is <code>0.2.0-alpha</code>. The hook API and the six question
-    surfaces are stable; UI polish is the current focus.
+    Devtools is alpha. It ships with every Velin release, but its panel and
+    its hook API are outside the 1.0 contract and can change in a minor
+    version. The six question surfaces are stable; UI polish is the current
+    focus.
   </p>
 </div>

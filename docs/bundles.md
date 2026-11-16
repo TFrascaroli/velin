@@ -1,7 +1,8 @@
 # Choosing a bundle
 
-Velin ships six bundles. Most pages don't need `velin-all`. Pick the
-smallest one that covers your directives.
+Velin ships six bundles, each as a production build (`.min.js`) and a
+development build (`.dev.js`, see below). Most pages don't need
+`velin-all`. Pick the smallest one that covers your directives.
 
 Sizes are minified / gzipped, current as of the last release.
 
@@ -58,18 +59,37 @@ npm install @velinjs/all
 Each bundle is a subpath export:
 
 ```js
-import 'velin';                // velin-all — kitchen sink
-import 'velin/all';            // same
-import 'velin/common';         // core + standard
-import 'velin/core';           // core only
-import 'velin/std';            // adds standard directives (needs core loaded first)
-import 'velin/templates';      // adds vln-fragment (needs core)
-import 'velin/router';         // adds vln-router / vln-route (needs core)
+import '@velinjs/all';            // velin-all — kitchen sink
+import '@velinjs/all/all';        // same
+import '@velinjs/all/common';     // core + standard
+import '@velinjs/all/core';       // core only
+import '@velinjs/all/std';        // adds standard directives (needs core loaded first)
+import '@velinjs/all/templates';  // adds vln-fragment (needs core)
+import '@velinjs/all/router';     // adds vln-router / vln-route (needs core)
 ```
+
+Every subpath has a `/dev` twin that resolves to the development build:
+`@velinjs/all/dev`, `@velinjs/all/common/dev`, and so on. The devtools
+companion is `@velinjs/all/devtools`.
 
 Every subpath returns the same singleton on `window.Velin` — the imports
 are load-order side effects, not module exports. `import Velin from '@velinjs/all'`
 gives you the default export as a convenience for TypeScript users.
+
+## Development builds
+
+Each bundle also ships as `velin-<name>.dev.js`. It is the same library
+with three differences: errors and warnings print their full text instead
+of a code and a link, misuse that the production build stays quiet about
+is reported, and the [devtools](./devtools.md) can attach to it. Use it
+while developing and swap the `.min.js` in for production.
+`velin-all.dev.js` is 20.5 KB gzipped against 10.5 KB for the production
+build.
+
+```html
+<script src="https://unpkg.com/@velinjs/all/velin-all.dev.js"></script>
+<script src="https://unpkg.com/@velinjs/all/velin-devtools.min.js"></script>
+```
 
 ## Rules for combining
 
