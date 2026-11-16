@@ -23,6 +23,11 @@ Velin's documentation is organized into several key sections:
 
 **Debugging Velin:**
 - [Devtools](./devtools.md) - In-page inspector for state, bindings, and updates
+- [Error codes](./errors.md) - Every `VLNxxx` code with its fix
+
+**Relying on Velin:**
+- [The 1.0 contract](./contract.md) - What is frozen, what isn't, and what a version bump means
+- [Choosing a bundle](./bundles.md) - Sizes, subpaths, development builds
 
 ### Quick Start by Use Case
 
@@ -71,6 +76,9 @@ docs/
 ├── api-reference.md       # JavaScript API
 ├── plugins.md             # Creating custom directives
 ├── templates.md           # Advanced templates
+├── bundles.md             # Bundles, subpaths, development builds
+├── errors.md              # Error code catalog
+├── contract.md            # The 1.0 contract
 └── devtools.md            # In-page inspector for state and updates
 
 playground/
