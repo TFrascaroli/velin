@@ -3,8 +3,8 @@
 # Runs the build (which produces every bundle: velin-all, velin-common,
 # velin-core, velin-standard, velin-templates-and-fragments, velin-router)
 # and the full test suite on PRs. On a `v*` tag, publishes the resulting
-# publish/ directory to npm — this includes every bundle together, so
-# consumers can pick which one they need.
+# publish/ directory to npm — every bundle in production and development
+# builds, plus the devtools companion, so consumers pick what they need.
 #
 # Auth: uses npm Trusted Publishing (OIDC). No NPM_TOKEN secret required.
 # The `velin` package must have this repo + workflow registered as a Trusted
@@ -98,13 +98,19 @@ jobs:
           set -e
           for name in velin-all velin-common velin-core velin-standard \
                       velin-templates-and-fragments velin-router; do
-            for suffix in .min.js .min.js.map .d.ts; do
+            for suffix in .min.js .min.js.map .dev.js .dev.js.map .d.ts; do
               f="publish/$name$suffix"
               if [ ! -s "$f" ]; then
                 echo "MISSING or empty: $f"
                 exit 1
               fi
             done
+          done
+          for f in publish/velin-devtools.min.js publish/velin-devtools.d.ts; do
+            if [ ! -s "$f" ]; then
+              echo "MISSING or empty: $f"
+              exit 1
+            fi
           done
 
       - name: Publish to npm

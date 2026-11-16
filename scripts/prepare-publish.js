@@ -10,8 +10,9 @@ const distBuild = path.join(root, 'dist', 'build');
 // starts at src/**; not worth fighting the compiler over.
 const distTypes = path.join(root, 'dist', 'types', 'src');
 
-// All bundles are shipped together. Consumers pick the one that matches
-// what they use (see docs/bundles.md).
+// All bundles are shipped together, each as a production build (.min.js)
+// and a development build (.dev.js, readable warnings + the devtools hook).
+// Consumers pick the one that matches what they use (see docs/bundles.md).
 const bundles = [
   'velin-all',                       // everything
   'velin-common',                    // core + standard
@@ -21,8 +22,15 @@ const bundles = [
   'velin-router',                    // vln-router / vln-route
 ];
 
-const filesToCopy = bundles.flatMap(b => [`${b}.min.js`, `${b}.min.js.map`]);
-const typeFiles = bundles.map(b => `${b}.d.ts`);
+// The devtools companion only has one meaningful build (it is a tool, not
+// gated code), so the minified one ships under the plain name.
+const devtools = "velin-devtools";
+
+const filesToCopy = [
+  ...bundles.flatMap(b => [`${b}.min.js`, `${b}.min.js.map`, `${b}.dev.js`, `${b}.dev.js.map`]),
+  `${devtools}.min.js`, `${devtools}.min.js.map`,
+];
+const typeFiles = [...bundles, devtools].map(b => `${b}.d.ts`);
 
 function ensureDir(dir) {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -83,7 +91,7 @@ copyFiles(typeFiles, distTypes, publishDir);
 // package puts every bundle at the tarball root, so exports resolve to
 // bare filenames.
 const rootPkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
-const bundleToPath = (b) => `./${b}.min.js`;
+const bundleToPath = (b, kind = "min") => `./${b}.${kind}.js`;
 const bundleToTypes = (b) => `./${b}.d.ts`;
 
 const subpaths = {
@@ -108,12 +116,17 @@ const publishPkg = {
   author: rootPkg.author,
   main: 'velin-all.min.js',
   types: 'velin-all.d.ts',
-  exports: Object.fromEntries(
-    Object.entries(subpaths).map(([sub, b]) => [sub, {
-      import: bundleToPath(b),
-      types: bundleToTypes(b),
-    }])
-  ),
+  // Every bundle has a `/dev` twin (`@velinjs/all/dev`, `@velinjs/all/core/dev`)
+  // and the devtools companion is `@velinjs/all/devtools`.
+  exports: {
+    ...Object.fromEntries(
+      Object.entries(subpaths).flatMap(([sub, b]) => [
+        [sub, { import: bundleToPath(b), types: bundleToTypes(b) }],
+        [sub === "." ? "./dev" : `${sub}/dev`, { import: bundleToPath(b, "dev"), types: bundleToTypes(b) }],
+      ])
+    ),
+    "./devtools": { import: bundleToPath(devtools), types: bundleToTypes(devtools) },
+  },
   sideEffects: false,
 };
 

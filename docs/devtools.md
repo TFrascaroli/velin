@@ -4,30 +4,33 @@ An in-page drawer for the questions you ask while debugging a Velin page:
 what is this element bound to, who re-renders when this changes, what
 froze the page, and what is still running for DOM that's gone.
 
-**Status:** `0.3.0-alpha.0`. Works on development builds only.
+**Status:** alpha. Ships inside the `@velinjs/all` package. Works on
+development builds only.
 
 ## Running it
 
-Devtools reads hooks that only exist in development builds of Velin;
-production bundles strip them. It is not in the npm package yet, so run
-it from a checkout:
+Devtools reads hooks that only exist in the development builds of Velin
+(`velin-*.dev.js`); production bundles strip them. Load the development
+build of your bundle, then the companion:
+
+```html
+<script src="https://unpkg.com/@velinjs/all/velin-all.dev.js"></script>
+<script src="https://unpkg.com/@velinjs/all/velin-devtools.min.js"></script>
+```
+
+From npm the same two files are `@velinjs/all/dev` (or
+`@velinjs/all/common/dev`, `@velinjs/all/core/dev`, …) and
+`@velinjs/all/devtools`. Leave both out of production pages; the
+production bundle has nothing for the companion to attach to.
+
+**Devtools 101** in the playground is a guided walkthrough: a small task
+list with five realistic bugs, and steps that find each one with the
+drawer. From a checkout:
 
 ```bash
 npm install
 npm run serve:dev
 # open http://localhost:3123/playground/ and pick "Devtools 101"
-```
-
-**Devtools 101** in the playground is a guided walkthrough: a small task
-list with five realistic bugs, and steps that find each one with the
-drawer.
-
-To use it on your own page, run `npm run build` and load the two dev
-bundles, Velin first:
-
-```html
-<script src="dist/build/velin-all.dev.js"></script>
-<script src="dist/build/velin-devtools.dev.js"></script>
 ```
 
 | Key | Does |
