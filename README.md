@@ -29,7 +29,7 @@ I also dislike magic. Naming conventions that decide routing behavior, component
 
 And the bloat. Velin ships a full CSP-compliant AST evaluator instead of leaning on `eval()` or `new Function()` — and it's *still* smaller than the alternatives. **10.5 KB gzipped for the everything bundle, 8.2 KB gzipped for the everyday combo** (core + directives). Load only what you use — see [bundles](docs/bundles.md).
 
-**Status:** Velin core is in **beta** (`1.0.0-beta.0`) — the API surface is mostly settled, performance and usability are where I want them, only a few remaining edges to smooth. The companion **Velin devtools is in alpha** (`0.1.0-alpha.0`) — it works and answers the questions it claims to, but expect rough visuals and shifting user journeys.
+**Status:** `1.0.0-beta.5`, the release candidate for 1.0. What 1.0 freezes, what it doesn't, and what a version bump means is written down in [the 1.0 contract](docs/contract.md). The companion **devtools** ships in the package and is **alpha**: it works and answers the questions it claims to, but its panel and hook API sit outside the contract.
 
 ## Where to use Velin
 
@@ -74,8 +74,8 @@ See [docs/bundles.md](docs/bundles.md) for the full table and size-per-feature g
 
 Velin is under active development. Current priorities:
 
--   **DevTools polish** - Devtools ships as an in-page companion (`./devtools`), currently in alpha; visual polish and clearer user journeys are next.
--   **Stable Plugin API** - Frozen `PluginContext` surface so third-party plugins survive core refactors.
+-   **DevTools polish** - Devtools ships as an in-page companion (`@velinjs/all/devtools`), currently in alpha; visual polish and clearer user journeys are next.
+-   **1.0** - The public API, plugin API, directives and error codes are frozen by [the contract](docs/contract.md); what remains is the release itself.
 -   **Async Patterns** - Standardized practices for loading and error states.
 
 ## Modular Architecture

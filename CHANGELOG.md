@@ -4,10 +4,18 @@ All notable changes to `@velinjs/all`. Follows
 [Semantic Versioning](https://semver.org/); format loosely tracks
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [1.0.0-beta.5] — 2026-11-16
+
+Release candidate for 1.0. [docs/contract.md](docs/contract.md) states
+what 1.0 freezes and what a version bump means.
 
 ### Added
 
+- The npm package ships the development build of every bundle
+  (`velin-*.dev.js`; subpaths `@velinjs/all/dev`, `@velinjs/all/common/dev`,
+  …) and the devtools companion (`velin-devtools.min.js`,
+  `@velinjs/all/devtools`). Devtools no longer needs a checkout: load the
+  development build and the companion from unpkg or npm.
 - `vln-inlet[="'name'"]` + `vln-outlet[="'name'"]` for slot
   composition on templates. Direct children of a `vln-fragment`
   host must be `<template vln-inlet>` elements (bare = default, or
