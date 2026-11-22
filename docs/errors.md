@@ -229,3 +229,29 @@ template that was mounted with `vln-fragment`.
 
 **Slot name isn't a string.** `vln-inlet` and `vln-outlet` names must
 evaluate to a string; use quotes: `vln-inlet="'header'"`.
+
+## VLN037
+
+**A binding read something it never subscribed to.** Development builds
+only. Velin records what a binding reads the first time it runs. A getter
+or ternary that short-circuits on that first run never reaches its other
+inputs, so changes to them never wake the binding, and the screen goes
+stale with no error. This warning fires when a later run does reach such
+an input. Read every input first, then combine:
+
+```js
+// Stale: on the first run activeLook is null, so modified is never read.
+get canSave() { return this.activeLook !== null && this.modified; }
+
+// Right: read everything, then decide.
+get canSave() {
+  const active = this.activeLook;
+  const modified = this.modified;
+  return active !== null && modified;
+}
+```
+
+Template `&&` and `||` evaluate both sides, so only getters, methods and
+ternaries need this. Reported once per binding.
+[Reactivity rules](./contract.md#reactivity-semantics),
+[ADR 0003](./adr/0003-one-shot-dependency-capture.md).

@@ -856,9 +856,9 @@ describe("Devtools hook — causality + attribution", () => {
     const items = g.writes.find((x: any) => x.path === "root.items");
     expect(items.count).toBe(3);
     expect(items.cascaded).toBe(0);
-    // Unbatched: the binding re-ran once per write.
-    expect(items.effects[0].calls).toBe(3);
-    // One binding re-ran three times: batching would save two runs.
+    // Handlers run in a batch: three writes, the binding re-ran once, inside
+    // the handler's frame (not after it).
+    expect(items.effects[0].calls).toBe(1);
     expect(items.effects[0].distinct).toBe(1);
     expect(g.ownMs).toBeGreaterThanOrEqual(0);
     m.dispose();
@@ -948,13 +948,13 @@ describe("Devtools hook — causality + attribution", () => {
     expect(g.writes.map((w: any) => w.path)).toEqual(["root.tasks[*].done"]);
     expect(g.writes[0].count).toBe(10);
     expect(g.writes[0].cascaded).toBe(0);
-    // Each row's binding re-ran once (nothing to batch away); the shared
-    // counter re-ran once per write.
+    // Each row's binding re-ran once; the shared counter re-ran once for the
+    // whole handler, since handlers are batched.
     const perRow = g.writes[0].effects.find((e: any) => e.expr === "t.done");
     expect(perRow.calls).toBe(perRow.distinct);
     const shared = g.writes[0].effects.find((e: any) => e.expr === "doneCount");
     expect(shared.distinct).toBe(1);
-    expect(shared.calls).toBe(10);
+    expect(shared.calls).toBe(1);
     m.dispose();
   });
 

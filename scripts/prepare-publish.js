@@ -127,7 +127,6 @@ const publishPkg = {
     ),
     "./devtools": { import: bundleToPath(devtools), types: bundleToTypes(devtools) },
   },
-  sideEffects: false,
 };
 
 // Strip undefined keys so the JSON stays clean.

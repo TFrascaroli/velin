@@ -57,7 +57,9 @@ describe("Devtools drawer — smoke", () => {
     expect(text).toContain("load()");
     expect(text).toContain("items");
     expect(text).toContain("/write");
-    expect(text).toContain("re-ran after each write");
+    // Handlers are batched, so a write loop inside one has nothing to batch
+    // away: no advice.
+    expect(text).not.toContain("re-ran after each write");
 
     click(byText("button", "tree"));
     expect(bodyText()).toContain("Cascade");

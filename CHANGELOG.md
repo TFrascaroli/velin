@@ -4,6 +4,41 @@ All notable changes to `@velinjs/all`. Follows
 [Semantic Versioning](https://semver.org/); format loosely tracks
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Changed
+
+- `vln-on` handlers run their synchronous part in one batch. A handler
+  that hides the `vln-if` block it lives in (`this.popover = ''`) and keeps
+  writing no longer throws VLN014 halfway through, and a handler that
+  writes several times renders once. Writes after an `await` behave as
+  before.
+- `vln-attr:value` also assigns the `value` property on controls that have
+  one, so a `<select>`, a range input or a `<progress>` follows state after
+  first render and after the user has typed.
+- VLN017 names the expression and the callee (`Number is not a function`
+  in `vln-text="label(Number(x))"`) instead of `AST:Call Not a function`.
+- VLN023 says when the argument is the object given to `Velin.bind()`
+  rather than the one it returned (development builds).
+- The npm manifest no longer declares `sideEffects: false`; bundlers
+  dropped `import '@velinjs/all'` as dead code.
+- `velin-all` is 10,560 B gzipped (was 10,461): the batched handlers, the
+  radio role, the `value` property and the named callee.
+
+### Added
+
+- VLN037 (development builds): a binding re-ran and read an input it did
+  not read when its dependencies were captured, which is how a getter or
+  ternary that short-circuits on its first run goes stale. Warned once per
+  binding, with the directive and the path.
+
+### Fixed
+
+- `vln-input` on radio buttons. The group's checked member now follows
+  `model === value`, and clicking a member writes its `value`. Before, the
+  model string was written to every member's `checked` (the last one won)
+  and clicks wrote `true` and `false`.
+
 ## [1.0.0-beta.5] — 2026-11-16
 
 Release candidate for 1.0. [docs/contract.md](docs/contract.md) states
