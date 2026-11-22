@@ -1224,28 +1224,42 @@ function evaluate(reactiveState, expr, allowMutations = false) {
  * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/directives.md#vln-input|Directives: vln-input}
  */
 function getSetter(reactiveState, expr) {
-  const inter = reactiveState.interpolations;
-  // If it's an expression interpolation, grab the original expression from it
-  const property =
-    inter?.has(expr) && inter?.get(expr).type == "EXPR"
-      ? inter.get(expr).value.expr
-      : expr;
-  const lastDotIndex = property.lastIndexOf(".");
+  // A scope variable (loop item, alias, template var) names an expression
+  // authored in the enclosing scope; follow it there, repeatedly, so the
+  // setter writes where the reads come from (`vln-input="item"` under
+  // `vln-loop:item="names"` writes names[i]).
+  let property = expr.trim();
+  let scope = reactiveState;
+  for (let s = reactiveState; s; ) {
+    const interp = s.interpolations?.get(property);
+    if (!interp) { s = s.ø__enclosing; continue; }
+    if (interp.type !== "EXPR" || !s.ø__enclosing) break; // a literal has nothing to write to
+    property = interp.value.expr;
+    scope = s = s.ø__enclosing; // resolve the new expression where it was authored
+  }
+  const target = /** @type {any} */ (compile(property));
 
   /** @type {(value: any) => any} */
   let set;
-  if (lastDotIndex === -1) {
-    // Handle root-level properties (no dots)
-    set = (value) => (reactiveState.state[property] = value);
-  } else {
-    const parentPath = property.slice(0, lastDotIndex);
-    const key = property.slice(lastDotIndex + 1);
+  if (target.type === "Identifier") {
+    set = (value) => (scope.state[target.name] = value);
+  } else if (target.type === "Member") {
+    // Evaluate the object (and a computed key) read-only, then assign.
+    const read = (ast) => {
+      const ctrl = scope.ø__control;
+      if (!ctrl) throw new Error(fmt("VLN014", __DEV__ && `Setter for "${expr}" used after its scope was cleaned up.`));
+      const was = ctrl.evaluating;
+      ctrl.evaluating = true;
+      try { return evaluateAst(ast, scope); } finally { ctrl.evaluating = was; }
+    };
     set = (value) => {
-      const parent = evaluate(reactiveState, parentPath);
+      const parent = read(target.object);
       if (parent == null)
         throw new TypeError("Cannot set property on null or undefined");
-      parent[key] = value;
+      parent[target.computed ? read(target.property) : target.property] = value;
     };
+  } else {
+    throw new Error(fmt("VLN016", __DEV__ && `"${expr}" is not something that can be assigned to; vln-input needs a property path`, expr));
   }
   if (__DEV__) {
     // Setters are entry points too (vln-input pushes through one).

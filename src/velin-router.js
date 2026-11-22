@@ -100,7 +100,7 @@ function setupVelinRouter(vln) {
         pluginState.placeholder.remove();
       }
     },
-    render: ({ node, expr, compose, consume, tracked, pluginState = {}, attributeName, ø__rerootDebug }) => {
+    render: ({ node, expr, compose, consume, evaluate, tracked, pluginState = {}, attributeName, ø__rerootDebug }) => {
       const parent = node.parentNode || pluginState.parent;
       if (!parent) return { halt: true };
 
@@ -124,6 +124,18 @@ function setupVelinRouter(vln) {
       const match = (tracked.currentPath || "").match(regex);
 
       if (match) {
+        // The `:param` segments of the matching route, URI-decoded, on the
+        // router state (`myRoute.params.id`). Written only when they differ,
+        // so a re-render of the same path does not wake its readers.
+        const route = evaluate("$__route");
+        const params = {};
+        for (const [k, v] of Object.entries(match.groups || {})) {
+          try { params[k] = decodeURIComponent(v); } catch (_) { params[k] = v; }
+        }
+        const current = route.params || {};
+        const same = Object.keys(params).length === Object.keys(current).length
+          && Object.keys(params).every((k) => current[k] === params[k]);
+        if (!same) route.params = params;
         if (!pluginState.activeNode) {
           const clone = pluginState.template.cloneNode(true);
           // Consume the attribute on the clone to prevent re-processing this plugin

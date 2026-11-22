@@ -70,3 +70,34 @@ describe("Velin Router", () => {
   });
 
 });
+
+describe("vln-route params", () => {
+  let root: HTMLElement;
+  beforeEach(() => {
+    root = document.createElement("div");
+    document.body.appendChild(root);
+  });
+
+  it("fills params from the :segments of the matching route, decoded", async () => {
+    window.location.hash = "/user/123/posts/new%20stuff";
+    root.innerHTML = `
+      <div vln-router="r">
+        <div vln-route="'/user/:id/posts/:sort'"><i vln-text="r.params.id + '|' + r.params.sort"></i></div>
+      </div>`;
+    const state = Velin.bind(root, {}) as any;
+    await new Promise((res) => setTimeout(res, 20));
+    expect(root.querySelector("i")!.textContent).toBe("123|new stuff");
+    expect(state.r.params).toEqual({ id: "123", sort: "new stuff" });
+  });
+
+  it("updates params when the hash changes to another match of the same route", async () => {
+    window.location.hash = "/user/1";
+    root.innerHTML = `<div vln-router="r"><div vln-route="'/user/:id'"><i vln-text="r.params.id"></i></div></div>`;
+    Velin.bind(root, {});
+    await new Promise((res) => setTimeout(res, 20));
+    expect(root.querySelector("i")!.textContent).toBe("1");
+    window.location.hash = "/user/2";
+    await new Promise((res) => setTimeout(res, 20));
+    expect(root.querySelector("i")!.textContent).toBe("2");
+  });
+});

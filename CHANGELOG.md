@@ -22,9 +22,9 @@ All notable changes to `@velinjs/all`. Follows
   rather than the one it returned (development builds).
 - The npm manifest no longer declares `sideEffects: false`; bundlers
   dropped `import '@velinjs/all'` as dead code.
-- `velin-all` is 10,661 B gzipped (was 10,461): the batched handlers, the
+- `velin-all` is 10,824 B gzipped (was 10,461): the batched handlers, the
   radio role, the `value` property, the named callee, the key guard, array
-  spread and the fragment root.
+  spread, the fragment root, the compiled setter paths and route params.
 
 ### Added
 
@@ -43,6 +43,16 @@ All notable changes to `@velinjs/all`. Follows
 
 ### Fixed
 
+- `vln-input` writes where it reads. `vln-input="item"` under
+  `vln-loop:item="names"` wrote a root key literally named `names[0]` and
+  left the array alone; `vln-input="items[0]"` did the same. The setter now
+  compiles the path and follows loop variables, aliases and template
+  variables to the expression they stand for, so bracket paths, computed
+  keys (`cells[idx]`) and loops over primitives bind two-way. An
+  expression with nothing to assign to (`a + b`) reports `VLN016` at bind.
+- `vln-route` fills the router state's `params` from the `:segment`s of
+  the matching route, URI-decoded (`myRoute.params.id`). It was documented
+  and never written.
 - `vln-input` on radio buttons. The group's checked member now follows
   `model === value`, and clicking a member writes its `value`. Before, the
   model string was written to every member's `checked` (the last one won)
