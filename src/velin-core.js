@@ -11,6 +11,9 @@
  * @typedef {Object} DepCapture
  * @property {boolean} capturingDeps Whether dependencies are being captured
  * @property {Set<string>} deps Set of dependency property paths currently captured
+ * @property {boolean} [checking] Dev only: a re-run without re-capture; reads outside `deps` warn (VLN037)
+ * @property {boolean} [warned] Dev only: VLN037 already reported for this binding
+ * @property {string} [expr] Dev only: the binding's expression, for the VLN037 message
  */
 
 /**
@@ -21,6 +24,7 @@
  * @property {number} batchDepth Nesting depth of active batch() calls; effects are queued when > 0
  * @property {Map<Function, number>} batchQueue Deferred effects collected while batchDepth > 0; value is the mutationSeq of the last mutation that queued each effect (dev-only correlation id, 0 for non-mutation queuings)
  * @property {Set<Function>} batchRecapture Effects in batchQueue that must re-capture their dependencies when flushed
+ * @property {Array<() => void>} [ø__afterFlush] Dev only: callbacks run once the outermost batch has flushed (closes devtools source frames opened inside it)
  * @property {(fn: () => void) => void} batch Defers effects triggered inside fn until fn returns, then flushes once (deduplicated). Safe to nest.
  */
 
@@ -105,15 +109,15 @@ const DefaultPluginPriorities = {
   STOPPER: 50,
 };
 
-/** @typedef {(args: {node: Element, pluginState?: any, subkey: string, expr: string, compiledExpression: ASTNode, attributeName: string, attributeValue: string, state: any, evaluate: Function, evaluateAst: Function, getSetter: Function, compose: Function, consume: Function, triggerEffects: Function}) => void} PluginDestroyerFn*/
+/** @typedef {(args: {node: Element, pluginState?: any, subkey: string, expr: string, compiledExpression: ASTNode, attributeName: string, attributeValue: string, state: any, evaluate: Function, evaluateAst: Function, getSetter: Function, compose: Function, consume: Function, triggerEffects: Function, batch: Function}) => void} PluginDestroyerFn*/
 
 /**
  * @template Ttracked
  * @typedef {Object} VelinPlugin
  * @property {string} name
  * @property {number=} priority
- * @property {(args: {compiledExpression: ASTNode, expr: string, node: Node, subkey: string | null, attributeName: string, attributeValue: string, state: any, evaluate: Function, evaluateAst: Function, getSetter: Function, compose: Function, consume: Function, triggerEffects: Function}) => Ttracked} [track] Optional function to track dependencies from an expression
- * @property {(args: {compiledExpression: ASTNode, expr: string, node: Element, subkey: string | null, tracked: Ttracked, pluginState?: any, attributeName: string, attributeValue: string, state: any, evaluate: Function, evaluateAst: Function, getSetter: Function, compose: Function, consume: Function, triggerEffects: Function, ø__rerootDebug?: (newNode: Node | null) => void}) => PluginControl | void} render Function to apply reactive updates to a node
+ * @property {(args: {compiledExpression: ASTNode, expr: string, node: Node, subkey: string | null, attributeName: string, attributeValue: string, state: any, evaluate: Function, evaluateAst: Function, getSetter: Function, compose: Function, consume: Function, triggerEffects: Function, batch: Function}) => Ttracked} [track] Optional function to track dependencies from an expression
+ * @property {(args: {compiledExpression: ASTNode, expr: string, node: Element, subkey: string | null, tracked: Ttracked, pluginState?: any, attributeName: string, attributeValue: string, state: any, evaluate: Function, evaluateAst: Function, getSetter: Function, compose: Function, consume: Function, triggerEffects: Function, batch: Function, ø__rerootDebug?: (newNode: Node | null) => void}) => PluginControl | void} render Function to apply reactive updates to a node
  * @property {PluginDestroyerFn} [destroy]
  */
 
@@ -280,8 +284,8 @@ const DefaultPluginPriorities = {
 /** @typedef {(parentState: ReactiveState | null, innerState: ReactiveState, node?: Node | null) => void} CleanupState */
 /** @typedef {<T extends object>(root?: Element | DocumentFragment, initialState?: T) => T} Bind */
 
-/** @typedef {(args: { expr: string, compiledExpression: ASTNode, evaluate: Function, evaluateAst: Function, getSetter: Function, compose: Function, consume: Function, triggerEffects: Function, state: any, node: Node, subkey: string | null }) => any} ExpressionTracker */
-/** @typedef {(args: { expr: string, compiledExpression: ASTNode, evaluate: Function, evaluateAst: Function, getSetter: Function, compose: Function, consume: Function, triggerEffects: Function, state: any, node: Node, subkey: string | null }) => (value: any) => void} SetterTracker */
+/** @typedef {(args: { expr: string, compiledExpression: ASTNode, evaluate: Function, evaluateAst: Function, getSetter: Function, compose: Function, consume: Function, triggerEffects: Function, batch: Function, state: any, node: Node, subkey: string | null }) => any} ExpressionTracker */
+/** @typedef {(args: { expr: string, compiledExpression: ASTNode, evaluate: Function, evaluateAst: Function, getSetter: Function, compose: Function, consume: Function, triggerEffects: Function, batch: Function, state: any, node: Node, subkey: string | null }) => (value: any) => void} SetterTracker */
 /**
  * @typedef {Object} Trackers
  * @property {ExpressionTracker} expressionTracker
@@ -337,6 +341,9 @@ const pluginStates = new WeakMap();
 // collapses to `wrapper.ø__enclosing != null`. Cleaned states are deleted.
 /** @type {WeakMap<object, ReactiveState>} */
 const states = new WeakMap();
+/** Dev only: the raw objects handed to Velin.bind(), so getController() can
+ *  say "you passed the original, not the proxy" (VLN023). */
+const rawRoots = __DEV__ ? new WeakSet() : null;
 // Per-evaluation scope proxies (what `this` is inside a state method called
 // from a directive) answer this symbol with their wrapper, so APIs that take
 // "a state" accept them too. Never enumerable, never user-visible.
@@ -363,11 +370,29 @@ function peek(arr) {
   return arr[arr.length - 1];
 }
 
+/**
+ * Dev only. A binding re-running without re-capture (a primitive write
+ * woke it) read a path it did not read when its dependencies were
+ * captured. That read will never trigger it: typically a getter or
+ * ternary that short-circuited on the first run (ADR 0003). Reported once
+ * per binding.
+ * @param {DepCapture} depCapture
+ * @param {string} path
+ */
+function checkRead(depCapture, path) {
+  if (depCapture.warned || depCapture.deps.has(path)) return;
+  depCapture.warned = true;
+  console.warn(fmt("VLN037",
+    `${depCapture.expr} read '${path.replace(/^root\./, "")}', which it did not read when its dependencies were captured, ` +
+    `so changes to it will not update this binding. Read every dependency up front: a getter or ternary that ` +
+    `short-circuits on its first run only tracks what it reached. See ADR 0003.`));
+}
+
 function wrapE(fn, expr) {
   try {
     return fn();
   } catch (error) {
-    const exprStr = typeof expr === 'string' ? expr : (expr && expr.type ? `AST:${expr.type}` : JSON.stringify(expr));
+    const exprStr = typeof expr === 'string' ? expr : (expr && (expr.ø__src || (expr.type ? `AST:${expr.type}` : JSON.stringify(expr))));
     console.error(fmt("VLN017", __DEV__ && `Error evaluating expression '${exprStr}':`, exprStr), error.message);
     if (__DEV__ && error.stack) {
       console.error('Stack:', error.stack.split('\n').slice(0, 5).join('\n'));
@@ -547,6 +572,7 @@ function processPlugin(
 ) {
   /** @type {DepCapture} */
   const depCapture = { capturingDeps: true, deps: new Set() };
+  if (__DEV__) depCapture.expr = `${attributeName}="${expr}"`;
   reactiveState.ø__depCaptures.push(depCapture);
   const nodeState = pluginStates.get(node) || {};
   const stateKey = plugin.name + (subkey ? "_" + subkey : "");
@@ -667,6 +693,18 @@ function processPlugin(
           depCapture.capturingDeps = false;
         }
         rebind();
+      } else if (__DEV__) {
+        // Dev only: a re-run without re-capture reads with the frame in
+        // checking mode, so the proxies can flag a read this binding never
+        // captured (VLN037) — the short-circuit-on-first-run class of bug.
+        depCapture.checking = true;
+        reactiveState.ø__depCaptures.push(depCapture);
+        try {
+          tracked = track();
+        } finally {
+          reactiveState.ø__depCaptures.pop();
+          depCapture.checking = false;
+        }
       } else tracked = track();
       if (__DEV__) hook.ø__emit({ kind: "plugin", state: reactiveState, name: plugin.name, node, expr, subkey, phase: "render" });
       let control;
@@ -826,7 +864,8 @@ function parse(tokens) {
   function parseList(close) {
     const items = [];
     while (!eat("PUNCTUATION", close)) {
-      items.push(parseAssignment());
+      if (eat("PUNCTUATION", "...")) items.push({ spread: true, argument: parseAssignment() });
+      else items.push(parseAssignment());
       eat("PUNCTUATION", ",");
     }
     return items;
@@ -908,24 +947,43 @@ function parse(tokens) {
  */
 function evalAst(ast, context) {
   const ev = (n) => evalAst(n, context);
+  // The three keys that lead from any object to Function. Expressions see
+  // the state and nothing else; without this, `constructor.constructor('…')()`
+  // on an empty state is arbitrary code wherever CSP is not enforced.
+  const guard = (k) => {
+    if (k === "constructor" || k === "__proto__" || k === "prototype")
+      throw new Error(fmt("VLN038", __DEV__ && `'${k}' is not accessible from expressions`, String(k)));
+    return k;
+  };
   // Property key of a Member node
-  const keyOf = (m) => (m.computed ? ev(m.property) : m.property);
+  const keyOf = (m) => guard(m.computed ? ev(m.property) : m.property);
+  // Array-literal elements and call arguments, with `...x` spread in place
+  const list = (items) => {
+    const out = [];
+    for (const e of items) {
+      if (e.spread) out.push(...ev(e.argument));
+      else out.push(ev(e));
+    }
+    return out;
+  };
   switch (ast.type) {
     case "Literal":
       return ast.value;
     case "Identifier":
-      return context[ast.name];
+      return context[guard(ast.name)];
     case "Member": {
       const obj = ev(ast.object);
       return obj == null ? undefined : obj[keyOf(ast)];
     }
     case "Call": {
       const c = ast.callee;
+      const member = c.type === "Member";
       // Method calls bind `this` to the receiver, which is evaluated once
-      const thisArg = c.type === "Member" ? ev(c.object) : context;
-      const fn = c.type === "Member" ? (thisArg == null ? undefined : thisArg[keyOf(c)]) : ev(c);
-      if (typeof fn !== "function") throw new TypeError("Not a function");
-      return fn.apply(thisArg, ast.arguments.map(ev));
+      const thisArg = member ? ev(c.object) : context;
+      const key = member ? keyOf(c) : c.type === "Identifier" ? c.name : "expression";
+      const fn = member ? (thisArg == null ? undefined : thisArg[key]) : ev(c);
+      if (typeof fn !== "function") throw new TypeError(`${String(key)} is not a function`);
+      return fn.apply(thisArg, list(ast.arguments));
     }
     case "Unary": {
       const a = ev(ast.argument);
@@ -956,7 +1014,7 @@ function evalAst(ast, context) {
     case "Ternary":
       return ev(ast.test) ? ev(ast.consequent) : ev(ast.alternate);
     case "ArrayLiteral":
-      return ast.elements.map(ev);
+      return list(ast.elements);
     case "ObjectLiteral": {
       const result = {};
       for (const p of ast.properties) {
@@ -965,13 +1023,13 @@ function evalAst(ast, context) {
           if (s != null && typeof s === "object") Object.assign(result, s);
           continue;
         }
-        result[p.key] = ev(p.value);
+        result[guard(p.key)] = ev(p.value);
       }
       return result;
     }
     case "Assignment": {
       const value = ev(ast.right), l = ast.left;
-      if (l.type === "Identifier") context[l.name] = value;
+      if (l.type === "Identifier") context[guard(l.name)] = value;
       else if (l.type === "Member") {
         const obj = ev(l.object);
         if (obj == null) throw new TypeError("Cannot set property on null or undefined");
@@ -1007,7 +1065,9 @@ function compile(expr) {
   }
   const tokens = tokenize(expr);
   const ast = parse(tokens);
-  if (__DEV__ && ast && typeof ast === "object") /** @type {any} */ (ast).ø__src = expr;
+  // The source rides along so errors can name the expression that threw
+  // (the plugin-level paths have the string; the tracker only has the AST).
+  if (ast && typeof ast === "object") /** @type {any} */ (ast).ø__src = expr;
   return ast;
 }
 
@@ -1075,7 +1135,12 @@ function evaluateAst(ast, reactiveState) {
       hook.ø__emit({ kind: "evaluate", state: reactiveState, expr: src, durationMs: dt, ok: false, error: err && err.message });
       throw err;
     } finally {
-      hook.ø__exitSource(opened);
+      const ctrl = reactiveState.ø__control;
+      if (opened && ctrl && ctrl.batchDepth > 0) {
+        // Inside a batch (vln-on runs handlers in one): close the source
+        // frame after the flush, so the effects it caused run inside it.
+        (ctrl.ø__afterFlush || (ctrl.ø__afterFlush = [])).push(() => hook.ø__exitSource(opened));
+      } else hook.ø__exitSource(opened);
     }
   }
   return evalAst(ast, contextualizedProxy);
@@ -1159,28 +1224,42 @@ function evaluate(reactiveState, expr, allowMutations = false) {
  * @see {@link https://github.com/TFrascaroli/velin/blob/main/docs/directives.md#vln-input|Directives: vln-input}
  */
 function getSetter(reactiveState, expr) {
-  const inter = reactiveState.interpolations;
-  // If it's an expression interpolation, grab the original expression from it
-  const property =
-    inter?.has(expr) && inter?.get(expr).type == "EXPR"
-      ? inter.get(expr).value.expr
-      : expr;
-  const lastDotIndex = property.lastIndexOf(".");
+  // A scope variable (loop item, alias, template var) names an expression
+  // authored in the enclosing scope; follow it there, repeatedly, so the
+  // setter writes where the reads come from (`vln-input="item"` under
+  // `vln-loop:item="names"` writes names[i]).
+  let property = expr.trim();
+  let scope = reactiveState;
+  for (let s = reactiveState; s; ) {
+    const interp = s.interpolations?.get(property);
+    if (!interp) { s = s.ø__enclosing; continue; }
+    if (interp.type !== "EXPR" || !s.ø__enclosing) break; // a literal has nothing to write to
+    property = interp.value.expr;
+    scope = s = s.ø__enclosing; // resolve the new expression where it was authored
+  }
+  const target = /** @type {any} */ (compile(property));
 
   /** @type {(value: any) => any} */
   let set;
-  if (lastDotIndex === -1) {
-    // Handle root-level properties (no dots)
-    set = (value) => (reactiveState.state[property] = value);
-  } else {
-    const parentPath = property.slice(0, lastDotIndex);
-    const key = property.slice(lastDotIndex + 1);
+  if (target.type === "Identifier") {
+    set = (value) => (scope.state[target.name] = value);
+  } else if (target.type === "Member") {
+    // Evaluate the object (and a computed key) read-only, then assign.
+    const read = (ast) => {
+      const ctrl = scope.ø__control;
+      if (!ctrl) throw new Error(fmt("VLN014", __DEV__ && `Setter for "${expr}" used after its scope was cleaned up.`));
+      const was = ctrl.evaluating;
+      ctrl.evaluating = true;
+      try { return evaluateAst(ast, scope); } finally { ctrl.evaluating = was; }
+    };
     set = (value) => {
-      const parent = evaluate(reactiveState, parentPath);
+      const parent = read(target.object);
       if (parent == null)
         throw new TypeError("Cannot set property on null or undefined");
-      parent[key] = value;
+      parent[target.computed ? read(target.property) : target.property] = value;
     };
+  } else {
+    throw new Error(fmt("VLN016", __DEV__ && `"${expr}" is not something that can be assigned to; vln-input needs a property path`, expr));
   }
   if (__DEV__) {
     // Setters are entry points too (vln-input pushes through one).
@@ -1244,7 +1323,9 @@ function getController(state) {
     ? (states.get(state) || /** @type {any} */ (state)[ø__SCOPE])
     : null;
   if (!wrapper) {
-    throw new Error(fmt("VLN023", __DEV__ && "getController: argument is not a Velin state. Pass the object returned by Velin.bind(), or `this` inside a state method."));
+    throw new Error(fmt("VLN023", __DEV__ && (rawRoots.has(state)
+      ? "getController: this is the object you passed to Velin.bind(), not the one it returned. Keep the return value of Velin.bind() and use that (or `this` inside a state method)."
+      : "getController: argument is not a Velin state. Pass the object returned by Velin.bind(), or `this` inside a state method.")));
   }
   if (!wrapper.ø__control) {
     throw new Error(fmt("VLN024", __DEV__ && "getController: this scope was torn down (its element was removed or the state unbound)."));
@@ -1285,20 +1366,30 @@ function setupState(obj) {
         fn();
       } finally {
         this.batchDepth--;
-        if (this.batchDepth === 0 && this.batchQueue.size) {
-          const effects = [...this.batchQueue.entries()];
-          const recaptures = this.batchRecapture;
-          this.batchQueue.clear();
-          this.batchRecapture = new Set();
-          for (const [effect, seq] of effects) {
-            if (__DEV__) {
-              hook.stats.updateCounter++;
-              const dbg = /** @type {any} */ (effect).ø__debug;
-              const path = dbg?.recentPaths?.[dbg?.ø__pathRingHead === 0 ? DEBUG_PATH_RING - 1 : dbg.ø__pathRingHead - 1] ?? "";
-              hook.ø__runEffect(effect, seq || 0, reactiveState, path, recaptures.has(effect));
-            } else {
-              effect(recaptures.has(effect));
+        if (this.batchDepth === 0) {
+          if (this.batchQueue.size) {
+            const effects = [...this.batchQueue.entries()];
+            const recaptures = this.batchRecapture;
+            this.batchQueue.clear();
+            this.batchRecapture = new Set();
+            for (const [effect, seq] of effects) {
+              if (__DEV__) {
+                hook.stats.updateCounter++;
+                const dbg = /** @type {any} */ (effect).ø__debug;
+                const path = dbg?.recentPaths?.[dbg?.ø__pathRingHead === 0 ? DEBUG_PATH_RING - 1 : dbg.ø__pathRingHead - 1] ?? "";
+                hook.ø__runEffect(effect, seq || 0, reactiveState, path, recaptures.has(effect));
+              } else {
+                effect(recaptures.has(effect));
+              }
             }
+          }
+          // Dev: an entry point evaluated inside this batch (a vln-on handler)
+          // keeps its devtools source frame open until its effects have run,
+          // so they are billed to the handler that caused them.
+          if (__DEV__ && this.ø__afterFlush) {
+            const cbs = this.ø__afterFlush;
+            this.ø__afterFlush = null;
+            for (const cb of cbs) cb();
           }
         }
       }
@@ -1330,6 +1421,8 @@ function setupState(obj) {
         const depCapture = peek(reactiveState.ø__depCaptures);
         if (depCapture?.capturingDeps)
           depCapture.deps.add(path + "." + prop.toString());
+        else if (__DEV__ && depCapture?.checking && typeof prop === "string")
+          checkRead(depCapture, path + "." + prop);
         const value = Reflect.get(target, prop, receiver);
 
         const dnm = ø__control.wrapping;
@@ -1411,6 +1504,8 @@ function setupState(obj) {
           } else {
             depCapture.deps.add(innerPath);
           }
+        } else if (__DEV__ && depCapture?.checking && typeof prop === "string") {
+          checkRead(depCapture, prop === "length" || typeof value === "function" ? path : innerPath);
         }
 
         if (
@@ -1884,6 +1979,7 @@ function processNode(node, reactiveState) {
 function bind(root, initialState) {
   if (root === undefined) root = document.body;
   if (initialState === undefined) initialState = {};
+  if (__DEV__) rawRoots.add(initialState);
   const reactiveState = setupState(initialState);
   reactiveState.ø__rootNode = root;
   let mounting = false;
@@ -1897,7 +1993,10 @@ function bind(root, initialState) {
     mounting = hook.ø__enterSource(`Velin.bind(${desc})`, "mount");
   }
   try {
-    processNode(root, reactiveState);
+    // A DocumentFragment has no attributes of its own; bind its elements.
+    if (typeof DocumentFragment !== "undefined" && root instanceof DocumentFragment) {
+      for (const child of Array.from(root.children)) processNode(child, reactiveState);
+    } else processNode(root, reactiveState);
   } finally {
     if (__DEV__) hook.ø__exitSource(mounting);
   }

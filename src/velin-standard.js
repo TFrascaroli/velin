@@ -218,6 +218,12 @@ function setupVelinStd(vln) {
         } else {
           node.setAttribute(subkey, tracked);
         }
+        // `value` is the default value only: it does not move a <select>,
+        // a range or a <progress> once rendered, and does nothing after the
+        // user has typed. Form controls expose it as a property; assign that too.
+        if (subkey === 'value' && 'value' in node) {
+          try { /** @type {any} */(node).value = tracked == null ? '' : tracked; } catch (_) {}
+        }
       }
     },
   });
@@ -316,7 +322,7 @@ function setupVelinStd(vln) {
       if (pluginState?.handler)
         node.removeEventListener(subkey, pluginState.handler);
     },
-    render: ({ compose, compiledExpression, node, subkey }) => {
+    render: ({ compose, compiledExpression, node, subkey, batch }) => {
       if (typeof node.addEventListener !== "function") {
         console.warn(fmt("VLN004", __DEV__ && "No events hook found"));
         return;
@@ -328,7 +334,11 @@ function setupVelinStd(vln) {
       const handler = async (event) => {
         const child = compose({ event: { literal: event } });
         try {
-          const result = child.evaluateAst(compiledExpression);
+          // The synchronous part runs in a batch: effects (including the
+          // teardown of this handler's own vln-if block) wait until it
+          // returns, so every write lands and the tree renders once.
+          /** @type {any} */ let result;
+          batch(() => { result = child.evaluateAst(compiledExpression); });
           if (result && typeof result.then === "function") await result;
         } finally {
           child.cleanup();
@@ -372,13 +382,15 @@ function setupVelinStd(vln) {
    */
   // Roles collapse the four supported element flavours into a shared
   // read/write/event contract, so the plugin body stays one-branch-per-role.
-  //   'toggle' — checkbox/radio; state ↔ node.checked
+  //   'toggle' — checkbox; state ↔ node.checked
+  //   'radio'  — radio group member; checked ↔ (state === node.value) on 'change'
   //   'value'  — text-y input or textarea; state ↔ node.value on 'input'
   //   'select' — <select>; state ↔ node.value on 'change'
   //   'text'   — contenteditable; state ↔ node.textContent on 'input'
   function inputRole(node) {
     if (node instanceof HTMLInputElement) {
-      return (node.type === 'checkbox' || node.type === 'radio') ? 'toggle' : 'value';
+      if (node.type === 'radio') return 'radio';
+      return node.type === 'checkbox' ? 'toggle' : 'value';
     }
     if (node instanceof HTMLTextAreaElement) return 'value';
     if (node instanceof HTMLSelectElement) return 'select';
@@ -392,6 +404,7 @@ function setupVelinStd(vln) {
   }
   function writeInput(node, role, v) {
     if (role === 'toggle') { if (node.checked !== v) node.checked = v; return; }
+    if (role === 'radio') { const on = v != null && node.value === String(v); if (node.checked !== on) node.checked = on; return; }
     if (role === 'text') { if ((node.textContent || '') !== v) node.textContent = v; return; }
     if (node.value !== v) node.value = v;
   }
@@ -408,12 +421,9 @@ function setupVelinStd(vln) {
       if (!pluginState.initialized) {
         const setter = getSetter(expr);
         const push = () => setter(readInput(node, role));
-        node.addEventListener(role === 'select' ? 'change' : 'input', push);
-        // Radio: clicking a member of the group fires 'change' but not
-        // always 'input' consistently across browsers — belt-and-braces.
-        if (node instanceof HTMLInputElement && node.type === 'radio') {
-          node.addEventListener('change', push);
-        }
+        // A radio only fires 'change' on the member that became checked,
+        // so one listener writes its value and the re-render unchecks the rest.
+        node.addEventListener(role === 'select' || role === 'radio' ? 'change' : 'input', push);
       }
       writeInput(node, role, tracked);
       return { pluginState: { initialized: true } };

@@ -4,6 +4,60 @@ All notable changes to `@velinjs/all`. Follows
 [Semantic Versioning](https://semver.org/); format loosely tracks
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Changed
+
+- `vln-on` handlers run their synchronous part in one batch. A handler
+  that hides the `vln-if` block it lives in (`this.popover = ''`) and keeps
+  writing no longer throws VLN014 halfway through, and a handler that
+  writes several times renders once. Writes after an `await` behave as
+  before.
+- `vln-attr:value` also assigns the `value` property on controls that have
+  one, so a `<select>`, a range input or a `<progress>` follows state after
+  first render and after the user has typed.
+- VLN017 names the expression and the callee (`Number is not a function`
+  in `vln-text="label(Number(x))"`) instead of `AST:Call Not a function`.
+- VLN023 says when the argument is the object given to `Velin.bind()`
+  rather than the one it returned (development builds).
+- The npm manifest no longer declares `sideEffects: false`; bundlers
+  dropped `import '@velinjs/all'` as dead code.
+- `velin-all` is 10,824 B gzipped (was 10,461): the batched handlers, the
+  radio role, the `value` property, the named callee, the key guard, array
+  spread, the fragment root, the compiled setter paths and route params.
+
+### Added
+
+- Spread inside array literals (`[...items, extra]`), which the contract
+  already listed as frozen syntax.
+- `Velin.bind()` accepts a `DocumentFragment` and binds its elements, as
+  the API reference said; before, it silently did nothing.
+- VLN038: expressions cannot read or write `constructor`, `__proto__` or
+  `prototype`, as identifiers, member keys or object-literal keys. Before,
+  `constructor.constructor('…')()` on any state reached `Function` wherever
+  no Content Security Policy blocked it.
+- VLN037 (development builds): a binding re-ran and read an input it did
+  not read when its dependencies were captured, which is how a getter or
+  ternary that short-circuits on its first run goes stale. Warned once per
+  binding, with the directive and the path.
+
+### Fixed
+
+- `vln-input` writes where it reads. `vln-input="item"` under
+  `vln-loop:item="names"` wrote a root key literally named `names[0]` and
+  left the array alone; `vln-input="items[0]"` did the same. The setter now
+  compiles the path and follows loop variables, aliases and template
+  variables to the expression they stand for, so bracket paths, computed
+  keys (`cells[idx]`) and loops over primitives bind two-way. An
+  expression with nothing to assign to (`a + b`) reports `VLN016` at bind.
+- `vln-route` fills the router state's `params` from the `:segment`s of
+  the matching route, URI-decoded (`myRoute.params.id`). It was documented
+  and never written.
+- `vln-input` on radio buttons. The group's checked member now follows
+  `model === value`, and clicking a member writes its `value`. Before, the
+  model string was written to every member's `checked` (the last one won)
+  and clicks wrote `true` and `false`.
+
 ## [1.0.0-beta.5] — 2026-11-16
 
 Release candidate for 1.0. [docs/contract.md](docs/contract.md) states
