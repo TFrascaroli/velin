@@ -240,18 +240,30 @@ stale with no error. This warning fires when a later run does reach such
 an input. Read every input first, then combine:
 
 ```js
-// Stale: on the first run activeLook is null, so modified is never read.
-get canSave() { return this.activeLook !== null && this.modified; }
+// Stale: on the first run activeId (a string) is null, so modified is never read.
+get canSave() { return this.activeId !== null && this.modified; }
 
 // Right: read everything, then decide.
 get canSave() {
-  const active = this.activeLook;
+  const id = this.activeId;
   const modified = this.modified;
-  return active !== null && modified;
+  return id !== null && modified;
 }
 ```
 
-Template `&&` and `||` evaluate both sides, so only getters, methods and
-ternaries need this. Reported once per binding.
+This only bites when the guard is a plain value. Assigning an object or
+array is a structural write, and the binding re-captures. Template `&&`
+and `||` evaluate both sides, so only getters, methods and ternaries need
+this. Reported once per binding.
 [Reactivity rules](./contract.md#reactivity-semantics),
 [ADR 0003](./adr/0003-one-shot-dependency-capture.md).
+
+## VLN038
+
+**Expression reached for `constructor`, `__proto__` or `prototype`.**
+Those three keys lead from any value to the `Function` constructor, and
+expressions are meant to see your state and nothing else. The evaluator
+refuses them as identifiers, member keys and object-literal keys, so page
+content cannot turn into code even where no Content Security Policy is
+enforced. If your state really has a property with one of these names,
+expose it under another name.

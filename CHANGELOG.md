@@ -22,11 +22,20 @@ All notable changes to `@velinjs/all`. Follows
   rather than the one it returned (development builds).
 - The npm manifest no longer declares `sideEffects: false`; bundlers
   dropped `import '@velinjs/all'` as dead code.
-- `velin-all` is 10,560 B gzipped (was 10,461): the batched handlers, the
-  radio role, the `value` property and the named callee.
+- `velin-all` is 10,661 B gzipped (was 10,461): the batched handlers, the
+  radio role, the `value` property, the named callee, the key guard, array
+  spread and the fragment root.
 
 ### Added
 
+- Spread inside array literals (`[...items, extra]`), which the contract
+  already listed as frozen syntax.
+- `Velin.bind()` accepts a `DocumentFragment` and binds its elements, as
+  the API reference said; before, it silently did nothing.
+- VLN038: expressions cannot read or write `constructor`, `__proto__` or
+  `prototype`, as identifiers, member keys or object-literal keys. Before,
+  `constructor.constructor('…')()` on any state reached `Function` wherever
+  no Content Security Policy blocked it.
 - VLN037 (development builds): a binding re-ran and read an input it did
   not read when its dependencies were captured, which is how a getter or
   ternary that short-circuits on its first run goes stale. Warned once per

@@ -864,7 +864,8 @@ function parse(tokens) {
   function parseList(close) {
     const items = [];
     while (!eat("PUNCTUATION", close)) {
-      items.push(parseAssignment());
+      if (eat("PUNCTUATION", "...")) items.push({ spread: true, argument: parseAssignment() });
+      else items.push(parseAssignment());
       eat("PUNCTUATION", ",");
     }
     return items;
@@ -946,13 +947,30 @@ function parse(tokens) {
  */
 function evalAst(ast, context) {
   const ev = (n) => evalAst(n, context);
+  // The three keys that lead from any object to Function. Expressions see
+  // the state and nothing else; without this, `constructor.constructor('…')()`
+  // on an empty state is arbitrary code wherever CSP is not enforced.
+  const guard = (k) => {
+    if (k === "constructor" || k === "__proto__" || k === "prototype")
+      throw new Error(fmt("VLN038", __DEV__ && `'${k}' is not accessible from expressions`, String(k)));
+    return k;
+  };
   // Property key of a Member node
-  const keyOf = (m) => (m.computed ? ev(m.property) : m.property);
+  const keyOf = (m) => guard(m.computed ? ev(m.property) : m.property);
+  // Array-literal elements and call arguments, with `...x` spread in place
+  const list = (items) => {
+    const out = [];
+    for (const e of items) {
+      if (e.spread) out.push(...ev(e.argument));
+      else out.push(ev(e));
+    }
+    return out;
+  };
   switch (ast.type) {
     case "Literal":
       return ast.value;
     case "Identifier":
-      return context[ast.name];
+      return context[guard(ast.name)];
     case "Member": {
       const obj = ev(ast.object);
       return obj == null ? undefined : obj[keyOf(ast)];
@@ -965,7 +983,7 @@ function evalAst(ast, context) {
       const key = member ? keyOf(c) : c.type === "Identifier" ? c.name : "expression";
       const fn = member ? (thisArg == null ? undefined : thisArg[key]) : ev(c);
       if (typeof fn !== "function") throw new TypeError(`${String(key)} is not a function`);
-      return fn.apply(thisArg, ast.arguments.map(ev));
+      return fn.apply(thisArg, list(ast.arguments));
     }
     case "Unary": {
       const a = ev(ast.argument);
@@ -996,7 +1014,7 @@ function evalAst(ast, context) {
     case "Ternary":
       return ev(ast.test) ? ev(ast.consequent) : ev(ast.alternate);
     case "ArrayLiteral":
-      return ast.elements.map(ev);
+      return list(ast.elements);
     case "ObjectLiteral": {
       const result = {};
       for (const p of ast.properties) {
@@ -1005,13 +1023,13 @@ function evalAst(ast, context) {
           if (s != null && typeof s === "object") Object.assign(result, s);
           continue;
         }
-        result[p.key] = ev(p.value);
+        result[guard(p.key)] = ev(p.value);
       }
       return result;
     }
     case "Assignment": {
       const value = ev(ast.right), l = ast.left;
-      if (l.type === "Identifier") context[l.name] = value;
+      if (l.type === "Identifier") context[guard(l.name)] = value;
       else if (l.type === "Member") {
         const obj = ev(l.object);
         if (obj == null) throw new TypeError("Cannot set property on null or undefined");
@@ -1961,7 +1979,10 @@ function bind(root, initialState) {
     mounting = hook.ø__enterSource(`Velin.bind(${desc})`, "mount");
   }
   try {
-    processNode(root, reactiveState);
+    // A DocumentFragment has no attributes of its own; bind its elements.
+    if (typeof DocumentFragment !== "undefined" && root instanceof DocumentFragment) {
+      for (const child of Array.from(root.children)) processNode(child, reactiveState);
+    } else processNode(root, reactiveState);
   } finally {
     if (__DEV__) hook.ø__exitSource(mounting);
   }
